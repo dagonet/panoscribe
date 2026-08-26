@@ -1,6 +1,8 @@
 # Verification Playbook
 
-Rules that convert judgment calls into checkable procedure. The three always-on rules below apply to every task. Project-specific rules accumulate in the second section — every recurring incident should end as a rule here, not as tribal memory.
+Rules that convert judgment calls into checkable procedure. The four always-on rules below apply to every task. Project-specific rules accumulate in the second section — every recurring incident should end as a rule here, not as tribal memory.
+
+**Actor note (delegate-everything workflow):** measurements, mockups, gate runs, and screenshot captures are EXECUTED by sub-agents (coder, tester, ops) — the PO dispatches the work and judges the returned evidence. Rule 3 is the exception: verifying a sub-agent's claim via a targeted Read of 1–2 files is PO work by design.
 
 ## Always-On Rules (MANDATORY)
 

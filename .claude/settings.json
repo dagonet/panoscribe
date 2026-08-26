@@ -83,6 +83,42 @@
             "command": "bash hooks/require-skills-block.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/require-skills-block.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/enforce-delegation.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/enforce-delegation.sh missing -- delegation enforcement offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/enforce-delegation.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/enforce-delegation.sh missing -- delegation enforcement offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/agent-budget-warn.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/agent-budget-warn.sh missing -- tool-call budget offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/require-teammate-report.sh"
+          }
+        ]
       }
     ],
     "SubagentStop": [

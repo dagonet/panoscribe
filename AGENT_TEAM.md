@@ -67,8 +67,10 @@ When a session starts on a project that has this AGENT_TEAM.md:
 - Plans sprints: selects tasks, creates the team, spawns the Architect (T4), then spawns workstreams.
 - Monitors workstream progress and handles escalations.
 - Writes a brief **session summary** after each completed sprint.
-- **T1 direct fixes**: For trivial changes (< 10 lines, style/config only, no logic), the PO fixes code directly without spawning agents. The PO has full tool access (Read, Edit, Write, Grep, Glob, Bash, ToolSearch, MCP tools).
-- **Reviews PRs directly** when no dedicated reviewer is spawned (T2 tier).
+- **T1 delegated fixes**: For trivial changes (< 10 lines, style/config only, no logic), the PO spawns ONE coder with a minimal plan file containing `Tier: T1` (3 lines suffice — the spawn gate reads it). **The PO NEVER edits code, at any tier.** PO write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
+- **Never reviews code inline** — a `code-reviewer` is spawned for every tier from T2 up; T1 relies on the coder's gate run.
+- **Read discipline**: PO Read/Grep is for targeted verification of specific claims (1–2 files) and orchestration files only. Any exploration beyond that — open-ended codebase analysis, pattern discovery, multi-file tracing — is delegated to an **Explore** agent (pass `model: "haiku"` or `"sonnet"` in the Agent call; it otherwise inherits the expensive session model).
+- **Never runs builds or tests** — coders run the gate, the tester verifies, `ops` handles env/tool work. The PO verifies via the `.gate/last-pass.json` artifact (also enforced by `hooks/enforce-delegation.sh`).
 - Closes tasks after merge (see Mode Behavior Table).
 - Does **NOT** block the merge pipeline — review + test approval is sufficient for merge.
 - **Open Brain context mediation**: Before spawning any agent, search Open Brain for context relevant to the agent's task and include findings in the spawn prompt. After the agent returns, capture non-trivial insights. See CLAUDE.md "Open Brain Context for Agents" for agent-specific search queries.
@@ -77,7 +79,7 @@ When a session starts on a project that has this AGENT_TEAM.md:
 ### Requirements Engineer
 
 - Spawned by the PO **before sprint planning** when new features need detailed specification.
-- **Mandatory for M/L/XL features** (multi-file changes, new entities, new pages, or cross-cutting concerns). PO may skip for S features (single-file bug fixes, config changes) and write specs directly.
+- **Mandatory for M/L/XL features** (multi-file changes, new entities, new pages, or cross-cutting concerns). PO may skip for S features (single-file bug fixes, config changes) and write specs directly — spec/plan writing is a planning artifact and stays PO work.
 - Takes a rough feature idea and produces a complete spec: user stories, acceptance criteria (Given/When/Then), edge cases, data model impact, and UI/UX notes.
 - Investigates the existing codebase to understand patterns, related features, and constraints before writing specs.
 - Outputs spec in the project's task format (see Mode Behavior Table for where specs are published).
@@ -149,12 +151,20 @@ When spawning a developer agent, the PO MUST choose the correct `subagent_type` 
 
 | Task Domain | `subagent_type` | When to Use |
 |---|---|---|
-| **All tasks** | `coder` | Default for all development work |
+| **All code tasks** | `coder` | Default for all development work |
+| **Env setup / downloads / tooling / diagnostics** | `ops` | Non-code execution: installs, binary/file ops, one-off tool runs, log collection, gate re-runs |
+| **Exploration / analysis** | `Explore` | Codebase exploration, pattern discovery, "how does X work" — pass `model: "haiku"` or `"sonnet"` (inherits the expensive session model otherwise) |
 
-### Code Reviewer (1 per workstream, T3+ only)
+### Ops (on demand, any tier)
+
+- Executes non-code-authoring work so the PO never runs it inline: environment setup, downloads/installs, binary/file operations, one-off tools, diagnostics, log collection, gate re-runs.
+- Does **NOT** author application code (coder work) and does **NOT** commit/merge (no git/GitHub tools — hands results back).
+- Deliverable contract: `## Commands Run` + `## Result`; ends with a SendMessage report in team mode.
+
+### Code Reviewer (1 per workstream, T2+)
 
 - Each workstream has a **dedicated** code reviewer assigned to that workstream's task.
-- **Not spawned for T1 or T2 sprints** — PO reviews directly for simple changes.
+- **Not spawned for T1 sprints only** — the single-coder T1 pipeline relies on the coder's gate run. From T2 up a reviewer is always spawned; the PO never reviews code inline.
 - Spawned when the developer signals readiness (PR created).
 - Reviews code quality, readability, adherence to coding standards.
 - Checks for: dead code, magic numbers, missing error handling, code duplication, overly complex methods.
@@ -171,7 +181,7 @@ When spawning a developer agent, the PO MUST choose the correct `subagent_type` 
 ### Tester (1 per workstream, T3+ only)
 
 - Each workstream has a **dedicated** tester assigned to that workstream's task.
-- **Not spawned for T1 or T2 sprints** — PO verifies directly.
+- **Not spawned for T1 or T2 sprints** — the coder's gate run covers build+test there; the tester verifies acceptance criteria from T3.
 - Spawned after code review passes (no open `CRITICAL` findings).
 - **Posts findings on the pull request** via `mcp__MCP_DOCKER__add_issue_comment` (PR number).
 - Reports: test results, data verification, log analysis.
@@ -182,8 +192,8 @@ When spawning a developer agent, the PO MUST choose the correct `subagent_type` 
 
 | Sprint Tier | Tester Role | Verification Scope |
 |---|---|---|
-| **T1 Trivial** | Not spawned | PO verifies visually |
-| **T2 Simple** | Not spawned | PO runs tests + visual check |
+| **T1 Trivial** | Not spawned | Coder runs gate; PO judges the gate artifact + coder screenshots |
+| **T2 Simple** | Not spawned | Coder runs gate; reviewer approves; PO judges the evidence |
 | **T3 Standard** | Structural only | Run tests + data/log checks |
 | **T4 Complex** | Full verification | Write targeted verification tests + full suite |
 
@@ -295,21 +305,26 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 
 | Tier | Criteria | Agents | Testing Discipline |
 |------|----------|--------|--------------------|
-| **T1 Trivial** | < 10 lines, style/config, no logic | PO only | No new tests. Run existing suite to verify no regressions. |
-| **T2 Simple** | 1-2 files, < 50 lines, clear root cause | 1 dev, PO reviews PR | Tests recommended if logic changes. Not mandatory for config/style. |
+| **T1 Trivial** | < 10 lines, style/config, no logic | 1 coder (solo — no reviewer/tester) | No new tests. Coder runs the gate (build + existing suite) before merging. |
+| **T2 Simple** | 1-2 files, < 50 lines, clear root cause | coder + code-reviewer | Tests recommended if logic changes. Coder runs the gate; reviewer approves. |
 | **T3 Standard** | Multi-file, < 200 lines, needs tests | Dev + reviewer + tester | **TDD required.** Failing tests first, then implement. Coverage >= 80% for changed files. |
 | **T4 Complex** | Architectural, > 200 lines, new entities | Architect + dev + reviewer + tester | **Full BDD/TDD.** BDD scenarios from acceptance criteria. Failing tests first. Coverage >= 80%. Architect reviews test strategy. |
 
 ### Tier Selection Guidelines
 
+- **Lowest defensible tier wins**: pick the smallest tier the work actually needs, and justify escalation rather than justifying restraint. Measured cost of getting this wrong: in one 167-hour session, 22 of 107 user turns spawned more than 2 agents, including 6 agents for `"analyze the last race results"` (a read-only question) and 5 for `"continue"`.
+- **The tier table above is a cap on team size, not a menu.** T2 means *at most* coder + reviewer. Never spawn a role the tier does not list.
+- **Single file or single symbol ⇒ T1**: one coder, no reviewer, no tester.
+- **Question-shaped turns spawn at most one agent.** "How does X work", "what does the data say", "is Y correct" are read-only — answer from one `Explore` (or one `ops` for a command), never a sprint team.
+- **Never spawn `Explore` when the target file is already named.** If you or the user already said which file, hand the path to the assigned dev and let it grep directly — a discovery agent for an already-discovered file is pure latency.
 - **Same-file rule**: When 2+ fixes touch the same file, assign them to a **single dev agent** regardless of tier. This avoids merge conflicts and saves an agent spawn.
 - **Style/config-only changes** (layout, styling, alignment): Always T1 unless they affect data binding or behavior.
 - **Bug fixes with known root cause**: T2 if single-file, T3 if multi-file or needs new tests.
 - **New features or refactors**: T3 minimum, T4 if architectural decisions are needed.
 - **Tester at T3**: Runs existing tests + data/log checks. Does NOT write new test cases.
 - **Tester at T4**: Full verification including writing targeted verification test cases.
-- **Skip tester** for T1-T2. PO verifies visually and runs tests if needed.
-- **Visual verification is always PO responsibility**: Tester captures screenshots; PO reviews layout, alignment, colors, spacing.
+- **Skip tester** for T1-T2 — the coder's gate run covers build+test there.
+- **Visual verification: capture by agent, judgment by PO**: the coder (T1/T2) or tester (T3+) captures screenshots; the PO reviews layout, alignment, colors, spacing. The PO never launches the app or runs capture tooling — that is agent work.
 
 ### T1 Examples
 
@@ -324,6 +339,9 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 | Fix a null check in a service method | **No → T2** | Logic change, even if 1 line |
 | Add a new config key + reading code | **No → T2** | Config + logic, 2 concerns |
 | Reorder methods for readability | **No** | Merge conflict risk, low value |
+| "Analyze the last race results" | **Not a tier at all** | Read-only question — 0-1 agents, never a sprint team |
+| "Continue" / "carry on" | **Not a tier at all** | Resume the existing workstream; spawn nothing new |
+| Fix a build break in a named file | Yes | File is already known — no `Explore` spawn, hand the path to one coder |
 
 Within the agreed tier: do the complete thing, not the demo path — a working end-to-end implementation, not a happy-path skeleton.
 
@@ -490,10 +508,10 @@ The PO coordinates merge ordering by sending merge-go-ahead messages. Developers
 6. PO presents final plan to user for confirmation
        |
 7. PO creates team, spawns workstreams per tier:
-   - T1: PO fixes directly (no agents)
-   - T2: 1 dev, PO reviews
-   - T3: dev + reviewer + tester
-   - T4: dev + reviewer + tester (architect already consulted in step 4)
+   - T1: 1 coder, uniform PR pipeline (no reviewer/tester)
+   - T2: coder + code-reviewer
+   - T3: coder + reviewer + tester
+   - T4: coder(s) + reviewer + tester (architect already consulted in step 4)
 ```
 
 ### Per-Workstream Flow
@@ -623,7 +641,7 @@ The PO presents these as a single confirmation at sprint start. All agents are s
 
 ## Rules
 
-1. **No direct pushes to main** — everything goes through PRs. Exception: T1 trivial fixes by the PO may be committed directly.
+1. **No direct pushes to main** — everything goes through PRs, including T1 trivial fixes (one coder: branch → fix → gate → PR → self-merge). No exceptions.
 2. **One task per developer** — no multitasking within an agent.
 3. **Max parallel workstreams** as specified in `PROJECT_CONTEXT.md`.
 4. **Architect reviews BEFORE development** — guidance before dev starts (T4).
@@ -634,7 +652,7 @@ The PO presents these as a single confirmation at sprint start. All agents are s
 9. **Workstream agents are ephemeral** — shut down after their phase.
 10. **Agents must not modify files outside their assigned worktree.**
 11. **Permission propagation** — all permissions requested once at sprint start. Agents spawned with `mode: bypassPermissions`.
-12. **Mode consistency** — the sprint's primary task source determines the mode. T1/T2 hotfixes may bypass mode if urgent.
+12. **Mode consistency** — the sprint's primary task source determines the mode. T1/T2 hotfixes may bypass mode formalities if urgent — but a hotfix is still a coder spawn and still runs the gate; only the reviewer may be skipped.
 13. **Plan discipline** — T2+ requires plan mode and tier declaration. T3+ additionally requires two Architect challenges and tier-correct team configuration before execution (e.g., skipping an architect for T4 is a violation). See Plan Challenge Protocol. T1 exempt.
 
 ---
@@ -654,7 +672,9 @@ The PO presents these as a single confirmation at sprint start. All agents are s
   2. Second idle: retire the agent via `TaskStop`. Do not send further prods.
   2b. Before retiring or taking over: run `git_status` in the agent's worktree — a DIRTY tree means the agent is mid-edit; wait one more cycle instead of clobbering in-flight work.
   3. Verify the actual work state via `git_log` / `git_status` / `list_pull_requests` — **never trust the agent's last claim**; committed work frequently exists despite a silent agent (and vice versa).
-  4. Count the stall as one strike toward the 3-cycle escalation above, then re-dispatch the remaining work with the verified state in the spawn prompt.
+  4. Count the stall as one strike toward the 3-cycle escalation above, then re-dispatch the remaining work with the verified state in the spawn prompt. **Never self-perform the stalled agent's work as fallback** — the PO does not code, review, or test inline.
+  5. **Dead-coder merge handoff**: if the stalled/retired coder left a pushed branch with an open PR, spawn a FRESH coder with the PR URL, branch name, and worktree path in the spawn prompt to rebase, re-run the gate, and complete the merge. The PO never finishes merges by hand.
+  6. **Report agents (reviewer/architect/tester/ops/etc.)**: a bare idle notification without a delivered report is a NON-report — their report IS the deliverable. One prod citing the reporting mandate, then treat as failed and re-dispatch. (The SubagentStop contract enforcer does NOT fire on teammate idle — idling is not stopping — which is why the reporting mandate lives in the agent definitions and spawn prompts.)
 
 ---
 
@@ -681,6 +701,8 @@ When spawning an agent, include in the spawn prompt a `## Required Skills` block
 | `architect` | `writing-plans` |
 | `requirements-engineer` | `brainstorming` |
 | `doc-generator` | *(none)* |
+| `ops` | *(none — pass-through)* |
+| `Explore` | *(none — pass-through; pass `model: "haiku"` or `"sonnet"` in the Agent call)* |
 
 **Reference-only skills** (handled by existing AGENT_TEAM.md constructs, not injected via spawn prompt): `using-git-worktrees` (Worktree Naming), `finishing-a-development-branch` (Merge Protocol), `dispatching-parallel-agents` (Tier Model workstreams), `subagent-driven-development` (plan-files mode execution).
 
@@ -689,6 +711,14 @@ When spawning an agent, include in the spawn prompt a `## Required Skills` block
 ### Copy-paste snippets
 
 Use these snippets verbatim when constructing spawn prompts. Append to the body of the prompt, then add the task-specific instructions below.
+
+**Report agents (code-reviewer, architect, tester, test-writer, requirements-engineer, doc-generator, ops) — ALWAYS add this line to their spawn prompts** (their definitions carry the same mandate; repeating it in the prompt is what reliably prevents silent idles):
+
+```markdown
+CRITICAL: end your run with a SendMessage to main containing your full report/findings — never go idle without reporting.
+Send a one-line progress ping via SendMessage roughly every 20 tool calls, and whenever you change approach — silence is read as a stall.
+If the task grows past its stated scope (extra files, a second root cause, a redesign), stop and report what is done plus the blocker instead of expanding scope.
+```
 
 **Coder (and variant coders `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`):**
 
@@ -699,6 +729,10 @@ Invoke these via the Skill tool before beginning task work:
 - superpowers:test-driven-development
 - superpowers:verification-before-completion
 - superpowers:receiving-code-review
+
+CRITICAL: end your run with a SendMessage to main containing your full report — never go idle without reporting.
+Send a one-line progress ping via SendMessage roughly every 20 tool calls, and whenever you change approach — silence is read as a stall.
+If the task grows past its stated scope (extra files, a second root cause, a redesign), stop and report what is done plus the blocker instead of expanding scope. A long run is not evidence of progress.
 ```
 
 **Tester:**
@@ -894,3 +928,37 @@ When `PROJECT_CONTEXT.md` doesn't exist, the PO creates it from this template:
 - **Ollama**: {available | not available}
 - **Context7**: {available | not available}
 ```
+
+---
+
+## Open Brain Context for Agents
+
+Spawned agents cannot access Open Brain directly. The PO must search for relevant context and include it in agent spawn prompts. After agents return, capture durable insights.
+
+### Before Spawning
+
+| Agent Type | Search Query | Include in Prompt |
+|---|---|---|
+| Architect | `"architecture {component}"`, `"tech debt {area}"` | Past decisions, rejected alternatives, known coupling issues |
+| Code Reviewer | `"bug pattern {component}"`, `"review {area}"` | Recurring issues, known weak spots, past review findings |
+| Coder | `"implementation {component}"`, `"pitfall {area}"` | Failed approaches, trade-off decisions, integration gotchas |
+| Tester | `"failure mode {feature}"`, `"regression {area}"` | Known failure patterns, data state gotchas, flaky test history |
+| Test Writer | `"edge case {component}"`, `"test pattern {area}"` | Historically problematic cases, boundary conditions |
+| Requirements Engineer | `"feature {domain}"`, `"scope {area}"` | Past scope surprises, edge cases that tripped users |
+
+### After Agent Returns
+
+Capture durable insights — not routine results:
+
+| Agent Type | What to Capture |
+|---|---|
+| Architect | Decisions with rationale, rejected alternatives, new tech debt identified |
+| Code Reviewer | Non-trivial bug patterns, recurring issues by component |
+| Coder | Non-obvious implementation decisions, approaches that failed and why |
+| Tester | Bugs found with root cause, regression patterns, data state issues |
+| Test Writer | Critical edge cases discovered, boundary conditions that matter |
+| Requirements Engineer | Key scope decisions, excluded features and why, edge cases found |
+
+Skip capture for routine outcomes ("no issues found", "all tests pass").
+
+---

@@ -50,3 +50,11 @@ End every summary-mode response with this verbatim line so the user knows how to
 ```
 
 Switch to **drill-in mode** on user request (any reasonable phrasing — `show details`, `drill in`, `show me the code`, `show the diff`, `give me file:line`). In drill-in mode: be precise and actionable, reference specific files, classes, and interfaces, show component/layer breakdown, flag risks and trade-offs explicitly with code snippets where helpful.
+
+**Team-mode reporting (HARD REQUIREMENT):** end your run with a SendMessage to `main` containing your full report. NEVER go idle without reporting — a bare idle notification is a non-report and your work will be treated as failed.
+
+## Liveness & Scope (HARD REQUIREMENT)
+
+**Progress ping:** send a one-line progress ping via SendMessage to `main` roughly every 20 tool calls, and whenever you change approach. Silence is read as a stall — the orchestrator cannot tell a working agent from a dead one.
+
+**Scope abort:** if the task grows past its stated scope — extra files, a second root cause, a redesign — stop, report what is done plus the blocker, and let the PO re-tier. Do not expand scope inside one spawn. A long run is not evidence of progress.
