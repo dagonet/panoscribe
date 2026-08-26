@@ -54,7 +54,9 @@ validate_plan() {
     return 1
   fi
 
-  tier=$(grep -E '^\*?\*?[Tt]ier:' "$file" 2>/dev/null | grep -oE 'T[1-4]' | head -1)
+  # Tolerant field grep (house rule): accept list markers and bold markup —
+  # 'Tier: T1', '**Tier:** T1', '**Tier**: T1', '- **Tier:** T1' all match.
+  tier=$(grep -E '^[-*[:space:]]*[Tt]ier\*{0,2}:' "$file" 2>/dev/null | grep -oE 'T[1-4]' | head -1)
   if [ -z "$tier" ]; then
     echo "  $file: no 'Tier: T1'-'T4' declaration"
     return 1

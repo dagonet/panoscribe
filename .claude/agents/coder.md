@@ -66,3 +66,9 @@ If your spawn prompt contains a `## Required Skills` block: invoke each listed s
 - Echo every numbered item from the plan/spec you were given.
 - Mark each item `DONE` or `DEVIATED: <reason>`.
 - An item you did not implement is `DEVIATED`, never silently omitted.
+
+## Liveness & Scope (HARD REQUIREMENT)
+
+**Progress ping:** send a one-line progress ping via SendMessage to `main` roughly every 20 tool calls, and whenever you change approach. Silence is read as a stall — the orchestrator cannot tell a working agent from a dead one.
+
+**Scope abort:** if the task grows past its stated scope — extra files, a second root cause, a redesign — stop, report what is done plus the blocker, and let the PO re-tier. Do not expand scope inside one spawn. A long run is not evidence of progress.
