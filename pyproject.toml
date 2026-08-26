@@ -4,9 +4,9 @@ version = "0.2.6"
 description = "Extract complete video transcripts — speech AND on-screen text — from TikTok, YouTube, Instagram and more."
 readme = "README.md"
 license = "MIT"
-# onnxruntime-gpu 1.24.x publishes Windows wheels only for cp311/cp312 today.
-# Revisit the upper bound once ORT ships cp313 Windows wheels.
-requires-python = ">=3.11,<3.13"
+# onnxruntime-gpu has shipped cp313 win_amd64 wheels since 1.20.0 and cp314
+# since 1.24.1, so nothing blocks Python 3.13 here.
+requires-python = ">=3.11,<3.14"
 authors = [
     { name = "dagonet" },
 ]
@@ -30,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Multimedia :: Video",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
@@ -41,7 +42,7 @@ dependencies = [
     "nvidia-cudnn-cu12>=9,<10         ; sys_platform == 'win32'",
     "nvidia-cufft-cu12>=11,<12        ; sys_platform == 'win32'",
     "rapidocr>=3.8,<4.0",
-    "onnxruntime-gpu>=1.20,<2.0",
+    "onnxruntime-gpu>=1.20,<2.0 ; (sys_platform == 'win32' or sys_platform == 'linux') and (platform_machine == 'x86_64' or platform_machine == 'AMD64')",
     "numpy>=1.26,<3.0",
     "yt-dlp>=2024.0",
     "typer>=0.13",
@@ -87,8 +88,24 @@ Changelog = "https://github.com/dagonet/omniscribe/blob/main/CHANGELOG.md"
 # project ships opencv-python-headless; cv2's Python API is identical for
 # rapidocr's imgproc usage. The unsatisfiable marker removes opencv-python
 # from resolution entirely, leaving headless as the only cv2 provider.
+# `faster-whisper` hard-requires plain `onnxruntime<2,>=1.14`. On GPU platforms
+# that transitive requirement would otherwise install a second `onnxruntime`
+# distribution alongside `onnxruntime-gpu` — both unpack into the same
+# `onnxruntime/` package directory, so whichever installs last silently wins,
+# and CUDA availability becomes a matter of install order rather than
+# resolution. This override forces `onnxruntime` itself to resolve only on
+# the complement of the `onnxruntime-gpu` marker above, so exactly one
+# distribution is ever selected. The version bound is load-bearing: an
+# unversioned override discards every constraint on the package (this
+# project's, faster-whisper's, rapidocr's) globally, not just on this branch.
+#
+# `override-dependencies` is a uv-only mechanism — it only takes effect when
+# resolving/installing via `uv`. A plain `pip install omniscribe` still pulls
+# both `onnxruntime` and `onnxruntime-gpu` distributions on GPU platforms;
+# that is the pre-existing status quo, not a regression introduced here.
 override-dependencies = [
     "opencv-python ; sys_platform == 'never'",
+    "onnxruntime>=1.20,<2.0 ; (sys_platform != 'win32' and sys_platform != 'linux') or (platform_machine != 'x86_64' and platform_machine != 'AMD64')",
 ]
 
 [build-system]
