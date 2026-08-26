@@ -295,10 +295,15 @@ OMNI_WHISPER_COMPUTE_TYPE=int8 OMNI_OCR_DEVICE=cpu OMNI_WHISPER_MODEL=small`
 against a 13-second local fixture): both the ASR and OCR stages ran on CPU
 (confirmed from the logs: `Loading Whisper model small on cpu
 (compute_type=int8)`) and produced a transcript with both `SPEECH` and
-`ON-SCREEN` segments. Do not expect GPU-class throughput — CPU Whisper
-inference, even at `small`, runs close to or slower than realtime rather
-than the GPU path's large multiple-of-realtime speed, and `large-v3-turbo`
-on CPU is considerably slower still.
+`ON-SCREEN` segments.
+
+Measured on this machine (Windows, CPU-only path, models pre-cached so the
+timing excludes the one-time download): the 13-second clip took **~10
+seconds** wall-clock end-to-end with `small`, i.e. close to realtime. This
+is a CPU-only measurement — the equivalent GPU run on this fixture was not
+timed, so no CPU-vs-GPU speedup ratio is claimed here. `large-v3-turbo` is a
+substantially larger model than `small` and was not benchmarked on CPU;
+expect it to be markedly slower per the model-size difference alone.
 
 ## Status
 

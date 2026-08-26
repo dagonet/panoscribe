@@ -8,12 +8,15 @@ Patch targets live at the import site:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from omniscribe.device import require_cuda_for_asr, require_cuda_for_ocr
 from omniscribe.errors import OmniScribeError
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def test_require_cuda_for_ocr_passes_when_provider_present() -> None:
@@ -56,6 +59,34 @@ def test_require_cuda_for_asr_raises_when_device_count_zero() -> None:
     assert "OMNI_WHISPER_DEVICE=cpu" in message
     assert "OMNI_WHISPER_COMPUTE_TYPE=int8" in message
     assert "OMNI_OCR_DEVICE=cpu" in message
+
+
+def test_error_message_troubleshooting_link_resolves() -> None:
+    """The remedy points at docs/troubleshooting.md#cuda-not-found -- assert
+    the referenced file and anchor target actually exist, so a future rename
+    or move of that doc doesn't silently turn the user-facing error into a
+    dead link."""
+    with (
+        patch(
+            "omniscribe.device.onnxruntime.get_available_providers",
+            return_value=["CPUExecutionProvider"],
+        ),
+        pytest.raises(OmniScribeError) as exc_info,
+    ):
+        require_cuda_for_ocr()
+
+    message = str(exc_info.value)
+    assert "docs/troubleshooting.md" in message
+
+    troubleshooting_doc = _REPO_ROOT / "docs" / "troubleshooting.md"
+    assert troubleshooting_doc.is_file()
+
+    contents = troubleshooting_doc.read_text(encoding="utf-8")
+    assert "## CUDA not found" in contents, (
+        "the '#cuda-not-found' anchor referenced in the remedy message is "
+        "produced by a '## CUDA not found' heading -- the heading text "
+        "moved or was renamed"
+    )
 
 
 def test_require_cuda_for_asr_treats_probe_failure_as_no_cuda() -> None:
