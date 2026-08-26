@@ -19,6 +19,7 @@ import numpy as np
 from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 from rapidocr.utils.typings import LangDet
 
+from omniscribe.device import require_cuda_for_ocr
 from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
 from omniscribe.ocr.frame_sampler import sample_frames
@@ -187,6 +188,8 @@ class RapidOCREngine:
 
     def _ensure_loaded(self, *, detected_language: str | None = None) -> RapidOCR:
         if self._engine is None:
+            if self._config.ocr_device == "cuda":
+                require_cuda_for_ocr()
             lang = _resolve_ocr_language(
                 self._config.ocr_language, detected_language=detected_language
             )

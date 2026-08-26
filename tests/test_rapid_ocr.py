@@ -43,6 +43,21 @@ def _make_config(**overrides: object) -> OmniScribeConfig:
     return OmniScribeConfig(**base)
 
 
+@pytest.fixture(autouse=True, scope="module")
+def _cuda_available() -> None:
+    """Patch the PR 2 CUDA probe so this file's cuda-default fixtures pass on
+    the GPU-less CI runner.
+
+    ``_make_config`` defaults ``ocr_device`` to ``"cuda"``, so every
+    ``RapidOCREngine(...).extract(...)`` call in this module now hits
+    ``require_cuda_for_ocr`` inside ``_ensure_loaded``. This is an explicit,
+    local stand-in for "a CUDA provider is present" — not a no-op of the
+    probe itself, which keeps its own dedicated tests in ``test_device.py``.
+    """
+    with patch("omniscribe.ocr.rapid_ocr.require_cuda_for_ocr"):
+        yield
+
+
 def _fake_frame() -> np.ndarray:
     return np.zeros((2, 2, 3), dtype=np.uint8)
 
@@ -166,6 +181,54 @@ def test_init_params_for_cpu_device(tmp_path: Path) -> None:
     _, kwargs = mock_rapid_cls.call_args
     params = kwargs["params"]
     assert params["EngineConfig.onnxruntime.use_cuda"] is False
+
+
+def test_ensure_loaded_probes_cuda_when_device_is_cuda(tmp_path: Path) -> None:
+    config = _make_config(ocr_device="cuda")
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.require_cuda_for_ocr") as mock_probe,
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()),
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    mock_probe.assert_called_once_with()
+
+
+def test_ensure_loaded_raises_before_model_load_when_cuda_absent(tmp_path: Path) -> None:
+    config = _make_config(ocr_device="cuda")
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    with (
+        patch(
+            "omniscribe.ocr.rapid_ocr.require_cuda_for_ocr",
+            side_effect=OmniScribeError("no CUDA"),
+        ),
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls,
+        pytest.raises(OmniScribeError),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    mock_rapid_cls.assert_not_called()
+
+
+def test_ensure_loaded_does_not_probe_cuda_when_device_is_cpu(tmp_path: Path) -> None:
+    config = _make_config(ocr_device="cpu")
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.require_cuda_for_ocr") as mock_probe,
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()),
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    mock_probe.assert_not_called()
 
 
 def test_extract_filters_below_confidence_threshold(tmp_path: Path) -> None:
