@@ -10,13 +10,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v8.1.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
 
       - name: Install dependencies
@@ -30,3 +33,52 @@ jobs:
 
       - name: Run tests
         run: uv run pytest --cov=omniscribe --cov-report=term-missing --cov-fail-under=95
+
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Lock file is current
+        run: uv lock --check
+
+      - name: macOS resolves onnxruntime (CPU build)
+        run: |
+          uv pip compile pyproject.toml --python-platform macos --python-version 3.12 -o /tmp/macos.txt
+          grep -q '^onnxruntime==' /tmp/macos.txt
+          if grep -q '^onnxruntime-gpu==' /tmp/macos.txt; then
+            echo "::error::macOS resolution selected onnxruntime-gpu, expected plain onnxruntime" && exit 1
+          fi
+
+      - name: Windows resolves onnxruntime-gpu (GPU build)
+        run: |
+          uv pip compile pyproject.toml --python-platform windows --python-version 3.11 -o /tmp/windows.txt
+          grep -q '^onnxruntime-gpu==' /tmp/windows.txt
+          if grep -q '^onnxruntime==' /tmp/windows.txt; then
+            echo "::error::Windows resolution selected plain onnxruntime, expected onnxruntime-gpu only" && exit 1
+          fi
+
+      - name: Linux x86_64 resolves onnxruntime-gpu (GPU build)
+        run: |
+          uv pip compile pyproject.toml --python-platform linux --python-version 3.11 -o /tmp/linux.txt
+          grep -q '^onnxruntime-gpu==' /tmp/linux.txt
+          if grep -q '^onnxruntime==' /tmp/linux.txt; then
+            echo "::error::Linux x86_64 resolution selected plain onnxruntime, expected onnxruntime-gpu only" && exit 1
+          fi
+
+      - name: Linux aarch64 resolves onnxruntime (CPU build)
+        run: |
+          uv pip compile pyproject.toml --python-platform aarch64-manylinux_2_28 --python-version 3.11 -o /tmp/aarch64.txt
+          grep -q '^onnxruntime==' /tmp/aarch64.txt
+          if grep -q '^onnxruntime-gpu==' /tmp/aarch64.txt; then
+            echo "::error::linux-aarch64 resolution selected onnxruntime-gpu, expected plain onnxruntime" && exit 1
+          fi
+
+      - name: Python 3.13 resolves cleanly
+        run: uv pip compile pyproject.toml --python-version 3.13 -o /tmp/py313.txt
