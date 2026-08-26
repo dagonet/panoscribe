@@ -121,6 +121,7 @@ from faster_whisper import (  # noqa: E402 (must follow DLL registration)
     WhisperModel,
 )
 
+from omniscribe.device import require_cuda_for_asr  # noqa: E402 (must follow DLL registration)
 from omniscribe.output import TranscriptSegment  # noqa: E402 (must follow DLL registration)
 
 if TYPE_CHECKING:
@@ -136,6 +137,8 @@ class WhisperTranscriber:
 
     def _ensure_loaded(self) -> BatchedInferencePipeline:
         if self._pipeline is None:
+            if self._config.whisper_device == "cuda":
+                require_cuda_for_asr()
             logger.info(
                 "Loading Whisper model %s on %s (compute_type=%s) — first run may download ~1.5 GB",
                 self._config.whisper_model,

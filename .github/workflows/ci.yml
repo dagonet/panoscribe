@@ -80,5 +80,10 @@ jobs:
             echo "::error::linux-aarch64 resolution selected onnxruntime-gpu, expected plain onnxruntime" && exit 1
           fi
 
-      - name: Python 3.13 resolves cleanly
-        run: uv pip compile pyproject.toml --python-version 3.13 -o /tmp/py313.txt
+      - name: Python 3.13 resolves cleanly (Linux x86_64 selects onnxruntime-gpu)
+        run: |
+          uv pip compile pyproject.toml --python-platform linux --python-version 3.13 -o /tmp/py313.txt
+          grep -q '^onnxruntime-gpu==' /tmp/py313.txt
+          if grep -q '^onnxruntime==' /tmp/py313.txt; then
+            echo "::error::Python 3.13 Linux x86_64 resolution selected plain onnxruntime, expected onnxruntime-gpu only" && exit 1
+          fi

@@ -115,6 +115,62 @@ def test_transcribe_consumes_generator_into_segments(tmp_path: Path) -> None:
     assert all(s.source == "SPEECH" for s in segments)
 
 
+def test_ensure_loaded_probes_cuda_when_device_is_cuda(tmp_path: Path) -> None:
+    config = _make_config().model_copy(update={"whisper_device": "cuda"})
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    fake_pipeline = MagicMock()
+    fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
+
+    with (
+        patch("omniscribe.asr.whisper.require_cuda_for_asr") as mock_probe,
+        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+    ):
+        WhisperTranscriber(config).transcribe(audio)
+
+    mock_probe.assert_called_once_with()
+
+
+def test_ensure_loaded_raises_before_model_load_when_cuda_absent(tmp_path: Path) -> None:
+    from omniscribe.errors import OmniScribeError
+
+    config = _make_config().model_copy(update={"whisper_device": "cuda"})
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    with (
+        patch(
+            "omniscribe.asr.whisper.require_cuda_for_asr",
+            side_effect=OmniScribeError("no CUDA"),
+        ),
+        patch("omniscribe.asr.whisper.WhisperModel") as mock_model_cls,
+        pytest.raises(OmniScribeError),
+    ):
+        WhisperTranscriber(config).transcribe(audio)
+
+    mock_model_cls.assert_not_called()
+
+
+def test_ensure_loaded_does_not_probe_cuda_when_device_is_cpu(tmp_path: Path) -> None:
+    config = _make_config()  # whisper_device="cpu"
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    fake_pipeline = MagicMock()
+    fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
+
+    with (
+        patch("omniscribe.asr.whisper.require_cuda_for_asr") as mock_probe,
+        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+    ):
+        WhisperTranscriber(config).transcribe(audio)
+
+    mock_probe.assert_not_called()
+
+
 def test_transcribe_passes_explicit_language(tmp_path: Path) -> None:
     config = _make_config().model_copy(update={"whisper_language": "fr"})
     audio = tmp_path / "audio.wav"

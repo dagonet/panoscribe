@@ -23,6 +23,10 @@ def test_rapid_ocr_satisfies_protocol() -> None:
     with patch("omniscribe.ocr.rapid_ocr.RapidOCR"):
         from omniscribe.ocr.rapid_ocr import RapidOCREngine
 
+        # OmniScribeConfig() defaults ocr_device to "cuda", so this construction
+        # only stays safe on a GPU-less CI runner because the PR 2 CUDA probe
+        # lives inside `_ensure_loaded` and this test never calls `extract`.
+        # PR 3 mirrors this conformance test for ASR and must not walk into it.
         engine = RapidOCREngine(OmniScribeConfig())
         assert isinstance(engine, OcrEngine)
 
