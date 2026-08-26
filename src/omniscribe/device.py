@@ -33,7 +33,8 @@ from omniscribe.errors import OmniScribeError
 _REMEDY = (
     "No CUDA-capable device was found. Run on CPU instead: set "
     "OMNI_WHISPER_DEVICE=cpu and OMNI_WHISPER_COMPUTE_TYPE=int8 for ASR, "
-    "and OMNI_OCR_DEVICE=cpu for OCR."
+    "and OMNI_OCR_DEVICE=cpu for OCR. See docs/troubleshooting.md#cuda-not-found "
+    "for details."
 )
 
 
