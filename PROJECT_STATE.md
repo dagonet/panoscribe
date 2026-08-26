@@ -11,7 +11,7 @@ _No active sprint._
 - **Phase 3 (Platform):** Complete — platform profiles, UI filter, OCR wire-in
 - **Phase 4 (Merge):** Complete — ASR↔OCR merge with dedup
 - **Phase 5 (Polish):** Complete — LLM cleanup, batch processing, Docker containerization
-- **Phase 6 (Advanced):** Not started — Web UI, speaker diarization, translation, FastAPI mode, browser extension
+- **Phase 6 (Advanced):** Partially complete — FastAPI mode and translation shipped; Web UI, speaker diarization, and browser extension not started
 
 ## Backlog
 
