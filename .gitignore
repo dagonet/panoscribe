@@ -52,6 +52,7 @@ CLAUDE.local.md
 .claude/.mcp.json
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/liveness.log
 
 # Eval harness - third-party video clips, slides, and ground truth
 tests/fixtures/eval/videos/

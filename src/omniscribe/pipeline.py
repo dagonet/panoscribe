@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
+    from omniscribe.asr.protocol import AsrEngine
     from omniscribe.config import OmniScribeConfig
 
 logger = logging.getLogger(__name__)
@@ -130,9 +131,8 @@ def process_single_video(
             # Photo branch: audio, ASR, and timestamp computation.
             if photo_post.audio_path:
                 audio_path = extract_audio(photo_post.audio_path, temp_dir / "audio.wav")
-                speech_segments, detected_language = WhisperTranscriber(config).transcribe(
-                    audio_path
-                )
+                asr_engine: AsrEngine = WhisperTranscriber(config)
+                speech_segments, detected_language = asr_engine.transcribe(audio_path)
             else:
                 speech_segments, detected_language = [], "en"
 
@@ -164,7 +164,8 @@ def process_single_video(
             # ---- Existing video path (byte-identical) ----
             video_path = download_video(source, temp_dir)
             audio_path = extract_audio(video_path, temp_dir / "audio.wav")
-            speech_segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
+            asr_engine: AsrEngine = WhisperTranscriber(config)
+            speech_segments, detected_language = asr_engine.transcribe(audio_path)
 
             if ocr_active:
                 profile = resolve_profile(config, source)
