@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-26
+
+### Added
+
+- **`AsrEngine` protocol** (`src/omniscribe/asr/protocol.py`, #90, closes #82) — a `typing.Protocol` + `@runtime_checkable` mirroring the existing `OcrEngine` seam, extracting the interface `WhisperTranscriber` already satisfied. This is a pure refactor with no behavior change; the pipeline still constructs the concrete `WhisperTranscriber` class inline, so the seam does not yet buy anything at runtime on its own — it unblocks #83.
+- **Python 3.13 support** — `requires-python` lifted to `>=3.11,<3.14`, a 3.13 classifier added, and CI now runs a 3.11/3.13 matrix. The previous `<3.13` cap and its source comment (claiming `onnxruntime-gpu` 1.24.x published Windows wheels only for cp311/cp312) were both factually wrong: cp313 `win_amd64` wheels have shipped since ORT 1.20.0 and cp314 wheels since 1.24.1, and resolution on 3.13 already succeeded before this change — the cap was simply stale.
+- **macOS, Windows ARM, and linux-aarch64 installs now resolve**, selecting the CPU ONNXRuntime build on those platforms (see the `onnxruntime-gpu` marker fix below).
+- **`docs/troubleshooting.md`** (#91, closes #80) — covers model download issues, `HF_ENDPOINT` mirrors, `HF_HOME` relocation, offline pre-seeding, CUDA-not-found errors, install failures, and ffmpeg setup.
+- **README "Running without a GPU" section** (closes #79) with a measured figure: a 13-second fixture took ~10s wall-clock on CPU with the `small` model, models pre-cached. No GPU comparison was measured for this release, so no speedup ratio is claimed — only the standalone CPU figure.
+- **CI `resolve` job** — runs `uv lock --check` plus a `uv pip compile` per platform target, asserting which `onnxruntime` distribution each platform selects, so a future marker regression fails CI instead of surfacing as a silent install-order bug.
+
+### Fixed
+
+- **`onnxruntime-gpu` was an unconditional dependency**, so `pip install` / `uv sync` failed outright on macOS (no macOS wheel exists in any version 1.20–1.29) and on linux-aarch64 below glibc 2.34. It is now marker-gated to `(win32|linux)` × `(x86_64|AMD64)`; every other platform resolves the CPU `onnxruntime` build instead. (#87, closes #78)
+- **`faster-whisper` hard-requires plain `onnxruntime<2,>=1.14`, while the project separately declared `onnxruntime-gpu`.** Both distributions installed into the same `onnxruntime/` package directory, so whichever unpacked last silently won — `CUDAExecutionProvider` availability was a matter of install order rather than dependency resolution, and a clean re-sync could have silently dropped CUDA support with no error. A single versioned entry in uv's `override-dependencies` now confines plain `onnxruntime` to the exact complement of the `onnxruntime-gpu` marker, so exactly one distribution is ever selected. Caveat: `override-dependencies` is a uv-only mechanism — a plain `pip install` still pulls both distributions on GPU platforms, which is pre-existing behavior this release does not change.
+- **Documented Docker CPU invocation omitted `OMNI_WHISPER_COMPUTE_TYPE`**, leaving the GPU-only `float16` default in place when running on CPU. Fixed in `README.md` and `PROJECT_CONTEXT.md`.
+
+### Changed
+
+- **CUDA-absent failures now fail fast with a clear message.** With `whisper_device`/`ocr_device` left at their `"cuda"` default on a machine with no CUDA device, OmniScribe now raises `OmniScribeError` before model construction, naming the exact remedy, instead of failing deep inside faster-whisper/RapidOCR with an opaque native error. New `src/omniscribe/device.py`. Honest limit: this detects an absent CUDA *runtime* only, not cuDNN sub-library resolution failures, which remain `logger.debug`-only. (#89, closes #81)
+
 ## [0.2.6] - 2026-07-16
 
 ### Added
