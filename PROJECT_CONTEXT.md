@@ -26,7 +26,7 @@
 - **Build Image**: `docker build -t omniscribe .`
 - **Run CLI**: `docker run --rm omniscribe --help`
 - **Transcribe (GPU)**: `docker run --gpus all --rm -v ./input:/input -v ./output:/output omniscribe transcribe /input/video.mp4 -o /output/transcript.json`
-- **Transcribe (CPU)**: `docker run --rm -v ./input:/input -v ./output:/output -e OMNI_WHISPER_DEVICE=cpu -e OMNI_OCR_DEVICE=cpu omniscribe transcribe /input/video.mp4 -o /output/transcript.json`
+- **Transcribe (CPU)**: `docker run --rm -v ./input:/input -v ./output:/output -e OMNI_WHISPER_DEVICE=cpu -e OMNI_WHISPER_COMPUTE_TYPE=int8 -e OMNI_OCR_DEVICE=cpu omniscribe transcribe /input/video.mp4 -o /output/transcript.json`
 - **Prerequisites**: NVIDIA Container Toolkit (GPU), Docker 20.10+
 
 ## Workflow Configuration

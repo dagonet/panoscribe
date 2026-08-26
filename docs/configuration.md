@@ -26,6 +26,9 @@ its own precedence chain:
 
 ### ASR
 
+See [Running without a GPU](../README.md#running-without-a-gpu) for the
+CPU env-var combination (`whisper_device` + `whisper_compute_type`).
+
 | Field | Env var | Default | Meaning |
 |---|---|---|---|
 | `whisper_model` | `OMNI_WHISPER_MODEL` | `"large-v3-turbo"` | Faster-Whisper model size or path |
@@ -36,6 +39,9 @@ its own precedence chain:
 | `whisper_task` | `OMNI_WHISPER_TASK` | `"transcribe"` | `"transcribe"` or `"translate"` (translate speech to English) |
 
 ### OCR
+
+See [Running without a GPU](../README.md#running-without-a-gpu) for setting
+`ocr_device` to `"cpu"`.
 
 | Field | Env var | Default | Meaning |
 |---|---|---|---|

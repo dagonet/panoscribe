@@ -248,8 +248,8 @@ docker run --gpus all --rm -v ./output:/output omniscribe transcribe \
   "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -o /output/transcript.json
 
 # CPU-only (override defaults)
-docker run --rm -e OMNI_WHISPER_DEVICE=cpu -e OMNI_OCR_DEVICE=cpu omniscribe transcribe \
-  ./video.mp4 -o /output/transcript.json
+docker run --rm -e OMNI_WHISPER_DEVICE=cpu -e OMNI_WHISPER_COMPUTE_TYPE=int8 \
+  -e OMNI_OCR_DEVICE=cpu omniscribe transcribe ./video.mp4 -o /output/transcript.json
 ```
 
 The image bundles Whisper `large-v3-turbo` (~1.5 GB) and RapidOCR models (~15 MB)
@@ -267,6 +267,38 @@ GPU passthrough requires [NVIDIA Container Toolkit](https://docs.nvidia.com/data
 - Docker 20.10+ (optional — for containerized deployment)
 
 On Windows, CUDA 12 runtime libraries (cuda_runtime, cublas, cudnn, cufft) are bundled via pip — no separate CUDA toolkit install required. A system CUDA install, if present, is not used.
+
+Model downloads, offline setups, and CUDA errors are covered in
+[docs/troubleshooting.md](docs/troubleshooting.md).
+
+## Running without a GPU
+
+Both `whisper_device` and `ocr_device` default to `"cuda"` and fail fast with a
+named remedy if no CUDA-capable device is found (see
+[docs/troubleshooting.md#cuda-not-found](docs/troubleshooting.md#cuda-not-found)).
+To run entirely on CPU, set:
+
+```bash
+export OMNI_WHISPER_DEVICE=cpu
+export OMNI_WHISPER_COMPUTE_TYPE=int8
+export OMNI_OCR_DEVICE=cpu
+```
+
+`OMNI_WHISPER_COMPUTE_TYPE` matters here: the default, `float16`, is a
+GPU-only compute type and is not valid on CPU — always pair
+`OMNI_WHISPER_DEVICE=cpu` with `OMNI_WHISPER_COMPUTE_TYPE=int8`.
+
+The default ASR model, `large-v3-turbo`, is noticeably slow on CPU. For CPU
+runs, `OMNI_WHISPER_MODEL=small` is the practical choice — it was used to
+verify this section end-to-end (`OMNI_WHISPER_DEVICE=cpu
+OMNI_WHISPER_COMPUTE_TYPE=int8 OMNI_OCR_DEVICE=cpu OMNI_WHISPER_MODEL=small`
+against a 13-second local fixture): both the ASR and OCR stages ran on CPU
+(confirmed from the logs: `Loading Whisper model small on cpu
+(compute_type=int8)`) and produced a transcript with both `SPEECH` and
+`ON-SCREEN` segments. Do not expect GPU-class throughput — CPU Whisper
+inference, even at `small`, runs close to or slower than realtime rather
+than the GPU path's large multiple-of-realtime speed, and `large-v3-turbo`
+on CPU is considerably slower still.
 
 ## Status
 
