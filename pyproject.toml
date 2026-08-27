@@ -4,6 +4,7 @@ version = "0.3.0"
 description = "Extract complete video transcripts — speech AND on-screen text — from TikTok, YouTube, Instagram and more."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 # onnxruntime-gpu has shipped cp313 win_amd64 wheels since 1.20.0 and cp314
 # since 1.24.1, so nothing blocks Python 3.13 here.
 requires-python = ">=3.11,<3.14"
@@ -25,7 +26,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -109,7 +109,10 @@ override-dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+# >=1.27 required: emits Metadata 2.4, needed to combine the PEP 639 SPDX
+# `license` expression above with `license-files` without Warehouse rejecting
+# the distribution for conflicting license metadata.
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
