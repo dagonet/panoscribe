@@ -80,6 +80,13 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          # TestPyPI is a rehearsal target: re-runs (tag re-push, re-run of a
+          # failed run, repeat workflow_dispatch) must be idempotent, so an
+          # already-published version is skipped rather than failing the run.
+          # Do NOT mirror this to publish-pypi below — on the real index a
+          # "file already exists" failure is a signal (e.g. a forgotten
+          # version bump) that must stay loud, not be silently skipped.
+          skip-existing: true
 
   publish-pypi:
     needs: [build, publish-testpypi]
