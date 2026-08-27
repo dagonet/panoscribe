@@ -5,7 +5,59 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-08-27
+
+### Added
+
+- **Trusted-Publishing PyPI release workflow** (`publish.yml`, #100) — OIDC-based
+  publish to TestPyPI then PyPI, gated behind a `guard` job that fails the run if the
+  pushed tag disagrees with the `pyproject.toml` version literal (no hatch-vcs in this
+  repo, so drift is caught mechanically, not prevented structurally), then a `build`
+  job (`uv build` + strict `twine check`) and dispatch-gated `publish-pypi`. Also fixes
+  two pre-existing packaging defects that would have broken or degraded the first
+  upload: the PEP 639 SPDX `license` expression conflicting with the deprecated
+  `License :: OSI Approved :: MIT License` classifier (Warehouse rejects distributions
+  carrying both — classifier removed), and a missing `src/panoscribe/py.typed` marker
+  despite the package declaring `Typing :: Typed` and running `mypy --strict`. See
+  `docs/release-process.md` for the exact owner/repo/workflow-filename/environment
+  values required in PyPI's and TestPyPI's pending-publisher forms.
+- **Real-Whisper end-to-end test** (`tests/test_e2e_whisper.py`, #103), gated behind a
+  new `slow` pytest marker — drives a real `WhisperTranscriber` (CPU, `tiny` model)
+  over a committed real-speech clip and asserts only on model-nondeterminism-robust
+  properties (segment count/timing, non-empty text, detected language, `asr_logprob`
+  populated and negative post-#101). Paired with an opt-in `e2e-whisper` CI job
+  (nightly `schedule` + `workflow_dispatch`), since the per-PR `test` job is the wrong
+  host for a job that downloads model weights.
+- **OCR junk-segment measurement harness** (`src/panoscribe/eval/junk.py`, #104) — an
+  operational "junk segment" definition (unmatched-to-ground-truth + short duration),
+  a deterministic synthetic noise-fixture generator
+  (`scripts/generate_ocr_noise_fixture.py`), and a `--junk` flag on `scripts/eval_ocr.py`
+  reporting junk metrics at each filter stage. Measurement only — no threshold or
+  filter-logic changes in this release. Baseline on the synthetic fixture: 29% of final
+  output segments are junk, precision 0.059; pattern/frequency filters show zero effect
+  on junk because frequency filtering is structurally one-directional (drops only
+  over-frequent text). Findings: `docs/plans/2026-08-27-ocr-noise-measurement.md`.
+
+### Fixed
+
+- **Fresh-clone bootstrap could not run its own gate** (#98) — `hooks/run-gate.sh` now
+  preflight-checks that `pytest_cov` is importable and fails with an actionable message
+  instead of pytest's opaque `"unrecognized arguments: --cov=..."` error. Test/dev
+  tooling (pytest-cov) is declared in `[project.optional-dependencies]`, not
+  `[dependency-groups]`, so a bare `uv sync` (rather than the documented
+  `uv sync --extra dev --extra api`) silently skipped it. Docs corrected to match.
+- **Stale OmniScribe references in `CHANGELOG.md`** (#99) — the header sentence and all
+  release link-reference URLs pointed at `github.com/dagonet/OmniScribe`; GitHub's
+  redirect for the renamed repo breaks permanently if the old name is ever reclaimed.
+  Updated to `panoscribe`. Dated release entries describing what actually shipped at
+  the time (e.g. `src/omniscribe/...` paths, `OMNI_OCR_DET_LANG`) are intentionally
+  left untouched.
+- **Stale hatchling Metadata-Version comment in `pyproject.toml`** (#102) — the
+  `[build-system]` comment claimed `hatchling>=1.27` emits Metadata 2.4; the resolved
+  1.32.0 actually emits Metadata-Version 2.5 (verified against the built wheel's
+  `dist-info/METADATA`). Corrected to state the actual reason for the version floor
+  (PEP 639 support) and note that the emitted Metadata-Version tracks whichever
+  hatchling version resolves, rather than being pinned to 2.4.
 
 ### Changed
 
@@ -287,6 +339,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.4.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.4.0
 [0.2.5]: https://github.com/dagonet/panoscribe/releases/tag/v0.2.5
 [0.2.4]: https://github.com/dagonet/panoscribe/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dagonet/panoscribe/releases/tag/v0.2.3
