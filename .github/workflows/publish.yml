@@ -122,7 +122,17 @@ jobs:
     # PyPI. publish-pypi only succeeds on an explicit target=pypi dispatch, so
     # gating on its result is equivalent to gating on "a real publish happened".
     needs: [guard, publish-pypi]
-    if: needs.publish-pypi.result == 'success'
+    # `always()` is required here, not optional decoration: publish-pypi is
+    # itself skipped on the tag-push and target=testpypi dispatch paths, and a
+    # bare `if:` with no status-check function has GitHub implicitly AND in
+    # `success()` -- which inherits that upstream skip and silently skips this
+    # job too, even though the explicit `needs.publish-pypi.result` check
+    # below is written correctly. Without always() this job is unreachable on
+    # every trigger (confirmed: skipped on the v0.5.0 real-PyPI publish run
+    # 33121933713 despite publish-pypi succeeding).
+    if: |
+      always() &&
+      needs.publish-pypi.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -169,7 +179,7 @@ jobs:
     # Runs regardless of upstream outcome so a target=pypi dispatch that
     # publishes nothing is reported as a failed run instead of a false green
     # (see run 33114254809: all publish jobs skipped, workflow still "success").
-    needs: [build, publish-testpypi, publish-pypi]
+    needs: [build, publish-testpypi, publish-pypi, create-release]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -181,6 +191,15 @@ jobs:
               exit 1
             fi
             echo "Published to PyPI successfully."
+            # A real publish without a Release is exactly the bug this job
+            # exists to catch (create-release silently skipped despite
+            # publish-pypi succeeding, run 33121933713) -- fail loudly instead
+            # of relying on someone to notice a missing Release by hand.
+            if [ "${{ needs.create-release.result }}" != "success" ]; then
+              echo "::error::publish-pypi succeeded but create-release did not (result=${{ needs.create-release.result }}). No GitHub Release was created for this publish."
+              exit 1
+            fi
+            echo "GitHub Release created successfully."
           else
             echo "No PyPI publish requested on this trigger (event=${{ github.event_name }}, target=${{ github.event.inputs.target }})."
           fi
