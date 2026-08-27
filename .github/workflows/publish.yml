@@ -114,6 +114,57 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
+  create-release:
+    # Only the real-PyPI publish should produce a GitHub Release: a bare tag
+    # push (and a target=testpypi dispatch) only reach TestPyPI, a rehearsal
+    # target that re-runs freely (skip-existing: true) -- creating a Release
+    # for every rehearsal would misrepresent what's actually installable from
+    # PyPI. publish-pypi only succeeds on an explicit target=pypi dispatch, so
+    # gating on its result is equivalent to gating on "a real publish happened".
+    needs: [guard, publish-pypi]
+    if: needs.publish-pypi.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "version=${VERSION}" >> "$GITHUB_ENV"
+          # Prefix comparison instead of a dynamic regex: interpolating "[" and
+          # "]" into a $0 ~ (...) pattern is escape-sensitive across awk
+          # implementations (verified to silently produce an empty match on at
+          # least one), so match the literal header prefix as a plain string.
+          PAT="## [${VERSION}]"
+          awk -v pat="$PAT" '
+            substr($0, 1, length(pat)) == pat { found=1; next }
+            found && substr($0, 1, 4) == "## [" { exit }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "::error::No CHANGELOG.md section found for version ${VERSION} -- update CHANGELOG.md before publishing."
+            exit 1
+          fi
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v${version}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists -- updating notes instead of failing."
+            gh release edit "$TAG" --title "$TAG" --notes-file release_notes.md --draft=false
+          else
+            # guard's tag/version check only runs on tag-push triggers ("no tag
+            # to compare" on dispatch), so nothing guarantees vX.Y.Z exists yet
+            # on a workflow_dispatch run. --target is ignored by the API when
+            # the tag already exists, and used as the tag's commit only when
+            # gh has to create it -- pin it to this run's commit either way.
+            gh release create "$TAG" --title "$TAG" --notes-file release_notes.md --target "$GITHUB_SHA"
+          fi
+
   publish-status:
     # Runs regardless of upstream outcome so a target=pypi dispatch that
     # publishes nothing is reported as a failed run instead of a false green

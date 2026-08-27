@@ -48,6 +48,19 @@ before a real PyPI publish).
    PyPI publish via `workflow_dispatch` with `target: pypi` (this job is
    gated behind an explicit dispatch input so it cannot fire accidentally on
    an ordinary tag push).
+6. On a successful `publish-pypi`, the `create-release` job automatically
+   creates the GitHub Release for `vX.Y.Z`, using the matching `## [X.Y.Z]`
+   section of `CHANGELOG.md` as the release notes. **Do not create the
+   GitHub Release by hand** — the job is idempotent (it edits the Release if
+   one already exists for that tag instead of failing), so a manual Release
+   created before the workflow runs is fine, but creating one afterwards
+   would be a duplicate. No Release is created for a bare tag push or a
+   `target: testpypi` dispatch, since those only publish to the TestPyPI
+   rehearsal index, not the real one. If `create-release` fails after
+   `publish-pypi` already succeeded (e.g. a missing `CHANGELOG.md` section),
+   the package is already live on PyPI -- re-dispatching would hit the
+   intentional "file already exists" failure from step 5, so recover by
+   creating the Release by hand instead of re-running the workflow.
 
 ## TestPyPI first
 
