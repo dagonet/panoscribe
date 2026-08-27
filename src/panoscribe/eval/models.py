@@ -29,3 +29,8 @@ class EvalResult(BaseModel):
     mean_match_similarity: float | None = None
     per_text_results: list[dict] = []
     funnel: dict | None = None
+    junk: dict | None = None
+    """Junk-segment metrics (phase-1 measurement); see
+    ``panoscribe.eval.junk.JunkMetrics`` and
+    ``docs/plans/2026-08-27-ocr-noise-measurement.md``. ``None`` unless the
+    caller opts in (``scripts/eval_ocr.py --junk``)."""
