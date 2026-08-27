@@ -82,8 +82,17 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
 
   publish-pypi:
-    needs: publish-testpypi
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'pypi'
+    needs: [build, publish-testpypi]
+    # publish-testpypi is intentionally skipped on this trigger path (target=pypi
+    # dispatch), and GitHub's implicit `needs` gate treats a skipped dependency as
+    # blocking unless overridden with `always()`. Without it this job is
+    # unreachable by any input combination.
+    if: |
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.target == 'pypi' &&
+      needs.build.result == 'success' &&
+      (needs.publish-testpypi.result == 'success' || needs.publish-testpypi.result == 'skipped')
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -97,3 +106,23 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-status:
+    # Runs regardless of upstream outcome so a target=pypi dispatch that
+    # publishes nothing is reported as a failed run instead of a false green
+    # (see run 33114254809: all publish jobs skipped, workflow still "success").
+    needs: [build, publish-testpypi, publish-pypi]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify a requested PyPI publish actually happened
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.target }}" = "pypi" ]; then
+            if [ "${{ needs.publish-pypi.result }}" != "success" ]; then
+              echo "::error::target=pypi was requested but publish-pypi did not succeed (result=${{ needs.publish-pypi.result }}). Nothing was published to PyPI."
+              exit 1
+            fi
+            echo "Published to PyPI successfully."
+          else
+            echo "No PyPI publish requested on this trigger (event=${{ github.event_name }}, target=${{ github.event.inputs.target }})."
+          fi
