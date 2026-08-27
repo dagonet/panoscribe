@@ -5,6 +5,68 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-08-28
+
+### Added
+
+- **`unmatched_count`/`unmatched_rate` in `src/panoscribe/eval/junk.py`** (#109) — a
+  mode-independent replacement for the phase-1 `junk_count`/`junk_rate` metric, now
+  the authoritative junk-segment measurement (see "Fixed" below for why). Also added
+  `is_unmatched_segment()`, the ground-truth-match check without the duration
+  exemption that made phase-1 unreliable.
+- **`ExpectedText.appearances`** (`src/panoscribe/eval/models.py`, #109) — optional
+  `list[tuple[float, float]]` field recording each on-screen appearance window of a
+  required overlay, enabling per-appearance recall instead of a single
+  presence/absence check across the whole expected span. `None` preserves the prior
+  single-window `[start, end]` behavior.
+- **`--platform-profile` on `scripts/eval_ocr.py`** (#109) — the pattern filter was
+  previously unreachable for local (non-URL) sources, which is why frequency/pattern
+  filtering had measured as "no effect" in 0.4.0; it wasn't ineffective, it was never
+  invoked.
+
+### Fixed
+
+- **OCR junk metric reclassified merged multi-frame clusters as non-junk while they
+  remained noise** (#109) — the phase-1 `is_junk_segment()` exempted any segment
+  lasting >= 1.5s from the junk definition, on the assumption that only fleeting
+  single-frame text was noise. Merged clusters of repeated junk across several video
+  frames routinely exceeded 1.5s and were counted as legitimate output, and the
+  exemption's effect differed between video and images mode. `unmatched_rate`
+  (unmatched-to-ground-truth, no duration exemption) replaces it as the authoritative
+  metric; `retained_overlay_recall` is now computed per-appearance so partial overlay
+  loss within a single required text's lifetime is visible. Corrected baseline on the
+  regression fixture (now exercising the video path with lossless determinism, short-
+  lived required overlays, stable junk, and UI chrome): **final-stage unmatched rate
+  82.6%**, versus the 29% junk rate reported in 0.4.0 — see the correction note under
+  0.4.0 below. Findings: `docs/plans/2026-08-27-ocr-noise-measurement.md`.
+- **`publish-pypi` job was unreachable and produced a false-green run** (#106) — a job
+  whose `needs:` dependency skips is itself skipped regardless of its own `if:`
+  condition, and a workflow run where every job is skipped still reports overall
+  `success`. Added a `publish-status` job that fails loudly whenever a requested
+  publish did not actually happen.
+- **`skip-existing` was missing from the TestPyPI publish step** (#107) — re-running
+  `publish.yml` after a partial failure re-uploaded the same version to TestPyPI and
+  failed on the duplicate. Scoped `skip-existing` to the TestPyPI step only (never
+  real PyPI, where a duplicate upload must still fail loudly), making re-runs
+  idempotent without weakening the real-PyPI safety check.
+
+### Changed
+
+- **GitHub Release creation automated in `publish.yml`** (#108) — a release is now
+  created automatically, gated on a successful real-PyPI publish, with notes sourced
+  from the matching `CHANGELOG.md` section. This step existed only as a manual,
+  undocumented part of the release process and was missed entirely for the 0.4.0
+  release.
+
+### Evaluated, not shipped
+
+- **Low-recurrence OCR filter** (#110) — evaluated against the pre-set 30% relative
+  junk-reduction bar and did not clear it: best result was a 19.3% relative cut, and
+  the mechanism achieved it by deleting a single-frame *required* overlay while
+  removing zero actual junk segments — i.e. it is `dedup_min_duration` under another
+  name, the same recall-destroying behavior removed in Sprint OCR-Recall. Not merged.
+  Findings: `docs/plans/2026-08-27-ocr-phase2-stability.md`.
+
 ## [0.4.0] - 2026-08-27
 
 ### Added
@@ -37,6 +99,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   output segments are junk, precision 0.059; pattern/frequency filters show zero effect
   on junk because frequency filtering is structurally one-directional (drops only
   over-frequent text). Findings: `docs/plans/2026-08-27-ocr-noise-measurement.md`.
+
+  > **Correction (0.5.0):** both figures above are known wrong. The 29% junk rate was
+  > an artifact of the phase-1 metric's 1.5s duration exemption, which reclassified
+  > merged multi-frame junk clusters as non-junk; the corrected, mode-independent
+  > measure is 82.6% unmatched. The "zero effect" pattern-filter result was null by
+  > construction — `GENERIC_PROFILE` ships an empty `ui_text_patterns`, so no source
+  > this baseline used could ever invoke the filter. See `[0.5.0]` below.
 
 ### Fixed
 
@@ -339,6 +408,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.5.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.4.0
 [0.2.5]: https://github.com/dagonet/panoscribe/releases/tag/v0.2.5
 [0.2.4]: https://github.com/dagonet/panoscribe/releases/tag/v0.2.4
