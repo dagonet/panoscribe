@@ -109,9 +109,11 @@ override-dependencies = [
 ]
 
 [build-system]
-# >=1.27 required: emits Metadata 2.4, needed to combine the PEP 639 SPDX
-# `license` expression above with `license-files` without Warehouse rejecting
-# the distribution for conflicting license metadata.
+# >=1.27 required: minimum version supporting PEP 639, needed to combine the
+# SPDX `license` expression above with `license-files` without Warehouse
+# rejecting the distribution for conflicting license metadata. The emitted
+# Metadata-Version depends on the resolved hatchling version; the current
+# resolution (1.32.0) emits Metadata-Version: 2.5, not 2.4.
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
