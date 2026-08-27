@@ -222,7 +222,7 @@ Discard freely:
 ## Quick Start
 
 ```bash
-uv sync                     # Build: install/sync the environment
+uv sync --extra dev --extra api  # Build: install/sync the environment (test/dev tooling lives in optional-dependencies)
 uv run pytest               # Run tests
 uv run ruff format .        # Format code
 uv run ruff check .         # Lint code

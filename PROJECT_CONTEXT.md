@@ -8,7 +8,7 @@
 
 ## Build System
 
-- **Build Command**: uv sync
+- **Build Command**: uv sync --extra dev --extra api
 - **Test Command**: uv run pytest
 - **Format Command**: uv run ruff format .
 - **Lint Command**: uv run ruff check .
