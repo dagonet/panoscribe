@@ -109,8 +109,8 @@ def test_transcribe_consumes_generator_into_segments(tmp_path: Path) -> None:
     assert [s.text for s in segments] == ["hello", "world"]
     assert [s.start for s in segments] == [0.0, 1.2]
     assert [s.end for s in segments] == [1.2, 2.5]
-    assert segments[0].confidence == -0.1
-    assert segments[1].confidence == -0.3
+    assert segments[0].asr_logprob == -0.1
+    assert segments[1].asr_logprob == -0.3
     assert all(s.language == "de" for s in segments)
     assert all(s.source == "SPEECH" for s in segments)
 
@@ -235,7 +235,7 @@ def test_transcribe_handles_segment_without_avg_logprob(tmp_path: Path) -> None:
         segments, _ = WhisperTranscriber(config).transcribe(audio)
 
     assert len(segments) == 1
-    assert segments[0].confidence is None
+    assert segments[0].asr_logprob is None
 
 
 def test_transcribe_reuses_pipeline_across_calls(tmp_path: Path) -> None:

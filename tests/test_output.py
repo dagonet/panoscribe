@@ -30,7 +30,8 @@ def _ocr(start: float, end: float, text: str, **kw: object) -> TranscriptSegment
 def test_transcript_segment_defaults() -> None:
     seg = TranscriptSegment(start=0.0, end=1.0, text="hello")
     assert seg.source == "SPEECH"
-    assert seg.confidence is None
+    assert seg.asr_logprob is None
+    assert seg.ocr_confidence is None
     assert seg.language is None
 
 
@@ -41,7 +42,7 @@ def test_write_json_round_trip(tmp_path: Path) -> None:
                 start=0.0,
                 end=1.5,
                 text="hello world",
-                confidence=-0.12,
+                asr_logprob=-0.12,
                 language="en",
             ),
             TranscriptSegment(start=1.5, end=3.0, text="second segment", language="en"),
@@ -66,6 +67,60 @@ def test_write_json_empty_segments_round_trip(tmp_path: Path) -> None:
     restored = Transcript.model_validate_json(out.read_text(encoding="utf-8"))
     assert restored.segments == []
     assert restored.language == "en"
+
+
+def test_speech_segment_never_carries_ocr_confidence() -> None:
+    seg = _speech(0.0, 1.0, "hello", asr_logprob=-0.2)
+
+    assert seg.asr_logprob == -0.2
+    assert seg.ocr_confidence is None
+
+
+def test_ocr_segment_never_carries_asr_logprob() -> None:
+    seg = _ocr(0.0, 1.0, "hello", ocr_confidence=0.9)
+
+    assert seg.ocr_confidence == 0.9
+    assert seg.asr_logprob is None
+
+
+def test_write_json_pins_new_confidence_field_names(tmp_path: Path) -> None:
+    """JSON round-trip: the emitted keys are ``asr_logprob``/``ocr_confidence``,
+    never the old unified ``confidence`` key, and each segment carries only
+    the field matching its own source."""
+    transcript = Transcript(
+        segments=[
+            TranscriptSegment(
+                start=0.0,
+                end=1.0,
+                text="spoken",
+                source="SPEECH",
+                asr_logprob=-0.45,
+            ),
+            TranscriptSegment(
+                start=1.0,
+                end=2.0,
+                text="on screen",
+                source="ON-SCREEN",
+                ocr_confidence=0.87,
+            ),
+        ],
+        language="en",
+    )
+    out = tmp_path / "transcript.json"
+
+    write_json(transcript, out)
+    raw = out.read_text(encoding="utf-8")
+
+    assert '"confidence"' not in raw
+    assert '"asr_logprob"' in raw
+    assert '"ocr_confidence"' in raw
+
+    restored = Transcript.model_validate_json(raw)
+    speech_seg, ocr_seg = restored.segments
+    assert speech_seg.asr_logprob == -0.45
+    assert speech_seg.ocr_confidence is None
+    assert ocr_seg.ocr_confidence == 0.87
+    assert ocr_seg.asr_logprob is None
 
 
 def test_write_json_creates_parent_dirs(tmp_path: Path) -> None:
@@ -133,8 +188,8 @@ def test_merge_channels_interleaves_by_start() -> None:
 
 
 def test_merge_channels_collapses_exact_match_to_both() -> None:
-    speech = [_speech(1.0, 5.0, "hello world", confidence=-0.1, language="en")]
-    ocr = [_ocr(2.0, 4.0, "hello world", confidence=0.95, language="en")]
+    speech = [_speech(1.0, 5.0, "hello world", asr_logprob=-0.1, language="en")]
+    ocr = [_ocr(2.0, 4.0, "hello world", ocr_confidence=0.95, language="en")]
 
     merged = merge_channels(speech, ocr, threshold=_T)
 
@@ -144,8 +199,9 @@ def test_merge_channels_collapses_exact_match_to_both() -> None:
     assert both.text == "hello world"
     assert both.start == 1.0
     assert both.end == 5.0
-    # confidence anchor is speech, not OCR pixel confidence.
-    assert both.confidence == -0.1
+    # asr_logprob anchor is speech; OCR pixel confidence is dropped, not mixed in.
+    assert both.asr_logprob == -0.1
+    assert both.ocr_confidence is None
     assert both.language == "en"
 
 

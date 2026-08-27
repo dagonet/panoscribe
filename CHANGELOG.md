@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`TranscriptSegment.confidence` split into `asr_logprob` and `ocr_confidence`.**
+  The old single `confidence` key froze two incompatible scales into one
+  user-visible JSON field: ASR wrote a raw, unnormalized Whisper `avg_logprob`
+  (roughly `-3.0..0.0`, negative, not a probability), while OCR wrote a
+  pixel-match score in `[0.0, 1.0]`. Consumers had no way to tell which scale
+  a given segment's `confidence` was on. This is a breaking change to the
+  JSON output format (`--format json`), taken deliberately pre-1.0:
+  - Old key: `confidence` (meaning depended on `source` — undocumented)
+  - New key: `asr_logprob` — populated for `SPEECH`/`BOTH` segments, range
+    roughly `-3.0..0.0` (closer to `0` is more confident), `null` otherwise
+  - New key: `ocr_confidence` — populated for `ON-SCREEN` segments, range
+    `[0.0, 1.0]` (higher is more confident), `null` otherwise
+  - A single-source segment never populates both fields; a `[BOTH]` segment
+    inherits only `asr_logprob` from its speech side — the two scales are
+    still never combined
+  Consumers reading `confidence` from JSON output should switch to
+  `asr_logprob` or `ocr_confidence` depending on which `source` they care
+  about. See `docs/architecture.md` → "JSON output schema — confidence
+  fields" for the full table.
+
 - **Project renamed: OmniScribe → panoscribe.** `pip install omniscribe` installs an
   unrelated project (*SoberMind Offline Session Transcriber*), so this project could
   never be published under that name. `panoscribe` was verified free on PyPI, GitHub,

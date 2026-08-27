@@ -28,13 +28,28 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 
 class TranscriptSegment(BaseModel):
-    """A single transcript segment (speech or on-screen text)."""
+    """A single transcript segment (speech or on-screen text).
+
+    ``asr_logprob`` and ``ocr_confidence`` replace the former single
+    ``confidence`` field, which conflated two incompatible scales. A
+    single-source segment (``SPEECH`` or ``ON-SCREEN``) populates exactly
+    one of the two; the other stays ``None``. A ``BOTH`` segment (see
+    :func:`merge_channels`) inherits only ``asr_logprob`` from its speech
+    side — the two scales are never combined.
+    """
 
     start: float
     end: float
     text: str
     source: Literal["SPEECH", "ON-SCREEN", "BOTH"] = "SPEECH"
-    confidence: float | None = None
+    asr_logprob: float | None = None
+    """Raw Whisper ``avg_logprob`` for this segment: a negative float,
+    roughly ``-3.0..0.0`` (closer to 0 is more confident), or ``None`` if
+    unavailable. **Not a probability** — do not compare against
+    ``ocr_confidence`` or treat as a [0, 1] score."""
+    ocr_confidence: float | None = None
+    """Mean pixel-match confidence from RapidOCR, in ``[0.0, 1.0]``
+    (1.0 is most confident), or ``None`` for non-OCR segments."""
     language: str | None = None
 
 
@@ -216,7 +231,7 @@ def merge_channels(
             text=speech.text,                     # whitespace-normalized
             start=min(speech.start, ocr.start),
             end=max(speech.end, ocr.end),
-            confidence=speech.confidence,         # not max() — scales differ
+            asr_logprob=speech.asr_logprob,       # OCR confidence is dropped
             language=speech.language,
         )
 
@@ -230,10 +245,12 @@ def merge_channels(
       OCR: "AcmeCloud Enterprise v4.2"). Concatenating OCR onto speech would
       produce awkward output; users who need the OCR detail can read the
       consumed OCR segment (currently dropped — revisit if users report loss).
-    * **``confidence=speech.confidence``.** Whisper confidence is log-prob
-      derived; RapidOCR confidence is pixel-match derived. Mixing scales with
-      ``max()`` would be meaningless. Since ``text`` is speech-sourced, the
-      speech confidence is the consistent anchor.
+    * **``asr_logprob=speech.asr_logprob``, ``ocr_confidence`` dropped.**
+      Whisper's log-prob and RapidOCR's pixel-match score are on incompatible
+      scales and are never combined. Since ``text`` is speech-sourced, only
+      the speech-side field carries over; the consumed OCR segment's
+      ``ocr_confidence`` is lost along with the rest of its content (see the
+      lossy-on-collapse note above).
     * **Whitespace normalized.** The merged text has internal ``\\n``/``\\r``
       and consecutive spaces collapsed to single spaces so downstream format
       writers (SRT, MD) don't corrupt on multi-line cues.
@@ -317,7 +334,7 @@ def merge_channels(
                 text=_normalize_cue(sp.text),
                 start=min(sp.start, oc.start),
                 end=max(sp.end, oc.end),
-                confidence=sp.confidence,
+                asr_logprob=sp.asr_logprob,
                 language=sp.language,
             )
         )

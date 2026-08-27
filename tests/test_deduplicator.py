@@ -19,7 +19,7 @@ def _on_screen(start: float, text: str, confidence: float = 0.9) -> TranscriptSe
         end=start,
         text=text,
         source="ON-SCREEN",
-        confidence=confidence,
+        ocr_confidence=confidence,
         language="en",
     )
 
@@ -30,7 +30,7 @@ def _speech(start: float, end: float, text: str) -> TranscriptSegment:
         end=end,
         text=text,
         source="SPEECH",
-        confidence=None,
+        asr_logprob=None,
         language="en",
     )
 
@@ -57,7 +57,7 @@ def test_three_identical_on_screen_frames_collapse_to_single_segment() -> None:
     assert collapsed.start == 0.0
     assert collapsed.end == 2.0
     assert collapsed.source == "ON-SCREEN"
-    assert collapsed.confidence == pytest.approx((0.90 + 0.80 + 0.70) / 3)
+    assert collapsed.ocr_confidence == pytest.approx((0.90 + 0.80 + 0.70) / 3)
 
 
 def test_similarity_below_threshold_splits_into_separate_segments() -> None:

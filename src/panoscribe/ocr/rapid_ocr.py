@@ -310,7 +310,7 @@ class RapidOCREngine:
                     end=end,
                     text=text,
                     source="ON-SCREEN",
-                    confidence=mean_score,
+                    ocr_confidence=mean_score,
                     language=language,
                 )
             )
