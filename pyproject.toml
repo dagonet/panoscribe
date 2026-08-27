@@ -178,7 +178,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra -q --strict-markers -m 'not integration and not eval'"
+addopts = "-ra -q --strict-markers -m 'not integration and not eval and not slow'"
 markers = [
     "slow: marks tests that require model inference (deselect with '-m \"not slow\"')",
     "gpu: marks tests that require a GPU",

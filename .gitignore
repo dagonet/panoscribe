@@ -60,3 +60,7 @@ tests/fixtures/eval/videos/
 tests/fixtures/eval/slides/
 tests/fixtures/eval/gt-*.json
 tests/fixtures/eval/new samples/
+
+# e2e fixture: committed real-speech clip for the real-Whisper test, negating
+# the blanket *.wav rule above.
+!tests/fixtures/e2e/*.wav
