@@ -1,4 +1,4 @@
-"""Tests for ``omniscribe.platforms.registry``.
+"""Tests for ``panoscribe.platforms.registry``.
 
 Covers the ``PROFILES`` mapping, ``get_profile`` lookup, ``resolve_profile``
 dispatch (auto-detect vs. explicit override), and the config validator that
@@ -10,9 +10,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from omniscribe.acquire.platform import Platform
-from omniscribe.config import OmniScribeConfig
-from omniscribe.platforms import (
+from panoscribe.acquire.platform import Platform
+from panoscribe.config import PanoScribeConfig
+from panoscribe.platforms import (
     GENERIC_PROFILE,
     INSTAGRAM_PROFILE,
     TIKTOK_PROFILE,
@@ -22,14 +22,14 @@ from omniscribe.platforms import (
 )
 
 
-def _config(**overrides: object) -> OmniScribeConfig:
+def _config(**overrides: object) -> PanoScribeConfig:
     """Construct a config with the given overrides via model_copy.
 
     Bypasses env/``.env`` interference so tests don't depend on the host
     environment. Avoids ``monkeypatch`` overhead for unit-level registry
     tests that don't hit the CLI.
     """
-    base = OmniScribeConfig()
+    base = PanoScribeConfig()
     return base.model_copy(update=overrides)
 
 
@@ -88,13 +88,13 @@ class TestConfigValidator:
         ["auto", "tiktok", "youtube", "instagram", "unknown", "generic"],
     )
     def test_accepts_valid_values(self, value: str) -> None:
-        cfg = OmniScribeConfig(platform_profile=value)
+        cfg = PanoScribeConfig(platform_profile=value)
         assert cfg.platform_profile == value
 
     def test_rejects_unknown_string(self) -> None:
         with pytest.raises(ValidationError):
-            OmniScribeConfig(platform_profile="bogus")
+            PanoScribeConfig(platform_profile="bogus")
 
     def test_rejects_empty_string(self) -> None:
         with pytest.raises(ValidationError):
-            OmniScribeConfig(platform_profile="")
+            PanoScribeConfig(platform_profile="")

@@ -1,4 +1,4 @@
-"""Tests for the Windows-only nvidia DLL preload shim in omniscribe.asr.whisper.
+"""Tests for the Windows-only nvidia DLL preload shim in panoscribe.asr.whisper.
 
 All tests must run on Linux CI without touching real Windows APIs. Use
 ``unittest.mock.patch("os.add_dll_directory", create=True)`` because
@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from omniscribe.asr.whisper import _nvidia_dll_cookies, _register_nvidia_dll_dirs
+from panoscribe.asr.whisper import _nvidia_dll_cookies, _register_nvidia_dll_dirs
 
 
 def test_shim_noop_on_non_windows(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,11 +1,11 @@
 # Adding a New Platform Profile
 
 Guide to adding support for a new video-sharing platform (e.g. Snapchat Spotlight,
-Twitter/X video, LinkedIn video) to OmniScribe's platform-profile system.
+Twitter/X video, LinkedIn video) to panoscribe's platform-profile system.
 
 ## What a platform profile controls
 
-A `PlatformProfile` (defined in `src/omniscribe/platforms/base.py`) bundles four
+A `PlatformProfile` (defined in `src/panoscribe/platforms/base.py`) bundles four
 kinds of platform-specific hints used by the OCR pipeline:
 
 - **`ui_exclusion_zones`** — rectangular regions in normalised frame coordinates
@@ -34,7 +34,7 @@ parameters — those are platform-agnostic.
 
 ### 1. Add a `Platform` enum value
 
-`src/omniscribe/acquire/platform.py` defines the `Platform` `StrEnum`:
+`src/panoscribe/acquire/platform.py` defines the `Platform` `StrEnum`:
 
 ```python
 class Platform(StrEnum):
@@ -79,7 +79,7 @@ matches — `"snapchat.com"` is safe; a generic word may catch unrelated URLs.
 
 ### 3. Create a profile module
 
-Create `src/omniscribe/platforms/snapchat.py` (or whatever the platform is).
+Create `src/panoscribe/platforms/snapchat.py` (or whatever the platform is).
 Use TikTok's profile as the template:
 
 ```python
@@ -93,7 +93,7 @@ from __future__ import annotations
 
 import re
 
-from omniscribe.platforms.base import PlatformProfile, RelativeRect
+from panoscribe.platforms.base import PlatformProfile, RelativeRect
 
 SNAPCHAT_PROFILE = PlatformProfile(
     name="snapchat",
@@ -133,11 +133,11 @@ A common workflow:
 
 ### 4. Register in the registry
 
-`src/omniscribe/platforms/registry.py` imports all profile constants and maps
+`src/panoscribe/platforms/registry.py` imports all profile constants and maps
 them in the `PROFILES` dict:
 
 ```python
-from omniscribe.platforms.snapchat import SNAPCHAT_PROFILE
+from panoscribe.platforms.snapchat import SNAPCHAT_PROFILE
 
 PROFILES: dict[Platform, PlatformProfile] = {
     Platform.TIKTOK: TIKTOK_PROFILE,
@@ -180,10 +180,10 @@ _PLATFORM_CHOICES = sorted(({"auto"} | {p.value for p in Platform}) - {"unknown"
 
 | File | Action |
 |---|---|
-| `src/omniscribe/acquire/platform.py` | Add `Platform` enum member and `detect_platform` clause |
-| `src/omniscribe/platforms/snapchat.py` | Create profile module with `PlatformProfile` constant |
-| `src/omniscribe/platforms/registry.py` | Import and register the new profile constant |
-| `src/omniscribe/platforms/__init__.py` | No change needed (empty init) |
+| `src/panoscribe/acquire/platform.py` | Add `Platform` enum member and `detect_platform` clause |
+| `src/panoscribe/platforms/snapchat.py` | Create profile module with `PlatformProfile` constant |
+| `src/panoscribe/platforms/registry.py` | Import and register the new profile constant |
+| `src/panoscribe/platforms/__init__.py` | No change needed (empty init) |
 
 No changes are needed to `pipeline.py`, `cli.py`, `ui_filter.py`,
 `rapid_ocr.py`, or any config files.
@@ -191,7 +191,7 @@ No changes are needed to `pipeline.py`, `cli.py`, `ui_filter.py`,
 ## Generic fallback
 
 Platforms not registered in the `PROFILES` dict are handled by
-`GENERIC_PROFILE` in `src/omniscribe/platforms/base.py`:
+`GENERIC_PROFILE` in `src/panoscribe/platforms/base.py`:
 
 ```python
 GENERIC_PROFILE = PlatformProfile(name="generic")
@@ -218,5 +218,5 @@ platform following the existing patterns:
 - Test that `RelativeRect` values in your profile pass validation (coordinates
   inside `[0.0, 1.0]`, positive width/height).
 - Optionally, smoke-test the profile through the full pipeline by running
-  `uv run omniscribe transcribe --platform your_platform <video>` and
+  `uv run panoscribe transcribe --platform your_platform <video>` and
   inspecting the output for unwanted UI text.

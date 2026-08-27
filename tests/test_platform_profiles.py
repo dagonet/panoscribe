@@ -1,4 +1,4 @@
-"""Tests for ``omniscribe.platforms`` dataclasses and built-in profiles."""
+"""Tests for ``panoscribe.platforms`` dataclasses and built-in profiles."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from omniscribe.platforms import (
+from panoscribe.platforms import (
     GENERIC_PROFILE,
     INSTAGRAM_PROFILE,
     TIKTOK_PROFILE,

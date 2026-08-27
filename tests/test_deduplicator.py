@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.ocr.deduplicator.
+"""Unit tests for panoscribe.ocr.deduplicator.
 
 ``dedup_segments`` collapses consecutive near-duplicate ON-SCREEN segments into
 a single segment spanning ``[first.start, last.end]``. SPEECH segments pass
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from omniscribe.ocr.deduplicator import dedup_segments
-from omniscribe.output import TranscriptSegment
+from panoscribe.ocr.deduplicator import dedup_segments
+from panoscribe.output import TranscriptSegment
 
 
 def _on_screen(start: float, text: str, confidence: float = 0.9) -> TranscriptSegment:

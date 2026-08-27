@@ -76,7 +76,7 @@ public repository (legal exposure + repository bloat).
 ## Ground Truth Schema
 
 Ground truth files are JSON conforming to the `GroundTruth` pydantic model
-(`src/omniscribe/eval/models.py`):
+(`src/panoscribe/eval/models.py`):
 
 ```json
 {
@@ -106,8 +106,8 @@ Ground truth files are JSON conforming to the `GroundTruth` pydantic model
 | `expected_texts[].required` | `bool` | If true, a match is required for 100% recall (default: true) |
 
 > The GT JSON schema is documented by the `GroundTruth` pydantic model at
-> `src/omniscribe/eval/models.py`. The `score_video` function at
-> `src/omniscribe/eval/scoring.py` is the authoritative consumer.
+> `src/panoscribe/eval/models.py`. The `score_video` function at
+> `src/panoscribe/eval/scoring.py` is the authoritative consumer.
 
 ## Creating / Updating Ground Truth
 

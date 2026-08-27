@@ -1,4 +1,4 @@
-# OmniScribe — Project State
+# panoscribe — Project State
 
 ## Current Sprint
 

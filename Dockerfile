@@ -37,5 +37,5 @@ RUN uv sync --frozen --no-dev --extra photo \
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-ENTRYPOINT ["omniscribe"]
+ENTRYPOINT ["panoscribe"]
 CMD ["--help"]

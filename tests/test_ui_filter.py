@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.ocr.ui_filter.
+"""Unit tests for panoscribe.ocr.ui_filter.
 
 Covers the binding (a)-(k) scenarios from Sprint 3.2:
 zone masking (empty/full/half/overlapping), pattern filtering
@@ -13,14 +13,14 @@ import re
 import numpy as np
 import pytest
 
-from omniscribe.ocr.ui_filter import (
+from panoscribe.ocr.ui_filter import (
     filter_by_frequency,
     filter_by_patterns,
     mask_zones,
 )
-from omniscribe.output import TranscriptSegment
-from omniscribe.platforms import TIKTOK_PROFILE
-from omniscribe.platforms.base import RelativeRect
+from panoscribe.output import TranscriptSegment
+from panoscribe.platforms import TIKTOK_PROFILE
+from panoscribe.platforms.base import RelativeRect
 
 
 def _ocr(text: str) -> TranscriptSegment:

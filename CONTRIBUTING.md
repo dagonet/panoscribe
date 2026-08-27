@@ -1,6 +1,6 @@
-# Contributing to OmniScribe
+# Contributing to panoscribe
 
-Thanks for your interest in contributing! OmniScribe is in early development and welcomes contributions of all kinds.
+Thanks for your interest in contributing! panoscribe is in early development and welcomes contributions of all kinds.
 
 ## Ways to Contribute
 
@@ -24,8 +24,8 @@ Thanks for your interest in contributing! OmniScribe is in early development and
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/omniscribe.git
-cd omniscribe
+git clone https://github.com/YOUR_USERNAME/panoscribe.git
+cd panoscribe
 
 # Create virtual environment and install dependencies
 uv sync --all-extras
@@ -70,16 +70,16 @@ One of the easiest ways to contribute is adding support for a new video platform
 
 ### Steps
 
-1. Create a new file in `src/omniscribe/platforms/` (e.g. `twitter.py`)
+1. Create a new file in `src/panoscribe/platforms/` (e.g. `twitter.py`)
 2. Define the profile by extending `BasePlatformProfile`:
    - **UI exclusion zones** — Relative screen regions where the platform's UI lives (e.g. like buttons, navigation bars)
    - **Text patterns** — Regex patterns for UI text to filter (usernames, counts, attribution)
    - **URL patterns** — How to detect this platform from a URL
-3. Register the profile in `src/omniscribe/platforms/__init__.py`
+3. Register the profile in `src/panoscribe/platforms/__init__.py`
 4. Add tests in `tests/test_platforms.py`
 5. Ideally include a few sample screenshots (with UI regions annotated) in your PR description
 
-Look at `src/omniscribe/platforms/tiktok.py` as a reference implementation.
+Look at `src/panoscribe/platforms/tiktok.py` as a reference implementation.
 
 ## Reporting Bugs
 
@@ -87,11 +87,11 @@ When opening a bug report, please include:
 
 - OS and Python version
 - GPU model and CUDA version (if applicable)
-- OmniScribe version
+- panoscribe version
 - The command you ran
 - Full error output / traceback
 - The video URL or a description of the video type (if relevant)
 
 ## Questions?
 
-Open a [Discussion](https://github.com/dagonet/omniscribe/discussions) on GitHub — issues are for bugs and concrete feature requests.
+Open a [Discussion](https://github.com/dagonet/panoscribe/discussions) on GitHub — issues are for bugs and concrete feature requests.

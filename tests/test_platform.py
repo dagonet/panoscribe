@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from omniscribe.acquire.platform import Platform, detect_platform
+from panoscribe.acquire.platform import Platform, detect_platform
 
 
 @pytest.mark.parametrize(

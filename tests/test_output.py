@@ -1,10 +1,10 @@
-"""Unit tests for omniscribe.output — data model + JSON writer + merge_channels."""
+"""Unit tests for panoscribe.output — data model + JSON writer + merge_channels."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from omniscribe.output import (
+from panoscribe.output import (
     Transcript,
     TranscriptSegment,
     merge_channels,
@@ -14,7 +14,7 @@ from omniscribe.output import (
     write_txt,
 )
 
-# Default threshold mirrors ``OmniScribeConfig.merge_similarity_threshold`` so
+# Default threshold mirrors ``PanoScribeConfig.merge_similarity_threshold`` so
 # the test cases track the intended production cutoff.
 _T: float = 0.85
 

@@ -18,17 +18,17 @@ def test_whisper_transcriber_satisfies_protocol() -> None:
     never fires regardless, but a cpu config keeps that true even if
     ``_ensure_loaded`` behavior changes later.
     """
-    from omniscribe.asr.protocol import AsrEngine
-    from omniscribe.asr.whisper import WhisperTranscriber
-    from omniscribe.config import OmniScribeConfig
+    from panoscribe.asr.protocol import AsrEngine
+    from panoscribe.asr.whisper import WhisperTranscriber
+    from panoscribe.config import PanoScribeConfig
 
-    engine = WhisperTranscriber(OmniScribeConfig(whisper_device="cpu", whisper_compute_type="int8"))
+    engine = WhisperTranscriber(PanoScribeConfig(whisper_device="cpu", whisper_compute_type="int8"))
     assert isinstance(engine, AsrEngine)
 
 
 def test_fake_with_full_surface_satisfies_protocol() -> None:
     """A minimal class with the right method signature passes isinstance."""
-    from omniscribe.asr.protocol import AsrEngine
+    from panoscribe.asr.protocol import AsrEngine
 
     class _FakeEngine:
         def transcribe(self, audio_path: Path) -> tuple[list, str]:
@@ -39,7 +39,7 @@ def test_fake_with_full_surface_satisfies_protocol() -> None:
 
 def test_fake_missing_method_fails_isinstance() -> None:
     """A class missing ``transcribe`` must NOT pass isinstance."""
-    from omniscribe.asr.protocol import AsrEngine
+    from panoscribe.asr.protocol import AsrEngine
 
     class _MissingTranscribe:
         pass

@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.ocr.preprocessor.
+"""Unit tests for panoscribe.ocr.preprocessor.
 
 The preprocessor wraps two OpenCV primitives:
 
@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from omniscribe.ocr.preprocessor import preprocess
+from panoscribe.ocr.preprocessor import preprocess
 
 
 def _bgr_frame(h: int = 4, w: int = 6, value: int = 128) -> np.ndarray:
@@ -31,7 +31,7 @@ def test_preprocess_returns_2d_grayscale_shape() -> None:
     clahe_mock = MagicMock()
     clahe_mock.apply.return_value = clahe_out
 
-    with patch("omniscribe.ocr.preprocessor.cv2") as cv2_mock:
+    with patch("panoscribe.ocr.preprocessor.cv2") as cv2_mock:
         cv2_mock.cvtColor.return_value = gray_2d
         cv2_mock.createCLAHE.return_value = clahe_mock
         result = preprocess(frame)
@@ -46,7 +46,7 @@ def test_preprocess_invokes_cvt_color_with_bgr2gray() -> None:
     clahe_mock = MagicMock()
     clahe_mock.apply.return_value = gray_2d
 
-    with patch("omniscribe.ocr.preprocessor.cv2") as cv2_mock:
+    with patch("panoscribe.ocr.preprocessor.cv2") as cv2_mock:
         cv2_mock.cvtColor.return_value = gray_2d
         cv2_mock.createCLAHE.return_value = clahe_mock
         cv2_mock.COLOR_BGR2GRAY = 6  # cv2's real enum value; arbitrary sentinel here
@@ -65,7 +65,7 @@ def test_preprocess_invokes_create_clahe_with_expected_kwargs() -> None:
     clahe_mock = MagicMock()
     clahe_mock.apply.return_value = gray_2d
 
-    with patch("omniscribe.ocr.preprocessor.cv2") as cv2_mock:
+    with patch("panoscribe.ocr.preprocessor.cv2") as cv2_mock:
         cv2_mock.cvtColor.return_value = gray_2d
         cv2_mock.createCLAHE.return_value = clahe_mock
         preprocess(frame)
@@ -81,7 +81,7 @@ def test_preprocess_applies_clahe_to_grayscale_output() -> None:
     clahe_mock = MagicMock()
     clahe_mock.apply.return_value = clahe_out
 
-    with patch("omniscribe.ocr.preprocessor.cv2") as cv2_mock:
+    with patch("panoscribe.ocr.preprocessor.cv2") as cv2_mock:
         cv2_mock.cvtColor.return_value = gray_2d
         cv2_mock.createCLAHE.return_value = clahe_mock
         result = preprocess(frame)
@@ -100,7 +100,7 @@ def test_preprocess_preserves_spatial_dimensions() -> None:
     clahe_mock = MagicMock()
     clahe_mock.apply.return_value = clahe_out
 
-    with patch("omniscribe.ocr.preprocessor.cv2") as cv2_mock:
+    with patch("panoscribe.ocr.preprocessor.cv2") as cv2_mock:
         cv2_mock.cvtColor.return_value = gray_2d
         cv2_mock.createCLAHE.return_value = clahe_mock
         result = preprocess(frame)

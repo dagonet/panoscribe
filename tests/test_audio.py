@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.audio (all subprocess boundaries mocked)."""
+"""Unit tests for panoscribe.audio (all subprocess boundaries mocked)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from omniscribe.audio import extract_audio
-from omniscribe.errors import OmniScribeError
+from panoscribe.audio import extract_audio
+from panoscribe.errors import PanoScribeError
 
 
 def test_extract_audio_builds_correct_ffmpeg_argv(tmp_path: Path) -> None:
@@ -18,8 +18,8 @@ def test_extract_audio_builds_correct_ffmpeg_argv(tmp_path: Path) -> None:
     out = tmp_path / "out" / "audio.wav"
 
     with (
-        patch("omniscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
-        patch("omniscribe.audio.subprocess.run") as mock_run,
+        patch("panoscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
+        patch("panoscribe.audio.subprocess.run") as mock_run,
     ):
         result = extract_audio(video, out)
 
@@ -48,8 +48,8 @@ def test_extract_audio_builds_correct_ffmpeg_argv(tmp_path: Path) -> None:
 
 def test_extract_audio_raises_when_ffmpeg_missing(tmp_path: Path) -> None:
     with (
-        patch("omniscribe.audio._FFMPEG", None),
-        pytest.raises(OmniScribeError, match="ffmpeg not found"),
+        patch("panoscribe.audio._FFMPEG", None),
+        pytest.raises(PanoScribeError, match="ffmpeg not found"),
     ):
         extract_audio(tmp_path / "a.mp4", tmp_path / "b.wav")
 
@@ -61,9 +61,9 @@ def test_extract_audio_wraps_called_process_error(tmp_path: Path) -> None:
         stderr=b"line one\nline two: Invalid data found\n",
     )
     with (
-        patch("omniscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
-        patch("omniscribe.audio.subprocess.run", side_effect=err),
-        pytest.raises(OmniScribeError, match="Invalid data found"),
+        patch("panoscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
+        patch("panoscribe.audio.subprocess.run", side_effect=err),
+        pytest.raises(PanoScribeError, match="Invalid data found"),
     ):
         extract_audio(tmp_path / "a.mp4", tmp_path / "b.wav")
 
@@ -80,10 +80,10 @@ def test_get_duration_parses_ffprobe(tmp_path: Path) -> None:
     # ffprobe is absent from PATH, so on ffmpeg-less environments the
     # subprocess mock would never be reached.
     with (
-        patch("omniscribe.audio.subprocess.run", return_value=mock_stdout),
-        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+        patch("panoscribe.audio.subprocess.run", return_value=mock_stdout),
+        patch("panoscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
     ):
-        from omniscribe.audio import get_duration
+        from panoscribe.audio import get_duration
 
         result = get_duration(audio)
 
@@ -95,10 +95,10 @@ def test_get_duration_failure_returns_none(tmp_path: Path) -> None:
     audio.write_bytes(b"fake")
 
     with (
-        patch("omniscribe.audio.subprocess.run", side_effect=FileNotFoundError),
-        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+        patch("panoscribe.audio.subprocess.run", side_effect=FileNotFoundError),
+        patch("panoscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
     ):
-        from omniscribe.audio import get_duration
+        from panoscribe.audio import get_duration
 
         result = get_duration(audio)
 
@@ -110,8 +110,8 @@ def test_get_duration_ffprobe_missing_returns_none(tmp_path: Path) -> None:
     audio = tmp_path / "track.mp3"
     audio.write_bytes(b"fake")
 
-    with patch("omniscribe.audio.shutil.which", return_value=None):
-        from omniscribe.audio import get_duration
+    with patch("panoscribe.audio.shutil.which", return_value=None):
+        from panoscribe.audio import get_duration
 
         result = get_duration(audio)
 
@@ -125,10 +125,10 @@ def test_get_duration_nonzero_exit_returns_none(tmp_path: Path) -> None:
     mock_proc = subprocess.CompletedProcess(args=[], returncode=1, stdout=b"", stderr=b"")
 
     with (
-        patch("omniscribe.audio.subprocess.run", return_value=mock_proc),
-        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+        patch("panoscribe.audio.subprocess.run", return_value=mock_proc),
+        patch("panoscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
     ):
-        from omniscribe.audio import get_duration
+        from panoscribe.audio import get_duration
 
         result = get_duration(audio)
 
@@ -142,10 +142,10 @@ def test_get_duration_empty_output_returns_none(tmp_path: Path) -> None:
     mock_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
 
     with (
-        patch("omniscribe.audio.subprocess.run", return_value=mock_proc),
-        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+        patch("panoscribe.audio.subprocess.run", return_value=mock_proc),
+        patch("panoscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
     ):
-        from omniscribe.audio import get_duration
+        from panoscribe.audio import get_duration
 
         result = get_duration(audio)
 
@@ -156,8 +156,8 @@ def test_extract_audio_called_process_error_no_stderr(tmp_path: Path) -> None:
     """CalledProcessError with empty stderr -> detail uses exit status."""
     err = subprocess.CalledProcessError(returncode=1, cmd=["ffmpeg"], stderr=b"")
     with (
-        patch("omniscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
-        patch("omniscribe.audio.subprocess.run", side_effect=err),
-        pytest.raises(OmniScribeError, match="exit status 1 with no stderr output"),
+        patch("panoscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
+        patch("panoscribe.audio.subprocess.run", side_effect=err),
+        pytest.raises(PanoScribeError, match="exit status 1 with no stderr output"),
     ):
         extract_audio(tmp_path / "a.mp4", tmp_path / "b.wav")
