@@ -280,3 +280,151 @@ It was rejected because:
 4. Caveat retained for whoever implements recurrence counting: `cluster_count` is an
    OCCURRENCE count, not a frame count — the aggregator keeps non-overlapping same-text
    boxes within one frame. It needs per-frame key dedup to become a true frame count.
+
+---
+
+## PR 2 execution record — bar NOT met, filter NOT shipped
+
+### Verdict
+
+**The low-recurrence filter does not ship.** It fails the pre-set bar on criterion 1
+(maximum achieved relative cut is 19.3%, at a threshold that the same measurement
+shows destroys short-lived required overlays), criterion 2 is unevaluable on the
+authoritative video path (see below) and directly falsified on the images-mode
+cross-check, and criterion 3 could not be evaluated at all (real `eval` samples
+unavailable in this environment). No filter code, config knob, or unit test lands —
+this write-up is the entire PR 2 deliverable, exactly as the plan's "if the bar is
+not met" clause anticipates.
+
+### What was implemented for evaluation (not shipped)
+
+A `filter_by_min_recurrence(segments, frame_count, min_frame_count,
+min_appearance_frames, fuzzy_threshold=90.0)` function, built by inverting
+`filter_by_frequency`'s existing fuzzy-clustering pass (reused as specified in step
+4): instead of counting raw occurrences per cluster, it counts **distinct sampled
+frames per cluster** (`{seg.start for seg in cluster_members}` — using `start` as the
+per-frame key, which is exact in video mode since `RapidOCREngine.extract` sets
+`start == end == timestamp` per `rapid_ocr.py:353-368`; this also resolves the
+plan's step-4 caveat that raw `cluster_count` is an occurrence count, not a frame
+count). A cluster is dropped when its frame-count is `< min_appearance_frames`.
+`min_appearance_frames <= 1` is a no-op (nothing has fewer than 1 frame), matching
+the `min_frame_count=0`-disables convention already used by `ocr_frequency_min_frame_count`.
+This lived only in a scratch script for measurement; it was never added to
+`src/panoscribe/ocr/ui_filter.py`.
+
+### Why this is `dedup_min_duration` reincarnated, restated in numbers
+
+The parameter space is a single integer with exactly two regimes:
+- `min_appearance_frames <= 1`: no-op (confirmed below — N=1 reproduces the PR 1
+  baseline byte-for-byte).
+- `min_appearance_frames >= 2`: drops every single-frame cluster, i.e. it IS
+  `config.py:118-122`'s "appeared in >=2 frames" filter under a new name and a
+  frame-count denominator instead of a duration one. There is no third regime.
+
+### Measurement method
+
+Same environment, same fixture generator invocation, back-to-back (`PanoScribeConfig()`
+defaults, `ocr_language=en`, CPU execution provider — same `cublasLt64_12.dll` CUDA
+fallback as PR 1, so both filtered and unfiltered runs are apples-to-apples). The
+filter step is inserted immediately after `filter_by_frequency` (pre-dedup, per step
+4's ordering requirement) in a scratch copy of the `eval_ocr.py` funnel, computing
+`compute_junk_metrics` at each stage. `min_frame_count` was set to `0` for the
+recurrence filter itself (the `ocr_frequency_min_frame_count` guard, at its default
+of 10, would make the filter an unconditional no-op on this fixture's 6-frame
+video-path sample — see the finding below; disabling it isolates the filter's own
+effect from the guard's).
+
+**Video path — the authoritative bar target (`--platform-profile youtube`):**
+
+| `min_appearance_frames` | post_dedup total | unmatched_count | unmatched_rate | relative cut vs 0.826 baseline | retained_overlay_recall |
+|---:|---:|---:|---:|---:|---:|
+| 1 (no-op sanity check) | 23 | 19 | 0.8261 | 0.0% | 0.3077 |
+| 2 | 20 | 16 | 0.8000 | 3.2% | 0.3077 (unchanged) |
+| 3 | 12 |  8 | 0.6667 | 19.3% | 0.3077 (unchanged) |
+
+N=1 exactly reproduces PR 1's baseline (`23 total, 19 unmatched, 0.8261`), confirming
+the harness is correct. Neither N=2 nor N=3 clears the **>= 30% relative** bar
+(criterion 1 fails at every tested threshold; the closest approach, N=3, still falls
+short by more than a third of the required cut).
+
+**Cluster-level cause, from the raw pre-dedup cluster table (frame_count=6,
+post-pattern-filter, 34 segments):** the fixture's junk is dominated by the
+sliding-window lorem-ipsum background, which by construction persists across
+2-6 consecutive frames — only three clusters are genuine single-frame occurrences
+(`fugiat nulla pariatur excepteur sint`, `occaecat cupidatat non proident sunt`,
+`culpa qui officia deserunt mollit anim`, each frames=1). N=2 catches exactly those
+three (34 -> 31 segments), which is where the entire 3.2% cut at N=2 comes from.
+Reaching N=3 additionally drops every 2-frame cluster, which is most of the
+remaining lorem-ipsum spans — a much bigger cut, but only because the fixture's
+sliding-window junk design happens to cluster around 2-3 frame counts, not because
+recurrence separates junk from signal in general (see the images-mode leg below,
+which shows the opposite failure mode on the same mechanism).
+
+**Criterion 2 on the video path is unevaluable, not passed.** Neither
+`BREAKING NEWS UPDATE` nor `FLASH SALE ENDS SOON` appears anywhere in the 34
+post-pattern-filter segments at any threshold — only `SEASON FINALE LIVE NOW`
+(the main stable overlay, present in 4/6 sampled frames) fuzzy-matches a required
+text. `retained_overlay_recall` is pinned at `0.3077` across all three thresholds
+because scene-change gating already sampled only 6 of the fixture's 12 frames and
+none of the frames the two short-lived overlays land on survived that gate — this
+reproduces PR 1's finding that video-path `retained_overlay_recall` (0.31) is a
+scene-change-gating artifact, not a filter effect. **The filter cannot be shown to
+preserve what it never receives.** Reporting this as "zero required overlays lost"
+would be misleading; the honest statement is that the video-path fixture, as
+currently sampled, does not exercise this filter's risk to short-lived overlays at
+all. That is a fixture/gating interaction worth a follow-up (same one PR 1 flagged
+as out of scope), not evidence the filter is safe.
+
+**Images-mode cross-check — same mechanism, same fuzzy-clustering code, run where
+the required short-lived overlays ARE detected (all 12 frames processed, no
+scene-change gating, generic profile — isolates the filter's effect on real
+overlays from the gating confound above):**
+
+| `min_appearance_frames` | post_recurrence total | unmatched_count (unchanged) | recall | retained_overlay_recall | post_dedup unmatched_rate |
+|---:|---:|---:|---:|---:|---:|
+| 1 (no-op) | 70 | 57 | 1.0 | 1.0 | 0.8421 |
+| 2 | 69 | 57 | 0.667 | 0.923 | 0.8889 |
+| 3 | 67 | 57 | 0.333 | 0.769 | 0.9412 |
+
+This is the decisive result: at every threshold that removes anything, `unmatched_count`
+**stays at 57** — the filter removes zero unmatched (junk) segments here; the one
+segment it drops at N=2 (70 -> 69) and the further two at N=3 (-> 67) are all
+correctly-matched segments, not noise. Post-fuzzy-clustering, `breaking news update`
+(1 frame) is the *only* genuine singleton cluster in this fixture once near-duplicate
+variants (e.g. trailing-period OCR artefacts) merge into their parent cluster; the
+single-frame REQUIRED overlay the fixture added specifically to catch this failure
+mode is the one thing the filter deletes. `recall` drops 1.0 -> 0.667 -> 0.333 and
+`retained_overlay_recall` drops 1.0 -> 0.923 -> 0.769 as threshold rises, while
+`post_dedup unmatched_rate` **worsens** (0.8421 -> 0.9412) because dropping matched
+segments shrinks the denominator faster than it removes noise. A filter that costs
+recall while buying no noise reduction is not a borderline case to tune around; it
+is evidence the mechanism does not separate junk from signal on recurrence count,
+in either direction.
+
+**Criterion 3 — real eval samples:** `tests/fixtures/eval/` in this environment
+contains only `example-gt.json` and `README.md`; no `slides/`, `videos/`, or
+`samples/` directories exist, and `scripts/fetch_eval_samples.py` requires live
+network access to TikTok (yt-dlp / gallery-dl) that is unavailable here. Per the
+plan's blocker clause, this alone is sufficient to withhold shipping regardless of
+the synthetic numbers above; it is reported for completeness, not as the deciding
+factor (criteria 1 and 2 already fail independently).
+
+### Why guard interaction matters for any future attempt
+
+The existing `ocr_frequency_min_frame_count` guard pattern (default 10, skip the
+filter below that many sampled frames) makes this exact filter class an unconditional
+no-op on the video-path fixture, whose scene-change-gated `frame_count` is 6. Any
+short clip that is scene-change-gated below 10 sampled frames — the common case this
+whole investigation is about — would ship the filter permanently disabled by its own
+safety guard, while a longer clip that clears the guard threshold is exactly the
+case where recurrence counts rise and the filter starts deleting short-lived real
+text. The guard does not rescue the mechanism; it just hides the failure on short
+clips and exposes it on longer ones.
+
+### Disposition
+
+No changes to `src/panoscribe/`. No new config field. No new tests. This section is
+the complete PR 2 deliverable per the plan's explicit "if the bar is not met, ship
+steps 1-3 and NOT the filter" clause (steps 1-3 already shipped in PR 1). The scratch
+measurement scripts used to produce the tables above are not part of this repository
+and are not retained.
