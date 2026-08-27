@@ -4,7 +4,7 @@
 Usage
 -----
     python scripts/eval_ocr.py VIDEO GROUND_TRUTH [--ocr-language LANG]
-        [--funnel] [--output OUTPUT]
+        [--funnel] [--junk] [--output OUTPUT]
 
 Runs the OCR pipeline (frame sampling -> preprocessing -> UI masking ->
 RapidOCR -> aggregation -> pattern filter -> frequency filter -> dedup)
@@ -20,6 +20,7 @@ from pathlib import Path
 
 from panoscribe.config import PanoScribeConfig
 from panoscribe.eval.funnel import FunnelCounts
+from panoscribe.eval.junk import compute_junk_metrics
 from panoscribe.eval.models import GroundTruth
 from panoscribe.eval.scoring import score_video
 from panoscribe.ocr.deduplicator import dedup_segments
@@ -64,6 +65,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--funnel",
         action="store_true",
         help="Collect and print funnel diagnostics.",
+    )
+    parser.add_argument(
+        "--junk",
+        action="store_true",
+        help=(
+            "Collect and print junk-segment metrics (count/rate, retained-overlay "
+            "recall) at each filtering stage. See panoscribe.eval.junk."
+        ),
     )
     parser.add_argument(
         "--no-scene-change",
@@ -129,11 +138,22 @@ def main() -> None:
     else:
         ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel)
 
+    fuzzy_threshold = config.dedup_similarity_threshold
+    junk_stages: dict[str, dict[str, object]] | None = {} if args.junk else None
+    if junk_stages is not None:
+        junk_stages["raw"] = asdict(
+            compute_junk_metrics(ocr_segments, gt, fuzzy_threshold=fuzzy_threshold)
+        )
+
     # UI filters -- same order as cli.py process_single_video.
     if (not args.no_ui_filter) and config.ui_filter_enabled and profile is not None:
         ocr_segments = filter_by_patterns(ocr_segments, profile.ui_text_patterns)
         if funnel is not None:
             funnel.post_pattern_filter = len(ocr_segments)
+        if junk_stages is not None:
+            junk_stages["post_pattern_filter"] = asdict(
+                compute_junk_metrics(ocr_segments, gt, fuzzy_threshold=fuzzy_threshold)
+            )
 
         ocr_segments = filter_by_frequency(
             ocr_segments,
@@ -143,6 +163,10 @@ def main() -> None:
         )
         if funnel is not None:
             funnel.post_frequency_filter = len(ocr_segments)
+        if junk_stages is not None:
+            junk_stages["post_frequency_filter"] = asdict(
+                compute_junk_metrics(ocr_segments, gt, fuzzy_threshold=fuzzy_threshold)
+            )
     elif funnel is not None:
         funnel.post_pattern_filter = len(ocr_segments)
         funnel.post_frequency_filter = len(ocr_segments)
@@ -156,6 +180,10 @@ def main() -> None:
     )
     if funnel is not None:
         funnel.post_dedup = len(deduped)
+    if junk_stages is not None:
+        junk_stages["post_dedup"] = asdict(
+            compute_junk_metrics(deduped, gt, fuzzy_threshold=fuzzy_threshold)
+        )
 
     # After merge-like step: final on-screen + both count.
     on_screen = sum(1 for s in deduped if s.source in ("ON-SCREEN", "BOTH"))
@@ -168,6 +196,8 @@ def main() -> None:
     # Attach funnel data if collected.
     if funnel is not None:
         result.funnel = asdict(funnel)
+    if junk_stages is not None:
+        result.junk = junk_stages
 
     # Console output.
     funnel_str = ""
