@@ -2,6 +2,32 @@
 
 Tier: T3
 
+> **Amendment (phase 2, `docs/plans/2026-08-27-ocr-phase2-stability.md`):**
+> adversarial review found this phase's junk metric and fixture were both unsound, and
+> phase 2 fixed them. Two claims below are now known WRONG and are corrected here
+> rather than silently left in place (the rest of this document's findings and
+> methodology stand):
+>
+> 1. **The "5 of 17 final segments (29%) are junk" headline is wrong.** `is_junk_segment`
+>    exempted anything with `duration >= 1.5s`; in images mode a merged >=2-frame dedup
+>    cluster crosses that threshold and stops counting as junk while remaining
+>    unmatched. Post-dedup precision here was already `1/17 = 0.0588`, implying ~16 of
+>    17 segments were actually unmatched (~94%), not 5 (29%) — the phase-1 metric was
+>    measuring "junk that also happens to be short," not "junk." Phase 2's
+>    `unmatched_rate` (no duration exemption) on a corrected fixture measures
+>    `82.6%` final-stage unmatched on the video path (the mode this project actually
+>    reports the Known Limitation against) — see the phase-2 plan doc's re-baseline.
+> 2. **"Pattern filter 48 -> 48, zero effect" is not evidence about the pattern
+>    filter.** `resolve_profile` with a directory/file path (this fixture's source)
+>    resolves to `GENERIC_PROFILE`, whose `ui_text_patterns` is `()` — `filter_by_patterns`
+>    returns its input unchanged on an empty pattern tuple by construction. The
+>    experiment could not have measured anything else. Phase 2's fixture adds UI chrome
+>    matching the YouTube profile and runs with `--platform-profile youtube`, at which
+>    point the pattern filter does fire (26.1% drop at that stage).
+>
+> Both corrections are phase-2, PR-1 findings; no filter/pipeline behaviour changed to
+> produce them — only the measurement (metric + fixture) was fixed.
+
 ## Why this is a measurement task, not a fix
 
 The README's one Known Limitation: on text-heavy backgrounds, varying per-frame

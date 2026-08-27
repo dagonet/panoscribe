@@ -1,27 +1,56 @@
 #!/usr/bin/env python3
 """Deterministic synthetic-fixture generator for OCR junk-segment measurement.
 
-Synthesizes a short "slide sequence" (a directory of PNG frames, treated by
-``scripts/eval_ocr.py --images`` as one photo-post frame per file) with:
+Synthesizes a short "slide sequence" with:
 
 * A text-heavy paragraph rendered in the background of every frame, jittered
   by a few pixels per frame via a seeded RNG. Real per-frame OCR instability
   (subpixel antialiasing shifts, partial character clipping at the jittered
   position) is reproduced by the OCR engine itself running against these
   frames -- this script does not fake OCR output.
-* A small number of deliberate overlay captions rendered at a fixed position,
-  shown in most (not all) frames so their frequency ratio stays below the
-  default ``frequency_threshold`` (0.95) while still being "stable" (never
-  jittered, identical text every time they appear).
+* A main deliberate overlay caption rendered at a fixed position, shown in
+  most (not all) frames so its frequency ratio stays below the default
+  ``frequency_threshold`` (0.95) while still being "stable" (never jittered,
+  identical text every time it appears).
+* Two SHORT-LIVED deliberate overlays (1-2 sampled frames each) that MUST be
+  retained -- these are what a naive low-recurrence-count filter would
+  destroy invisibly, and what phase 1's ">= 1 match anywhere" recall
+  predicate could not detect the loss of (see
+  ``docs/plans/2026-08-27-ocr-phase2-stability.md``, step 1).
+* STABLE JUNK -- a static "channel bug" watermark that persists across most
+  (not all) frames, below the frequency-filter drop threshold. This is junk
+  the recurrence signal structurally cannot catch (it never crosses the
+  ratio bound), and its absence from the phase-1 fixture flattered any
+  recurrence-based filter.
+* UI CHROME (a SUBSCRIBE button + an @handle) matching the YouTube platform
+  profile's ``ui_text_patterns``, rendered OUTSIDE that profile's
+  ``ui_exclusion_zones`` so OCR actually reads it before the pattern filter
+  runs -- unlike the phase-1 fixture, which only ever resolved to
+  ``GENERIC_PROFILE`` (empty patterns), making the pattern filter untestable
+  by construction.
+
+Two output modes:
+
+* ``write_fixture`` (default) -- a directory of PNG frames for
+  ``scripts/eval_ocr.py --images``. Kept for continuity with the phase-1
+  measurement.
+* ``write_video_fixture`` (``--video``) -- a single lossless (FFV1-in-AVI)
+  video file for ``scripts/eval_ocr.py VIDEO``, so scene-change gating and
+  zone masking (both ``--images``-mode no-ops) actually participate. This is
+  the mode phase 2's baseline is measured against -- the phase-1 baseline
+  only ever exercised ``--images``, but the README's reported failure is
+  about video.
 
 Usage
 -----
     python scripts/generate_ocr_noise_fixture.py OUTPUT_DIR
-        [--seed SEED] [--num-frames N]
+        [--seed SEED] [--num-frames N] [--video] [--fps FPS]
 
-Writes ``OUTPUT_DIR/frame-00.png`` .. ``frame-NN.png`` and
-``OUTPUT_DIR/ground_truth.json`` (conforming to
-``panoscribe.eval.models.GroundTruth``).
+Images mode writes ``OUTPUT_DIR/frame-00.png`` .. ``frame-NN.png`` and
+``OUTPUT_DIR/ground_truth.json``. Video mode writes ``OUTPUT_DIR/fixture.avi``
+and ``OUTPUT_DIR/ground_truth.json`` (conforming to
+``panoscribe.eval.models.GroundTruth``, including the optional
+``appearances`` field for per-appearance recall scoring).
 
 Determinism
 -----------
@@ -30,7 +59,10 @@ RNG state is touched. Two runs with the same ``seed``/``num_frames`` produce
 byte-identical *decoded* frame arrays (see ``generate_frames``). PNG-encoded
 bytes are not asserted byte-identical across zlib versions; the fixture's
 reproducibility claim is about the decoded pixel data, which is what OCR
-actually consumes.
+actually consumes. The video path uses the lossless FFV1 codec specifically
+so the same claim holds for the video container -- a lossy codec (e.g.
+mp4v) would make decoded-from-file frames diverge from the in-memory arrays,
+which would silently weaken this exact guarantee.
 """
 
 from __future__ import annotations
@@ -87,7 +119,42 @@ _WINDOW_LINES = 4
 # caption is still overwhelmingly the majority signal (a real "stable
 # caption" pattern).
 _OVERLAY_TEXT = "SEASON FINALE LIVE NOW"
+_OVERLAY_Y = 380
 _OVERLAY_SKIP_FRAME_INDICES = frozenset({2, 7})
+
+# Short-lived REAL overlays -- 1-2 sampled frames each, required=True. A
+# naive "appeared in < N frames -> drop" filter would destroy these
+# invisibly; phase 1's fixture had no such case, so it could not fail a
+# filter that would break real short-lived captions (burned-in subtitles,
+# fast lower-thirds).
+_SHORT_LIVED_A_TEXT = "BREAKING NEWS UPDATE"
+_SHORT_LIVED_A_Y = 300
+_SHORT_LIVED_A_FRAME_INDICES = frozenset({4})
+
+_SHORT_LIVED_B_TEXT = "FLASH SALE ENDS SOON"
+_SHORT_LIVED_B_Y = 335
+_SHORT_LIVED_B_FRAME_INDICES = frozenset({9, 10})
+
+# Stable junk -- a static "channel bug" watermark. Persists across most (not
+# all) frames but stays below the default frequency-filter drop threshold
+# (0.95), so recurrence-based filtering structurally cannot remove it. Not
+# listed in ground truth -- it must never fuzzy-match a required text.
+_STABLE_JUNK_TEXT = "STUDIO NINE FEED"
+_STABLE_JUNK_Y = 265
+_STABLE_JUNK_X = 380
+_STABLE_JUNK_SKIP_FRAME_INDICES = frozenset({1, 5, 9})
+
+# UI chrome matching the YouTube platform profile's ``ui_text_patterns``
+# (see ``panoscribe.platforms.youtube``), rendered OUTSIDE that profile's
+# ``ui_exclusion_zones`` (right edge x>=0.88, bottom band y>=0.88, top band
+# y<=0.05 of a 640x480 frame) so OCR reads it before the pattern filter
+# runs -- unlike phase 1, where the fixture only ever resolved to
+# GENERIC_PROFILE (empty patterns) and the pattern filter was untestable.
+_CHROME_SUBSCRIBE_TEXT = "SUBSCRIBE"
+_CHROME_SUBSCRIBE_Y = 195
+_CHROME_HANDLE_TEXT = "@creator_handle"
+_CHROME_HANDLE_Y = 230
+_CHROME_X = 40
 
 
 class Fixture(NamedTuple):
@@ -143,25 +210,105 @@ def generate_frames(
             cv2.putText(
                 frame,
                 _OVERLAY_TEXT,
-                (40, 420),
+                (40, _OVERLAY_Y),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1.1,
+                1.0,
                 (0, 0, 0),
                 2,
                 cv2.LINE_AA,
             )
 
+        # Short-lived REAL overlays -- must be retained despite appearing in
+        # only 1-2 frames.
+        if i in _SHORT_LIVED_A_FRAME_INDICES:
+            cv2.putText(
+                frame,
+                _SHORT_LIVED_A_TEXT,
+                (40, _SHORT_LIVED_A_Y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
+        if i in _SHORT_LIVED_B_FRAME_INDICES:
+            cv2.putText(
+                frame,
+                _SHORT_LIVED_B_TEXT,
+                (40, _SHORT_LIVED_B_Y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
+
+        # Stable junk -- static watermark, persists across most frames but
+        # never listed in ground truth.
+        if i not in _STABLE_JUNK_SKIP_FRAME_INDICES:
+            cv2.putText(
+                frame,
+                _STABLE_JUNK_TEXT,
+                (_STABLE_JUNK_X, _STABLE_JUNK_Y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (60, 60, 60),
+                1,
+                cv2.LINE_AA,
+            )
+
+        # UI chrome matching the YouTube profile's patterns -- every frame,
+        # positioned outside that profile's exclusion zones.
+        cv2.putText(
+            frame,
+            _CHROME_SUBSCRIBE_TEXT,
+            (_CHROME_X, _CHROME_SUBSCRIBE_Y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 0, 0),
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            _CHROME_HANDLE_TEXT,
+            (_CHROME_X, _CHROME_HANDLE_Y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 0, 0),
+            1,
+            cv2.LINE_AA,
+        )
+
         frames.append(frame)
+
+    def _appearances(skip_indices: frozenset[int]) -> list[tuple[float, float]]:
+        # Point windows -- (timestamp, timestamp) -- deliberately overlap
+        # both video-mode segments (start == end == timestamp) and
+        # images-mode segments (start=i, end=i+1) under
+        # ``panoscribe.eval.junk._within_window``'s boundary-inclusive
+        # overlap check, without touching adjacent frames' windows (each
+        # window is a single point, not a range).
+        return [(float(i), float(i)) for i in range(num_frames) if i not in skip_indices]
 
     gt_dict: dict[str, object] = {
         "language": "en",
         "expected_texts": [
             {
                 "text": _OVERLAY_TEXT,
-                "start": 0.0,
-                "end": float(num_frames),
                 "required": True,
-            }
+                "appearances": _appearances(_OVERLAY_SKIP_FRAME_INDICES),
+            },
+            {
+                "text": _SHORT_LIVED_A_TEXT,
+                "required": True,
+                "appearances": [(float(i), float(i)) for i in sorted(_SHORT_LIVED_A_FRAME_INDICES)],
+            },
+            {
+                "text": _SHORT_LIVED_B_TEXT,
+                "required": True,
+                "appearances": [(float(i), float(i)) for i in sorted(_SHORT_LIVED_B_FRAME_INDICES)],
+            },
         ],
     }
     return Fixture(frames=frames, ground_truth=gt_dict)
@@ -178,18 +325,86 @@ def write_fixture(output_dir: Path, num_frames: int, seed: int) -> None:
     gt_path.write_text(json.dumps(fixture.ground_truth, indent=2), encoding="utf-8")
 
 
+#: Video filename written by :func:`write_video_fixture`.
+VIDEO_FILENAME = "fixture.avi"
+
+#: Default video sample rate. Matches
+#: ``panoscribe.config.PanoScribeConfig.ocr_sample_fps``'s default so that,
+#: with ``stride == 1``, sampled-frame timestamp ``i`` lines up exactly with
+#: generator frame index ``i`` and the ``appearances`` point-windows in
+#: ``generate_frames`` need no unit conversion.
+_DEFAULT_VIDEO_FPS = 1.0
+
+
+def write_video_fixture(
+    output_dir: Path,
+    num_frames: int,
+    seed: int,
+    fps: float = _DEFAULT_VIDEO_FPS,
+) -> Path:
+    """Generate and write a single lossless video + ``ground_truth.json``.
+
+    Uses the FFV1 codec in an AVI container -- lossless, so decoded frames
+    read back from the file are ``numpy.array_equal`` to the in-memory
+    arrays :func:`generate_frames` produced (verified in
+    ``tests/test_generate_ocr_noise_fixture.py``). A lossy codec (e.g.
+    mp4v) would not support that claim and would silently change what the
+    OCR engine sees between runs/platforms.
+
+    Returns the path to the written video file.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fixture = generate_frames(num_frames=num_frames, seed=seed)
+    video_path = output_dir / VIDEO_FILENAME
+    height, width = fixture.frames[0].shape[:2]
+    fourcc = cv2.VideoWriter.fourcc(*"FFV1")
+    writer = cv2.VideoWriter(str(video_path), fourcc, fps, (width, height))
+    try:
+        if not writer.isOpened():
+            raise RuntimeError(f"Failed to open VideoWriter for {video_path}")
+        for frame in fixture.frames:
+            writer.write(frame)
+    finally:
+        writer.release()
+    gt_path = output_dir / "ground_truth.json"
+    gt_path.write_text(json.dumps(fixture.ground_truth, indent=2), encoding="utf-8")
+    return video_path
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output_dir", type=str, help="Directory to write frames + GT into.")
     parser.add_argument("--seed", type=int, default=_DEFAULT_SEED)
     parser.add_argument("--num-frames", type=int, default=_DEFAULT_NUM_FRAMES)
+    parser.add_argument(
+        "--video",
+        action="store_true",
+        help=(
+            "Write a single lossless (FFV1/AVI) video file instead of a "
+            "directory of PNGs -- exercises scene-change gating and zone "
+            "masking, which --images mode always no-ops."
+        ),
+    )
+    parser.add_argument(
+        "--fps",
+        type=float,
+        default=_DEFAULT_VIDEO_FPS,
+        help="Video sample rate (--video mode only). Default matches ocr_sample_fps.",
+    )
     return parser
 
 
 def main() -> None:
     args = _build_parser().parse_args()
-    write_fixture(Path(args.output_dir), num_frames=args.num_frames, seed=args.seed)
-    print(f"Wrote {args.num_frames} frames + ground_truth.json to {args.output_dir}")
+    output_dir = Path(args.output_dir)
+    if args.video:
+        video_path = write_video_fixture(
+            output_dir, num_frames=args.num_frames, seed=args.seed, fps=args.fps
+        )
+        print(f"Wrote {args.num_frames}-frame video ({video_path}) + ground_truth.json")
+    else:
+        write_fixture(output_dir, num_frames=args.num_frames, seed=args.seed)
+        print(f"Wrote {args.num_frames} frames + ground_truth.json to {args.output_dir}")
 
 
 if __name__ == "__main__":
