@@ -85,6 +85,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable pattern and frequency UI filters.",
     )
     parser.add_argument(
+        "--platform-profile",
+        type=str,
+        default=None,
+        help=(
+            "Explicit platform profile override (e.g. 'youtube', 'tiktok', "
+            "'instagram', 'generic'). Default: config's 'auto' URL-based "
+            "detection, which resolves to GENERIC_PROFILE (empty patterns) "
+            "for local file/directory paths -- pass this to actually "
+            "exercise a profile's ui_text_patterns / ui_exclusion_zones "
+            "against a synthetic fixture."
+        ),
+    )
+    parser.add_argument(
         "--output",
         "-o",
         type=str,
@@ -116,6 +129,8 @@ def main() -> None:
     config_updates: dict[str, object] = {"ocr_language": ocr_language}
     if args.no_scene_change:
         config_updates["scene_change_enabled"] = False
+    if args.platform_profile is not None:
+        config_updates["platform_profile"] = args.platform_profile
     config = config.model_copy(update=config_updates)
 
     # Resolve platform profile (images mode uses the dir path as source).
