@@ -5,11 +5,17 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Nightly trigger for the opt-in e2e-whisper job below; `test`/`resolve`
+    # skip this event (see their `if:` guards) so it doesn't duplicate the
+    # per-PR coverage gate.
+    - cron: "0 3 * * *"
   workflow_dispatch:
   workflow_call:
 
 jobs:
   test:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,7 +41,41 @@ jobs:
       - name: Run tests
         run: uv run pytest --cov=panoscribe --cov-report=term-missing --cov-fail-under=95
 
+  e2e-whisper:
+    # Opt-in real-Whisper e2e test (tests/test_e2e_whisper.py, @pytest.mark.slow).
+    # The `test` job above is the per-PR coverage gate and is the wrong host
+    # for this: it downloads a real (small) model on first run and is slow
+    # relative to the mocked suite. CPU-only; runs nightly and on manual
+    # dispatch, never on push/PR.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra api
+
+      - name: Cache Whisper model weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-tiny-model-${{ runner.os }}
+
+      - name: Run real-Whisper e2e test
+        env:
+          PANO_WHISPER_MODEL: tiny
+          PANO_WHISPER_DEVICE: cpu
+          PANO_WHISPER_COMPUTE_TYPE: int8
+        run: uv run pytest -m slow -v
+
   resolve:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
