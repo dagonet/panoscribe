@@ -2,8 +2,8 @@
 
 ## Project
 
-- **Name**: OmniScribe
-- **Repository**: https://github.com/dagonet/OmniScribe
+- **Name**: panoscribe
+- **Repository**: https://github.com/dagonet/panoscribe
 - **Tech Stack**: Python 3.11, uv
 
 ## Build System
@@ -12,7 +12,7 @@
 - **Test Command**: uv run pytest
 - **Format Command**: uv run ruff format .
 - **Lint Command**: uv run ruff check .
-- **Gate Command**: uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=omniscribe --cov-fail-under=95
+- **Gate Command**: uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=panoscribe --cov-fail-under=95
 
 ## Paths
 
@@ -23,10 +23,10 @@
 
 ## Docker
 
-- **Build Image**: `docker build -t omniscribe .`
-- **Run CLI**: `docker run --rm omniscribe --help`
-- **Transcribe (GPU)**: `docker run --gpus all --rm -v ./input:/input -v ./output:/output omniscribe transcribe /input/video.mp4 -o /output/transcript.json`
-- **Transcribe (CPU)**: `docker run --rm -v ./input:/input -v ./output:/output -e OMNI_WHISPER_DEVICE=cpu -e OMNI_WHISPER_COMPUTE_TYPE=int8 -e OMNI_OCR_DEVICE=cpu omniscribe transcribe /input/video.mp4 -o /output/transcript.json`
+- **Build Image**: `docker build -t panoscribe .`
+- **Run CLI**: `docker run --rm panoscribe --help`
+- **Transcribe (GPU)**: `docker run --gpus all --rm -v ./input:/input -v ./output:/output panoscribe transcribe /input/video.mp4 -o /output/transcript.json`
+- **Transcribe (CPU)**: `docker run --rm -v ./input:/input -v ./output:/output -e PANO_WHISPER_DEVICE=cpu -e PANO_WHISPER_COMPUTE_TYPE=int8 -e PANO_OCR_DEVICE=cpu panoscribe transcribe /input/video.mp4 -o /output/transcript.json`
 - **Prerequisites**: NVIDIA Container Toolkit (GPU), Docker 20.10+
 
 ## Workflow Configuration

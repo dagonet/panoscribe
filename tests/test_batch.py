@@ -1,4 +1,4 @@
-"""Unit tests for ``omniscribe.batch`` (Sprint 5.4).
+"""Unit tests for ``panoscribe.batch`` (Sprint 5.4).
 
 Pure data + IO — these tests do NOT spin up the transcribe pipeline. The CLI
 end-to-end coverage lives in ``test_cli.py`` under the ``transcribe-many``
@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from omniscribe.batch import (
+from panoscribe.batch import (
     BatchItem,
     BatchState,
     _video_id_from_url,
@@ -58,7 +58,7 @@ def test_parse_url_list_handles_local_paths(tmp_path: Path) -> None:
 
 def test_compute_output_path_url(tmp_path: Path) -> None:
     """yt-dlp metadata returns a video ID; stem is that ID."""
-    with patch("omniscribe.batch._video_id_from_url", return_value="abc123"):
+    with patch("panoscribe.batch._video_id_from_url", return_value="abc123"):
         out = compute_output_path("https://example.com/v/abc123", tmp_path, ".md", set())
     assert out == tmp_path / "abc123.md"
 
@@ -71,7 +71,7 @@ def test_compute_output_path_local_file(tmp_path: Path) -> None:
 def test_compute_output_path_video_id_extraction_fails_uses_hash(tmp_path: Path) -> None:
     """When yt-dlp can't extract an ID, the stem is the 12-char sha256 hex prefix."""
     url = "https://example.com/some/weird/page"
-    with patch("omniscribe.batch._video_id_from_url", return_value=None):
+    with patch("panoscribe.batch._video_id_from_url", return_value=None):
         out = compute_output_path(url, tmp_path, ".md", set())
     stem = out.stem
     # Expect 12 hex chars.
@@ -81,7 +81,7 @@ def test_compute_output_path_video_id_extraction_fails_uses_hash(tmp_path: Path)
 
 def test_compute_output_path_truncates_long_stems(tmp_path: Path) -> None:
     long_id = "x" * 300
-    with patch("omniscribe.batch._video_id_from_url", return_value=long_id):
+    with patch("panoscribe.batch._video_id_from_url", return_value=long_id):
         out = compute_output_path("https://example.com/long", tmp_path, ".md", set())
     assert len(out.stem) <= 200
 
@@ -89,10 +89,10 @@ def test_compute_output_path_truncates_long_stems(tmp_path: Path) -> None:
 def test_compute_output_path_collision(tmp_path: Path) -> None:
     """Second item with the same stem gets a (2) suffix."""
     taken: set[Path] = set()
-    with patch("omniscribe.batch._video_id_from_url", return_value="abc"):
+    with patch("panoscribe.batch._video_id_from_url", return_value="abc"):
         first = compute_output_path("https://x/1", tmp_path, ".md", taken)
     taken.add(first)
-    with patch("omniscribe.batch._video_id_from_url", return_value="abc"):
+    with patch("panoscribe.batch._video_id_from_url", return_value="abc"):
         second = compute_output_path("https://x/2", tmp_path, ".md", taken)
     assert first == tmp_path / "abc.md"
     assert second == tmp_path / "abc(2).md"
@@ -116,7 +116,7 @@ def test_compute_output_path_resume_honors_existing(tmp_path: Path) -> None:
     """
     existing = tmp_path / "abc.md"
     taken = {existing}
-    with patch("omniscribe.batch._video_id_from_url", return_value="abc"):
+    with patch("panoscribe.batch._video_id_from_url", return_value="abc"):
         # New item with the same derived stem must skip the existing path.
         new_path = compute_output_path("https://other", tmp_path, ".md", taken)
     assert new_path != existing
@@ -147,7 +147,7 @@ def _sample_state(tmp_path: Path) -> BatchState:
 
 def test_state_round_trip(tmp_path: Path) -> None:
     state = _sample_state(tmp_path)
-    sf = tmp_path / ".omniscribe-batch-state.json"
+    sf = tmp_path / ".panoscribe-batch-state.json"
     save_state(state, sf)
     loaded = load_state(sf)
     assert loaded is not None
@@ -169,7 +169,7 @@ def test_state_load_version_mismatch_returns_none(tmp_path: Path, caplog) -> Non
     sf.write_text(json.dumps({"version": 99, "items": []}), encoding="utf-8")
     import logging
 
-    with caplog.at_level(logging.WARNING, logger="omniscribe.batch"):
+    with caplog.at_level(logging.WARNING, logger="panoscribe.batch"):
         assert load_state(sf) is None
     assert any("version" in r.message for r in caplog.records)
 
@@ -180,7 +180,7 @@ def test_state_load_corrupt_returns_none(tmp_path: Path, caplog) -> None:
     sf.write_text("{not json at all", encoding="utf-8")
     import logging
 
-    with caplog.at_level(logging.WARNING, logger="omniscribe.batch"):
+    with caplog.at_level(logging.WARNING, logger="panoscribe.batch"):
         result = load_state(sf)
     assert result is None
     assert any("unreadable" in r.message for r in caplog.records)
@@ -201,13 +201,13 @@ def test_save_state_atomic(tmp_path: Path) -> None:
     def _boom(*_a, **_kw):
         raise OSError("disk full")
 
-    with patch("omniscribe.batch.os.replace", side_effect=_boom), pytest.raises(OSError):
+    with patch("panoscribe.batch.os.replace", side_effect=_boom), pytest.raises(OSError):
         save_state(new_state, sf)
 
     # Original file untouched.
     assert sf.read_bytes() == pre_bytes
     # No leftover temp files in the parent dir.
-    leftovers = list(tmp_path.glob(".omniscribe-batch-state.*.tmp"))
+    leftovers = list(tmp_path.glob(".panoscribe-batch-state.*.tmp"))
     assert leftovers == []
 
 
@@ -215,7 +215,7 @@ def test_save_state_uses_same_volume_tempfile(tmp_path: Path, monkeypatch) -> No
     """``mkstemp`` must be called with ``dir=path.parent`` to keep the temp
     on the same volume as the target (Windows ``os.replace`` constraint).
     """
-    import omniscribe.batch as batch_mod
+    import panoscribe.batch as batch_mod
 
     sf = tmp_path / "state.json"
     captured: dict[str, str] = {}
@@ -248,7 +248,7 @@ def test_state_load_non_integer_version_returns_none(
     """version field that int() rejects -> None + WARNING."""
     sf = tmp_path / "state.json"
     sf.write_text(json.dumps({"version": version_value, "items": []}), encoding="utf-8")
-    with caplog.at_level(logging.WARNING, logger="omniscribe.batch"):
+    with caplog.at_level(logging.WARNING, logger="panoscribe.batch"):
         assert load_state(sf) is None
     assert any("non-integer version" in r.message for r in caplog.records)
 
@@ -266,7 +266,7 @@ def test_state_load_shape_error_returns_none(
         "items": [{"status": "pending"}],  # missing "source" -> KeyError
     }
     sf.write_text(json.dumps(data), encoding="utf-8")
-    with caplog.at_level(logging.WARNING, logger="omniscribe.batch"):
+    with caplog.at_level(logging.WARNING, logger="panoscribe.batch"):
         assert load_state(sf) is None
     assert any("unexpected shape" in r.message for r in caplog.records)
 

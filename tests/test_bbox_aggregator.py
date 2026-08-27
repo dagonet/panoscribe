@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.ocr.bbox_aggregator.
+"""Unit tests for panoscribe.ocr.bbox_aggregator.
 
 ``aggregate_frame_bboxes`` groups same-line RapidOCR bounding boxes into one
 canonical caption per detected text region, in reading order. Pure helper —
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from omniscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
+from panoscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
 
 
 def _box(x_min: float, y_min: float, x_max: float, y_max: float) -> list[tuple[float, float]]:

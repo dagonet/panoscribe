@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.asr.whisper — all external boundaries mocked."""
+"""Unit tests for panoscribe.asr.whisper — all external boundaries mocked."""
 
 from __future__ import annotations
 
@@ -9,12 +9,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from omniscribe.asr.whisper import WhisperTranscriber
-from omniscribe.config import OmniScribeConfig
+from panoscribe.asr.whisper import WhisperTranscriber
+from panoscribe.config import PanoScribeConfig
 
 
-def _make_config() -> OmniScribeConfig:
-    return OmniScribeConfig(
+def _make_config() -> PanoScribeConfig:
+    return PanoScribeConfig(
         whisper_model="tiny",
         whisper_device="cpu",
         whisper_compute_type="int8",
@@ -31,8 +31,8 @@ def _fake_segment(
 
 def test_constructor_does_not_load_model() -> None:
     with (
-        patch("omniscribe.asr.whisper.WhisperModel") as mock_model_cls,
-        patch("omniscribe.asr.whisper.BatchedInferencePipeline") as mock_pipe_cls,
+        patch("panoscribe.asr.whisper.WhisperModel") as mock_model_cls,
+        patch("panoscribe.asr.whisper.BatchedInferencePipeline") as mock_pipe_cls,
     ):
         WhisperTranscriber(_make_config())
 
@@ -53,9 +53,9 @@ def test_transcribe_lazy_loads_and_wraps_model(tmp_path: Path) -> None:
     )
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel", return_value=fake_model) as mock_model_cls,
+        patch("panoscribe.asr.whisper.WhisperModel", return_value=fake_model) as mock_model_cls,
         patch(
-            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            "panoscribe.asr.whisper.BatchedInferencePipeline",
             return_value=fake_pipeline,
         ) as mock_pipe_cls,
     ):
@@ -97,9 +97,9 @@ def test_transcribe_consumes_generator_into_segments(tmp_path: Path) -> None:
     )
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.WhisperModel"),
         patch(
-            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            "panoscribe.asr.whisper.BatchedInferencePipeline",
             return_value=fake_pipeline,
         ),
     ):
@@ -124,9 +124,9 @@ def test_ensure_loaded_probes_cuda_when_device_is_cuda(tmp_path: Path) -> None:
     fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
 
     with (
-        patch("omniscribe.asr.whisper.require_cuda_for_asr") as mock_probe,
-        patch("omniscribe.asr.whisper.WhisperModel"),
-        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+        patch("panoscribe.asr.whisper.require_cuda_for_asr") as mock_probe,
+        patch("panoscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
     ):
         WhisperTranscriber(config).transcribe(audio)
 
@@ -134,7 +134,7 @@ def test_ensure_loaded_probes_cuda_when_device_is_cuda(tmp_path: Path) -> None:
 
 
 def test_ensure_loaded_raises_before_model_load_when_cuda_absent(tmp_path: Path) -> None:
-    from omniscribe.errors import OmniScribeError
+    from panoscribe.errors import PanoScribeError
 
     config = _make_config().model_copy(update={"whisper_device": "cuda"})
     audio = tmp_path / "audio.wav"
@@ -142,11 +142,11 @@ def test_ensure_loaded_raises_before_model_load_when_cuda_absent(tmp_path: Path)
 
     with (
         patch(
-            "omniscribe.asr.whisper.require_cuda_for_asr",
-            side_effect=OmniScribeError("no CUDA"),
+            "panoscribe.asr.whisper.require_cuda_for_asr",
+            side_effect=PanoScribeError("no CUDA"),
         ),
-        patch("omniscribe.asr.whisper.WhisperModel") as mock_model_cls,
-        pytest.raises(OmniScribeError),
+        patch("panoscribe.asr.whisper.WhisperModel") as mock_model_cls,
+        pytest.raises(PanoScribeError),
     ):
         WhisperTranscriber(config).transcribe(audio)
 
@@ -162,9 +162,9 @@ def test_ensure_loaded_does_not_probe_cuda_when_device_is_cpu(tmp_path: Path) ->
     fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
 
     with (
-        patch("omniscribe.asr.whisper.require_cuda_for_asr") as mock_probe,
-        patch("omniscribe.asr.whisper.WhisperModel"),
-        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+        patch("panoscribe.asr.whisper.require_cuda_for_asr") as mock_probe,
+        patch("panoscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
     ):
         WhisperTranscriber(config).transcribe(audio)
 
@@ -180,9 +180,9 @@ def test_transcribe_passes_explicit_language(tmp_path: Path) -> None:
     fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="fr"))
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.WhisperModel"),
         patch(
-            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            "panoscribe.asr.whisper.BatchedInferencePipeline",
             return_value=fake_pipeline,
         ),
     ):
@@ -202,12 +202,12 @@ def test_transcribe_logs_info_before_model_init(
     fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel") as mock_model_cls,
+        patch("panoscribe.asr.whisper.WhisperModel") as mock_model_cls,
         patch(
-            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            "panoscribe.asr.whisper.BatchedInferencePipeline",
             return_value=fake_pipeline,
         ),
-        caplog.at_level(logging.INFO, logger="omniscribe.asr.whisper"),
+        caplog.at_level(logging.INFO, logger="panoscribe.asr.whisper"),
     ):
         WhisperTranscriber(_make_config()).transcribe(audio)
 
@@ -226,9 +226,9 @@ def test_transcribe_handles_segment_without_avg_logprob(tmp_path: Path) -> None:
     fake_pipeline.transcribe.return_value = (iter([bare_segment]), SimpleNamespace(language="en"))
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.WhisperModel"),
         patch(
-            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            "panoscribe.asr.whisper.BatchedInferencePipeline",
             return_value=fake_pipeline,
         ),
     ):
@@ -247,9 +247,9 @@ def test_transcribe_reuses_pipeline_across_calls(tmp_path: Path) -> None:
     fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel") as mock_model_cls,
+        patch("panoscribe.asr.whisper.WhisperModel") as mock_model_cls,
         patch(
-            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            "panoscribe.asr.whisper.BatchedInferencePipeline",
             return_value=fake_pipeline,
         ) as mock_pipe_cls,
     ):
@@ -275,8 +275,8 @@ def test_transcribe_passes_task_to_pipeline(tmp_path: Path) -> None:
     fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel"),
-        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+        patch("panoscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
     ):
         WhisperTranscriber(config).transcribe(audio)
 
@@ -297,8 +297,8 @@ def test_default_task_segment_language_is_detected(tmp_path: Path) -> None:
     )
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel"),
-        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+        patch("panoscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
     ):
         segments, detected_language = WhisperTranscriber(config).transcribe(audio)
 
@@ -320,8 +320,8 @@ def test_translate_task_passed_and_segment_language_en(tmp_path: Path) -> None:
     )
 
     with (
-        patch("omniscribe.asr.whisper.WhisperModel"),
-        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+        patch("panoscribe.asr.whisper.WhisperModel"),
+        patch("panoscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
     ):
         segments, detected_language = WhisperTranscriber(config).transcribe(audio)
 

@@ -1,10 +1,10 @@
-# OmniScribe — Implementation Plan
+# panoscribe — Implementation Plan
 
 > Extract **complete transcripts** from any video by combining speech recognition (ASR) with on-screen text extraction (OCR) — something existing tools don't do.
 
 ## The Problem
 
-Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, TokScript, etc.). But video creators — especially on TikTok, YouTube Shorts, and Instagram Reels — heavily rely on **on-screen text overlays**: instructions, captions, labels, commentary that is never spoken aloud. Existing tools miss all of it. OmniScribe combines both sources into a single, unified transcript.
+Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, TokScript, etc.). But video creators — especially on TikTok, YouTube Shorts, and Instagram Reels — heavily rely on **on-screen text overlays**: instructions, captions, labels, commentary that is never spoken aloud. Existing tools miss all of it. panoscribe combines both sources into a single, unified transcript.
 
 ## Architecture Overview
 
@@ -30,7 +30,7 @@ Input (video URL or local file)
 | **Video processing** | ffmpeg + OpenCV | Audio extraction, frame sampling, image preprocessing |
 | **Text dedup/merge** | Custom + optional LLM | Fuzzy matching (rapidfuzz), timestamp alignment, optional local LLM for cleanup |
 | **CLI framework** | [Typer](https://github.com/fastapi/typer) | Clean CLI with auto-generated help, type hints |
-| **HTTP API (optional)** | FastAPI + uvicorn (`[api]` extra) | Job-based server (`omniscribe serve`) wrapping the same pipeline |
+| **HTTP API (optional)** | FastAPI + uvicorn (`[api]` extra) | Job-based server (`panoscribe serve`) wrapping the same pipeline |
 | **Config** | pydantic-settings | Typed configuration with env var support |
 | **Package management** | uv | Fast, modern Python package manager |
 
@@ -45,7 +45,7 @@ Input (video URL or local file)
 ## Project Structure
 
 ```
-omniscribe/
+panoscribe/
 ├── pyproject.toml              # Project config (uv), extras: [photo] [llm] [api] [dev]
 ├── README.md
 ├── LICENSE                     # MIT
@@ -54,14 +54,14 @@ omniscribe/
 ├── Dockerfile                  # CUDA runtime image (models pre-downloaded, [photo] bundled)
 │
 ├── src/
-│   └── omniscribe/
+│   └── panoscribe/
 │       ├── __init__.py         # __version__
 │       ├── cli.py              # Typer CLI (transcribe / transcribe-many / serve) + shared option aliases
 │       ├── pipeline.py         # process_single_video orchestration + output-format resolution (programmatic entry point)
-│       ├── config.py           # pydantic-settings config (OMNI_* env vars)
+│       ├── config.py           # pydantic-settings config (PANO_* env vars)
 │       ├── audio.py            # ffmpeg audio extraction + ffprobe duration
 │       ├── batch.py            # transcribe-many state/resume + URL-list expansion helpers
-│       ├── errors.py           # OmniScribeError (intended future hierarchy documented in docstring)
+│       ├── errors.py           # PanoScribeError (intended future hierarchy documented in docstring)
 │       ├── output.py           # Transcript models + merge_channels + writers + write_transcript registry
 │       │
 │       ├── acquire/
@@ -71,7 +71,7 @@ omniscribe/
 │       │   └── playlist.py     # Playlist/channel auto-expansion (extract_flat)
 │       │
 │       ├── api/
-│       │   └── server.py       # FastAPI job server (omniscribe serve, [api] extra)
+│       │   └── server.py       # FastAPI job server (panoscribe serve, [api] extra)
 │       │
 │       ├── asr/
 │       │   └── whisper.py      # faster-whisper transcription (+ Windows CUDA DLL shim)
@@ -109,7 +109,7 @@ omniscribe/
 │
 └── docs/
     ├── architecture.md         # Module map, pipeline flow, extension seams
-    ├── configuration.md        # Full OMNI_* field/env reference + precedence
+    ├── configuration.md        # Full PANO_* field/env reference + precedence
     ├── adding-platforms.md     # Guide for adding new platform profiles
     └── plans/                  # Historical sprint/phase plans (kept as project history)
 ```
@@ -130,10 +130,10 @@ omniscribe/
    - Batched inference pipeline
    - Return timestamped segments: `[{start, end, text, language, confidence}]`
 6. Basic `output/formatters.py` — plain text + JSON output
-7. CLI: `omniscribe transcribe <url_or_file> --output transcript.txt`
+7. CLI: `panoscribe transcribe <url_or_file> --output transcript.txt`
 8. Unit tests for downloader, platform detection, and ASR module
 
-**Deliverable:** `omniscribe transcribe https://tiktok.com/@user/video/123` → speech transcript
+**Deliverable:** `panoscribe transcribe https://tiktok.com/@user/video/123` → speech transcript
 
 ---
 
@@ -277,7 +277,7 @@ Merged output:
 | Phase 4 — Merge engine | Complete | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) and Sprint 4.2 (PR #5, `b2a89d6`) merged |
 | Phase 5 — Polish & extensibility | Complete | Sprints 5.1 (PR #6, `530902f`, doc trust-repair), 5.2 (PR #7, `db3e4b1`, CI/CD), 5.3 (PR #8, `3605a19`, doc/code drift), 5.4 (PR #26, `bf4ef74`, batch processing) merged; LLM cleanup shipped via Sprints 6.1 (PR #12), 6.2 (PR #14), and `681fa03` robustness; **Docker** shipped v0.1.2 |
 | Hardening & OCR-quality campaign (post-Phase-5) | Complete | Windows GPU without system CUDA (Sprints 7.2–7.4, v0.1.1); playlist/channel batch expansion (Sprint 8.1, v0.1.2); OCR language auto-resolution + caption-mask toggles (v0.1.3); eval-matching + aggregation fixes (Sprints 9.2–9.3, v0.1.4–v0.1.5); det/model diagnostic knobs (Sprints 9.4–9.5, v0.1.6); **photo-mode-native pipeline** + spatial dedup (Sprints 9.6–9.7, v0.1.7) — three-sample eval matrix at recall 1.0; Docker photo extra (v0.1.8) |
-| Health pass (post-v0.2.1) | Complete | **Architecture refactor** (Sprints 10.1, PRs #62–#65, v0.2.2): `omniscribe.pipeline` extraction, `OcrEngine` protocol, `write_transcript` registry, `docs/architecture+configuration+adding-platforms.md`; **coverage gate** (Sprint 10.2, PR #67, v0.2.3): CI enforces ≥95%, total 98.40%; **eval-samples infrastructure** (Sprint 10.3, PR #69, v0.2.4): manifest + fetch script + opt-in `eval` regression suite (sample-3 recall 1.0 re-verified live post-refactor) |
+| Health pass (post-v0.2.1) | Complete | **Architecture refactor** (Sprints 10.1, PRs #62–#65, v0.2.2): `panoscribe.pipeline` extraction, `OcrEngine` protocol, `write_transcript` registry, `docs/architecture+configuration+adding-platforms.md`; **coverage gate** (Sprint 10.2, PR #67, v0.2.3): CI enforces ≥95%, total 98.40%; **eval-samples infrastructure** (Sprint 10.3, PR #69, v0.2.4): manifest + fetch script + opt-in `eval` regression suite (sample-3 recall 1.0 re-verified live post-refactor) |
 | Phase 6 — Advanced features | Partially complete | **Speech translation** shipped v0.1.9 (Sprint 9.9, PR #53); **API mode** shipped v0.2.0 (Sprint 9.10, PR #55); playlist/channel support shipped earlier (Sprint 8.1, v0.1.2); remaining items open — see list below |
 
 ### Phase 6: Advanced Features
@@ -285,8 +285,8 @@ Merged output:
 Shipped:
 
 - **Playlist/channel support** (shipped Sprint 8.1, v0.1.2) — Transcribe all videos from a creator or playlist via `transcribe-many` auto-expansion
-- **Speech translation** (shipped Sprint 9.9, v0.1.9) — `--translate` / `OMNI_WHISPER_TASK` use Whisper's native `task=translate` (any source language → English speech). General any-to-any transcript translation remains open — see the backlog item below
-- **API mode** (shipped Sprint 9.10, v0.2.0) — `omniscribe serve` FastAPI job server (`[api]` extra); v1 is local-only (no auth/persistence)
+- **Speech translation** (shipped Sprint 9.9, v0.1.9) — `--translate` / `PANO_WHISPER_TASK` use Whisper's native `task=translate` (any source language → English speech). General any-to-any transcript translation remains open — see the backlog item below
+- **API mode** (shipped Sprint 9.10, v0.2.0) — `panoscribe serve` FastAPI job server (`[api]` extra); v1 is local-only (no auth/persistence)
 - **OCR detection-model A/B + `ocr_det_lang` knob** (Sprint 13, v0.2.6) — GPU A/B of the `en_PP-OCRv3_det_mobile` default vs `multi_PP-OCRv3_det_mobile` and `ch_PP-OCRv5_det_server` on the eval set. No detector beat the default under the pre-committed materiality bar (best was `multi` at +0.005 aggregate similarity / +0.036 recall on the one headroom sample, at 3–5× raw detections), so the default is retained and the multilingual detector is exposed as the opt-in `ocr_det_lang` override. The det-model registry gap is an upstream rapidocr limitation (only `ch_*` det ships for server/PP-OCRv5). Full matrix + rationale: `docs/plans/2026-07-16-ocr-det-ab.md`
 
 Still open, not scheduled:
@@ -303,7 +303,7 @@ Still open, not scheduled:
 - **Graceful audio-less video handling + download format hardening** — pipeline currently dies with raw "ffmpeg failed: Error opening output files: Invalid argument" when a video has no audio stream (extract_audio); TikTok bytevc1/1080p format variants download video-only despite yt-dlp metadata claiming aac. Wanted: skip ASR channel gracefully (like photo posts without audio) + `download_video` format selection that verifies/repairs audio (probe + fallback format)
 - **Frequency filter vs persistent real content** — on long videos with a persistent title banner (eval sample-6, 8:51), `filter_by_frequency` drops it as UI chrome (funnel 172→76 segments); persistent REAL content is indistinguishable from chrome by frequency alone. Needs scene-aware or position-aware exemption design. Evidence: eval sample-6 required-recall capped ~0.6 with title unmatched. The Sprint 13 det A/B confirmed the filter is the *dominant* cap (base + ch-v5 det both flat at recall 0.607; a higher-recall `multi` detector recovered only +0.036 — detector completeness is a secondary effect, not the fix); see `docs/plans/2026-07-16-ocr-det-ab.md`
 - **OCR language resolution for speech-less posts** — `ocr_language="auto"` resolves via the ASR-detected language, but music-only photo posts give Whisper nothing to detect (defaults to "en"), so German text gets the EN rec model and loses umlauts (measured: full-pipeline run of eval sample-5 emitted "WORUBER DU DIR" / "WIRD VOLLIG VERGESSEN SEIN"; the eval harness scores 1.0 only because it passes the GT language directly). Wanted: language fallback that doesn't depend on speech — e.g. script/diacritic detection on an OCR sample, platform/user hint, or config default per run
-- **OCR noise on text-heavy / busy backgrounds** — dense static backgrounds (diplomas or certificates on a wall, on-set documents, heavy channel-branding overlays) produce per-frame detections that vary slightly frame-to-frame, defeat cross-frame dedup, and survive the UI frequency filter. This is the inverse of the persistent-real-content item above (noise that should be dropped but isn't, vs. real content wrongly dropped). Documented in README "Known Limitations" with `--no-ocr` / `jq` / `OMNI_OCR_MIN_CONFIDENCE` workarounds; a real fix needs stability-aware detection (drop text whose bbox/geometry jitters across frames)
+- **OCR noise on text-heavy / busy backgrounds** — dense static backgrounds (diplomas or certificates on a wall, on-set documents, heavy channel-branding overlays) produce per-frame detections that vary slightly frame-to-frame, defeat cross-frame dedup, and survive the UI frequency filter. This is the inverse of the persistent-real-content item above (noise that should be dropped but isn't, vs. real content wrongly dropped). Documented in README "Known Limitations" with `--no-ocr` / `jq` / `PANO_OCR_MIN_CONFIDENCE` workarounds; a real fix needs stability-aware detection (drop text whose bbox/geometry jitters across frames)
 - **Strict-`<` `[BOTH]` merge boundary** — `merge_channels` merges speech↔OCR only within a 2-frame temporal overlap window; on-screen text appearing just before or just after the overlapping speech is emitted as separate `[ON-SCREEN]` rather than folded into `[BOTH]` (documented in CHANGELOG v0.1.0 known limitations). Wanted: a tolerance/grace window on the merge boundary
 - **Adaptive scene-change thresholding** — the OCR frame sampler uses a static scene-change threshold; a percentile-over-window (adaptive) threshold would sample more robustly across content with varying motion (deferred in `docs/plans/phase-2-5-scene-change.md`)
 - **Per-language / per-platform LLM-cleanup prompts** — the opt-in LLM cleanup uses a single English-default prompt; non-English content and platform-specific artifacts would benefit from templated prompts (deferred in `docs/plans/sprint-6-2-asr-punctuation-cleanup.md`)
@@ -321,21 +321,21 @@ Still open, not scheduled:
 
 ## Configuration Model
 
-See `src/omniscribe/config.py` (`OmniScribeConfig`) for the authoritative field list; the `OMNI_` env prefix maps `OMNI_WHISPER_MODEL` → `whisper_model` etc.
+See `src/panoscribe/config.py` (`PanoScribeConfig`) for the authoritative field list; the `PANO_` env prefix maps `PANO_WHISPER_MODEL` → `whisper_model` etc.
 
 ## CLI Interface
 
 ```bash
 # Basic usage — transcribe from URL (platform auto-detected)
-omniscribe transcribe https://www.tiktok.com/@user/video/123456
-omniscribe transcribe https://www.youtube.com/watch?v=abc123
-omniscribe transcribe https://www.instagram.com/reel/xyz789
+panoscribe transcribe https://www.tiktok.com/@user/video/123456
+panoscribe transcribe https://www.youtube.com/watch?v=abc123
+panoscribe transcribe https://www.instagram.com/reel/xyz789
 
 # From local file
-omniscribe transcribe ./video.mp4
+panoscribe transcribe ./video.mp4
 
 # With options
-omniscribe transcribe <url> \
+panoscribe transcribe <url> \
   --output transcript.json \
   --format json \               # json | txt | srt | md
   --language de \               # force ASR language (--language en, de, ...)
@@ -347,10 +347,10 @@ omniscribe transcribe <url> \
   --translate                   # speech → English (Whisper task=translate); OCR stays source-language
 
 # Batch — one URL / path / playlist per line, resume-on-failure
-omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
+panoscribe transcribe-many urls.txt --output-dir transcripts/ --format md
 
 # HTTP API server (requires the [api] extra)
-omniscribe serve --host 127.0.0.1 --port 8000
+panoscribe serve --host 127.0.0.1 --port 8000
 ```
 
 ## Key Technical Decisions
@@ -394,7 +394,7 @@ Strategy:
 
 ```toml
 [project]
-name = "omniscribe"
+name = "panoscribe"
 description = "Extract complete video transcripts — speech AND on-screen text"
 requires-python = ">=3.11"
 license = "MIT"
@@ -419,7 +419,7 @@ dev = [
 ]
 
 [project.scripts]
-omniscribe = "omniscribe.cli:app"
+panoscribe = "panoscribe.cli:app"
 ```
 
 ## Hardware Requirements
@@ -445,6 +445,6 @@ Still open:
 Resolved:
 
 - [x] Caching strategy for models — **lazy download on first use** locally (faster-whisper/RapidOCR default); the Docker image pre-downloads both at build time (v0.1.2).
-- [x] Platform profile format — **Python classes** (`src/omniscribe/platforms/`); settled since Phase 3, no YAML need has appeared.
+- [x] Platform profile format — **Python classes** (`src/panoscribe/platforms/`); settled since Phase 3, no YAML need has appeared.
 - [x] YouTube "chapters" mode — answered yes in principle; promoted to the Phase 6 backlog list above (not scheduled).
 - [x] Vision-LLM OCR backend — answered yes in principle; the `OcrEngine` protocol (v0.2.2) is the implementation seam. Promoted to the Phase 6 backlog list above (not scheduled — needs new eval samples first).

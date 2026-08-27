@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.ocr._text_match.
+"""Unit tests for panoscribe.ocr._text_match.
 
 Covers the two private helpers shared by the deduplicator and the
 frequency filter:
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from omniscribe.ocr._text_match import _canonical_key, _fuzzy_match
+from panoscribe.ocr._text_match import _canonical_key, _fuzzy_match
 
 
 class TestCanonicalKey:

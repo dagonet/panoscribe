@@ -1,9 +1,9 @@
-"""Unit tests for omniscribe.ocr.rapid_ocr — all external boundaries mocked.
+"""Unit tests for panoscribe.ocr.rapid_ocr — all external boundaries mocked.
 
 Patch targets live at the import site:
 
-* ``omniscribe.ocr.rapid_ocr.RapidOCR``
-* ``omniscribe.ocr.rapid_ocr.sample_frames``
+* ``panoscribe.ocr.rapid_ocr.RapidOCR``
+* ``panoscribe.ocr.rapid_ocr.sample_frames``
 
 A :class:`types.SimpleNamespace` stands in for :class:`rapidocr.utils.output.RapidOCROutput`
 — the engine reads only ``.boxes``, ``.txts`` and ``.scores``.
@@ -22,12 +22,12 @@ import pytest
 from rapidocr import LangRec, ModelType, OCRVersion
 from rapidocr.utils.typings import LangDet
 
-from omniscribe.config import OmniScribeConfig
-from omniscribe.errors import OmniScribeError
-from omniscribe.ocr.rapid_ocr import RapidOCREngine
+from panoscribe.config import PanoScribeConfig
+from panoscribe.errors import PanoScribeError
+from panoscribe.ocr.rapid_ocr import RapidOCREngine
 
 
-def _make_config(**overrides: object) -> OmniScribeConfig:
+def _make_config(**overrides: object) -> PanoScribeConfig:
     # Sprint 2.5: ``scene_change_enabled`` / ``scene_change_threshold`` are
     # omitted here on purpose — Pydantic supplies their defaults (True, 0.02).
     # Tests that patch ``sample_frames`` don't care about the values, and
@@ -40,7 +40,7 @@ def _make_config(**overrides: object) -> OmniScribeConfig:
         "ocr_device": "cuda",
     }
     base.update(overrides)
-    return OmniScribeConfig(**base)
+    return PanoScribeConfig(**base)
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -54,7 +54,7 @@ def _cuda_available() -> None:
     local stand-in for "a CUDA provider is present" — not a no-op of the
     probe itself, which keeps its own dedicated tests in ``test_device.py``.
     """
-    with patch("omniscribe.ocr.rapid_ocr.require_cuda_for_ocr"):
+    with patch("panoscribe.ocr.rapid_ocr.require_cuda_for_ocr"):
         yield
 
 
@@ -93,7 +93,7 @@ def _ocr_output(
 
 
 def test_constructor_does_not_load_engine() -> None:
-    with patch("omniscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls:
+    with patch("panoscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls:
         RapidOCREngine(_make_config())
         mock_rapid_cls.assert_not_called()
 
@@ -107,9 +107,9 @@ def test_extract_lazy_initializes_engine_once(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(0.0, _fake_frame()), (1.0, _fake_frame())]),
         ),
     ):
@@ -129,9 +129,9 @@ def test_extract_reuses_engine_across_calls(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             side_effect=[iter([]), iter([])],
         ),
     ):
@@ -151,8 +151,8 @@ def test_init_params_for_cuda_device(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -173,8 +173,8 @@ def test_init_params_for_cpu_device(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -189,9 +189,9 @@ def test_ensure_loaded_probes_cuda_when_device_is_cuda(tmp_path: Path) -> None:
     video.write_bytes(b"fake")
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.require_cuda_for_ocr") as mock_probe,
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()),
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.require_cuda_for_ocr") as mock_probe,
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -205,11 +205,11 @@ def test_ensure_loaded_raises_before_model_load_when_cuda_absent(tmp_path: Path)
 
     with (
         patch(
-            "omniscribe.ocr.rapid_ocr.require_cuda_for_ocr",
-            side_effect=OmniScribeError("no CUDA"),
+            "panoscribe.ocr.rapid_ocr.require_cuda_for_ocr",
+            side_effect=PanoScribeError("no CUDA"),
         ),
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls,
-        pytest.raises(OmniScribeError),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls,
+        pytest.raises(PanoScribeError),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -222,9 +222,9 @@ def test_ensure_loaded_does_not_probe_cuda_when_device_is_cpu(tmp_path: Path) ->
     video.write_bytes(b"fake")
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.require_cuda_for_ocr") as mock_probe,
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()),
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.require_cuda_for_ocr") as mock_probe,
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -243,9 +243,9 @@ def test_extract_filters_below_confidence_threshold(tmp_path: Path) -> None:
     )
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(2.5, _fake_frame())]),
         ),
     ):
@@ -264,9 +264,9 @@ def test_extract_handles_empty_frame_result(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(0.0, _fake_frame()), (1.0, _fake_frame())]),
         ),
     ):
@@ -287,9 +287,9 @@ def test_extract_segment_fields(tmp_path: Path) -> None:
     )
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(3.75, _fake_frame())]),
         ),
     ):
@@ -316,12 +316,12 @@ def test_extract_logs_info_before_first_init(
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             side_effect=[iter([]), iter([])],
         ),
-        caplog.at_level(logging.INFO, logger="omniscribe.ocr.rapid_ocr"),
+        caplog.at_level(logging.INFO, logger="panoscribe.ocr.rapid_ocr"),
     ):
         ocr = RapidOCREngine(config)
         ocr.extract(video)
@@ -374,7 +374,7 @@ class TestResolveOCRLanguage:
     def test_resolves_to_expected_langrec(
         ocr_lang: str, detected: str | None, expected: str
     ) -> None:
-        from omniscribe.ocr.rapid_ocr import _resolve_ocr_language
+        from panoscribe.ocr.rapid_ocr import _resolve_ocr_language
 
         result = _resolve_ocr_language(ocr_lang, detected_language=detected)
         assert result.value == expected
@@ -382,7 +382,7 @@ class TestResolveOCRLanguage:
     @staticmethod
     def test_auto_with_unmapped_detected_falls_back_to_en(caplog) -> None:
         """When detected language has no mapping, fall back to en with warning."""
-        from omniscribe.ocr.rapid_ocr import _resolve_ocr_language
+        from panoscribe.ocr.rapid_ocr import _resolve_ocr_language
 
         result = _resolve_ocr_language("auto", detected_language="xx")
         assert result.value == "en"
@@ -393,7 +393,7 @@ class TestResolveOCRLanguage:
         """Explicit unmapped ISO code falls back to en with warning.
         (Config validator rejects unmapped values, but _resolve_ocr_language
         handles them defensively.)"""
-        from omniscribe.ocr.rapid_ocr import _resolve_ocr_language
+        from panoscribe.ocr.rapid_ocr import _resolve_ocr_language
 
         result = _resolve_ocr_language("xx")
         assert result.value == "en"
@@ -408,7 +408,7 @@ def test_extract_excludes_auto_caption_zones_when_masking_disabled(
 ) -> None:
     """When ocr_mask_auto_captions=False, mask_zones receives only
     ui_exclusion_zones, not auto_caption_zones."""
-    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+    from panoscribe.platforms.tiktok import TIKTOK_PROFILE
 
     config = _make_config(ui_filter_enabled=True, ocr_mask_auto_captions=False)
     video = tmp_path / "v.mp4"
@@ -418,12 +418,12 @@ def test_extract_excludes_auto_caption_zones_when_masking_disabled(
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(0.0, _fake_frame())]),
         ),
-        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+        patch("panoscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
     ):
         mock_mask.side_effect = lambda gray, zones: gray
         RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
@@ -433,9 +433,9 @@ def test_extract_excludes_auto_caption_zones_when_masking_disabled(
     assert tuple(zones) == TIKTOK_PROFILE.ui_exclusion_zones
 
 
-def test_extract_wraps_engine_init_failure_as_omniscribe_error(tmp_path: Path) -> None:
+def test_extract_wraps_engine_init_failure_as_panoscribe_error(tmp_path: Path) -> None:
     """RapidOCR constructor failure (e.g. missing CUDA provider, broken ONNX model)
-    must surface as ``OmniScribeError`` so the CLI's ``except`` handler can catch it
+    must surface as ``PanoScribeError`` so the CLI's ``except`` handler can catch it
     and render a clean single-line error instead of a traceback.
     """
     config = _make_config()
@@ -444,11 +444,11 @@ def test_extract_wraps_engine_init_failure_as_omniscribe_error(tmp_path: Path) -
 
     with (
         patch(
-            "omniscribe.ocr.rapid_ocr.RapidOCR",
+            "panoscribe.ocr.rapid_ocr.RapidOCR",
             side_effect=RuntimeError("CUDAExecutionProvider not available"),
         ),
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
-        pytest.raises(OmniScribeError, match="Failed to initialize RapidOCR"),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        pytest.raises(PanoScribeError, match="Failed to initialize RapidOCR"),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -456,7 +456,7 @@ def test_extract_wraps_engine_init_failure_as_omniscribe_error(tmp_path: Path) -
 def test_extract_calls_mask_zones_when_profile_and_ui_filter_enabled(tmp_path: Path) -> None:
     """With a TikTok profile + ui_filter_enabled=True, mask_zones is called per frame
     with the profile's exclusion zones."""
-    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+    from panoscribe.platforms.tiktok import TIKTOK_PROFILE
 
     config = _make_config(ui_filter_enabled=True)
     video = tmp_path / "v.mp4"
@@ -466,12 +466,12 @@ def test_extract_calls_mask_zones_when_profile_and_ui_filter_enabled(tmp_path: P
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(0.0, _fake_frame()), (1.0, _fake_frame())]),
         ),
-        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+        patch("panoscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
     ):
         mock_mask.side_effect = lambda gray, zones: gray  # pass through
         RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
@@ -486,7 +486,7 @@ def test_extract_calls_mask_zones_when_profile_and_ui_filter_enabled(tmp_path: P
 def test_extract_does_not_call_mask_zones_when_ui_filter_disabled(tmp_path: Path) -> None:
     """With ui_filter_enabled=False, mask_zones is never called even if a profile
     is supplied."""
-    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+    from panoscribe.platforms.tiktok import TIKTOK_PROFILE
 
     config = _make_config(ui_filter_enabled=False)
     video = tmp_path / "v.mp4"
@@ -496,12 +496,12 @@ def test_extract_does_not_call_mask_zones_when_ui_filter_disabled(tmp_path: Path
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(0.0, _fake_frame()), (1.0, _fake_frame())]),
         ),
-        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+        patch("panoscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
     ):
         RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
 
@@ -521,9 +521,9 @@ def test_extract_passes_scene_change_kwargs_to_sampler(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([]),
         ) as mock_sampler,
     ):
@@ -553,9 +553,9 @@ def test_extract_records_last_frame_count(tmp_path: Path) -> None:
     ]
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter(sampled_frames),
         ),
     ):
@@ -585,8 +585,8 @@ def test_params_wiring_with_det_overrides(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -610,8 +610,8 @@ def test_params_wiring_with_det_defaults_not_present(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -652,9 +652,9 @@ def test_extract_aggregates_same_line_bboxes_into_one_segment(tmp_path: Path) ->
     engine_mock.return_value = same_line_result
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
         patch(
-            "omniscribe.ocr.rapid_ocr.sample_frames",
+            "panoscribe.ocr.rapid_ocr.sample_frames",
             return_value=iter([(2.5, _fake_frame())]),
         ),
     ):
@@ -692,8 +692,8 @@ def test_params_wiring_with_model_overrides(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -731,8 +731,8 @@ def test_server_det_forces_ch_det_lang(tmp_path: Path, override_kwargs: dict[str
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -752,8 +752,8 @@ def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -790,8 +790,8 @@ def test_det_lang_override_sets_det_lang_type(
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -814,8 +814,8 @@ def test_det_lang_override_yields_to_server_ch_force(tmp_path: Path) -> None:
     engine_mock.return_value = _ocr_output(texts=(), scores=())
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
     ):
         RapidOCREngine(config).extract(video)
 
@@ -829,7 +829,7 @@ def test_det_lang_override_yields_to_server_ch_force(tmp_path: Path) -> None:
 
 def test_read_image_unicode_filename(tmp_path: Path) -> None:
     """_read_image reads a tiny valid image from a path with emoji/umlaut chars."""
-    from omniscribe.ocr.rapid_ocr import _read_image
+    from panoscribe.ocr.rapid_ocr import _read_image
 
     # Create a tiny 10x10 black image and encode as JPEG.
     img = np.zeros((10, 10, 3), dtype=np.uint8)
@@ -847,7 +847,7 @@ def test_read_image_unicode_filename(tmp_path: Path) -> None:
 
 def test_read_image_nonexistent_returns_none(tmp_path: Path) -> None:
     """_read_image returns None for a nonexistent file path."""
-    from omniscribe.ocr.rapid_ocr import _read_image
+    from panoscribe.ocr.rapid_ocr import _read_image
 
     result = _read_image(tmp_path / "does_not_exist.jpg")
     assert result is None
@@ -855,7 +855,7 @@ def test_read_image_nonexistent_returns_none(tmp_path: Path) -> None:
 
 def test_read_image_corrupt_file_returns_none(tmp_path: Path) -> None:
     """_read_image returns None for a corrupt/invalid image file."""
-    from omniscribe.ocr.rapid_ocr import _read_image
+    from panoscribe.ocr.rapid_ocr import _read_image
 
     corrupt = tmp_path / "corrupt.jpg"
     corrupt.write_bytes(b"this is not a valid image file")
@@ -865,7 +865,7 @@ def test_read_image_corrupt_file_returns_none(tmp_path: Path) -> None:
 
 def test_read_image_empty_file_returns_none(tmp_path: Path) -> None:
     """_read_image returns None for an empty file (buf.size == 0 guard)."""
-    from omniscribe.ocr.rapid_ocr import _read_image
+    from panoscribe.ocr.rapid_ocr import _read_image
 
     empty = tmp_path / "empty.jpg"
     empty.write_bytes(b"")
@@ -889,8 +889,8 @@ def test_extract_images_default_index_timestamps(tmp_path: Path) -> None:
         images.append(p)
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
     ):
         ocr = RapidOCREngine(config)
         segments = ocr.extract_images(images)
@@ -913,8 +913,8 @@ def test_extract_images_explicit_timestamps(tmp_path: Path) -> None:
     ts = [(10.0, 15.0), (15.0, 20.0)]
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
     ):
         ocr = RapidOCREngine(config)
         segments = ocr.extract_images(images, timestamps=ts)
@@ -937,8 +937,8 @@ def test_extract_images_skips_unreadable(tmp_path: Path) -> None:
     read_results = [_fake_frame(), None, _fake_frame()]
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr._read_image", side_effect=read_results),
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr._read_image", side_effect=read_results),
     ):
         ocr = RapidOCREngine(config)
         segments = ocr.extract_images(images)
@@ -949,7 +949,7 @@ def test_extract_images_skips_unreadable(tmp_path: Path) -> None:
 
 def test_extract_images_no_masking(tmp_path: Path) -> None:
     """extract_images does NOT call mask_zones even with a profile that has zones."""
-    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+    from panoscribe.platforms.tiktok import TIKTOK_PROFILE
 
     config = _make_config(ui_filter_enabled=True)
     engine_mock = MagicMock()
@@ -959,9 +959,9 @@ def test_extract_images_no_masking(tmp_path: Path) -> None:
     img.write_bytes(b"fake")
 
     with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
-        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
+        patch("panoscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
     ):
         ocr = RapidOCREngine(config, profile=TIKTOK_PROFILE)
         ocr.extract_images([img])

@@ -1,4 +1,4 @@
-"""Unit tests for omniscribe.eval.scoring.
+"""Unit tests for panoscribe.eval.scoring.
 
 CI-safe: no GPU, no external dependencies beyond Python + rapidfuzz.
 """
@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from omniscribe.eval.models import ExpectedText, GroundTruth
-from omniscribe.eval.scoring import score_video
-from omniscribe.output import TranscriptSegment
+from panoscribe.eval.models import ExpectedText, GroundTruth
+from panoscribe.eval.scoring import score_video
+from panoscribe.output import TranscriptSegment
 
 
 def _seg(text: str, start: float = 0.0, end: float | None = None) -> TranscriptSegment:

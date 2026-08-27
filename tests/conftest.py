@@ -1,6 +1,6 @@
 """Shared pytest fixtures.
 
-Patch targets live at the *import site*, e.g. ``omniscribe.acquire.downloader.YoutubeDL``,
+Patch targets live at the *import site*, e.g. ``panoscribe.acquire.downloader.YoutubeDL``,
 never at the library's own module (``yt_dlp.YoutubeDL``). Patching at the import site
 captures the bound name inside the module under test; patching at the library path leaves
 the already-bound alias untouched and the real class still runs.
@@ -23,21 +23,21 @@ from unittest.mock import MagicMock
 # disables color per no-color.org — bold/dim persist — so the reliable switch is
 # ``TERM=dumb``, which Rich treats as a non-styling terminal. ``COLUMNS=200``
 # stops panel borders from wrapping long flag names across lines. Must run at
-# module import (before ``from omniscribe.cli import app``) because Rich caches
+# module import (before ``from panoscribe.cli import app``) because Rich caches
 # terminal detection when the Typer app is first constructed.
 os.environ["TERM"] = "dumb"
 os.environ["COLUMNS"] = "200"
 
 import pytest
 
-from omniscribe.config import OmniScribeConfig
+from panoscribe.config import PanoScribeConfig
 
 
 @pytest.fixture
-def tmp_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> OmniScribeConfig:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni-tmp"))
-    monkeypatch.delenv("OMNI_WHISPER_LANGUAGE", raising=False)
-    return OmniScribeConfig()
+def tmp_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> PanoScribeConfig:
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni-tmp"))
+    monkeypatch.delenv("PANO_WHISPER_LANGUAGE", raising=False)
+    return PanoScribeConfig()
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ def mock_ollama_client() -> MagicMock:
     - ``chat()`` returns the dict shape ollama-python emits:
       ``{"message": {"content": "cleaned text"}}``.
 
-    Patch at the import site: ``omniscribe.merge.llm_cleanup.Client``.
+    Patch at the import site: ``panoscribe.merge.llm_cleanup.Client``.
     """
     mock = MagicMock()
     mock.list.return_value = SimpleNamespace(models=[SimpleNamespace(model="llama3.2:3b")])

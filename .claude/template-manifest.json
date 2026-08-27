@@ -4,9 +4,9 @@
   "templateRepo": "/g/git/claude-code-toolkit",
   "lastSynced": "59ec37c",
   "placeholders": {
-    "PROJECT_NAME": "OmniScribe",
-    "PROJECT_NAME_LOWER": "omniscribe",
-    "REPO_URL": "https://github.com/dagonet/OmniScribe",
+    "PROJECT_NAME": "panoscribe",
+    "PROJECT_NAME_LOWER": "panoscribe",
+    "REPO_URL": "https://github.com/dagonet/panoscribe",
     "PYTHON_VERSION": "3.11",
     "BUILD_COMMAND": "uv run pytest",
     "TEST_COMMAND": "uv run pytest",

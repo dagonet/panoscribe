@@ -1,6 +1,6 @@
-"""Unit tests for omniscribe.ocr.frame_sampler.
+"""Unit tests for panoscribe.ocr.frame_sampler.
 
-All OpenCV I/O is mocked at the import site (``omniscribe.ocr.frame_sampler.cv2.VideoCapture``)
+All OpenCV I/O is mocked at the import site (``panoscribe.ocr.frame_sampler.cv2.VideoCapture``)
 so the suite never touches a real video file and never requires an OpenCV build with
 codec support on CI.
 """
@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from omniscribe.errors import OmniScribeError
-from omniscribe.ocr.frame_sampler import sample_frames
+from panoscribe.errors import PanoScribeError
+from panoscribe.ocr.frame_sampler import sample_frames
 
 
 def _make_fake_capture(
@@ -58,7 +58,7 @@ def test_sample_frames_yields_expected_timestamps_at_1fps(tmp_path: Path) -> Non
     video.write_bytes(b"fake")
     cap = _make_fake_capture(native_fps=30.0, frame_count=90)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0, scene_change_enabled=False))
 
     timestamps = [t for t, _ in samples]
@@ -74,23 +74,23 @@ def test_sample_frames_raises_when_capture_fails_to_open(tmp_path: Path) -> None
     cap = _make_fake_capture(native_fps=30.0, frame_count=0, is_opened=False)
 
     with (
-        patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
-        pytest.raises(OmniScribeError),
+        patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
+        pytest.raises(PanoScribeError),
     ):
         list(sample_frames(video, fps=1.0))
 
 
 def test_sample_frames_raises_when_native_fps_is_zero(tmp_path: Path) -> None:
     """A video that reports ``CAP_PROP_FPS == 0.0`` would cause a divide-by-zero
-    in the stride calculation; the guard must surface it as ``OmniScribeError``.
+    in the stride calculation; the guard must surface it as ``PanoScribeError``.
     """
     video = tmp_path / "v.mp4"
     video.write_bytes(b"fake")
     cap = _make_fake_capture(native_fps=0.0, frame_count=10)
 
     with (
-        patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
-        pytest.raises(OmniScribeError, match="non-positive native FPS"),
+        patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
+        pytest.raises(PanoScribeError, match="non-positive native FPS"),
     ):
         list(sample_frames(video, fps=1.0))
 
@@ -106,7 +106,7 @@ def test_sample_frames_releases_capture_on_exception(tmp_path: Path) -> None:
     cap.read.side_effect = _boom
 
     with (
-        patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
+        patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
         pytest.raises(RuntimeError),
     ):
         list(sample_frames(video, fps=1.0))
@@ -122,7 +122,7 @@ def test_sample_frames_stride_for_low_fps(tmp_path: Path) -> None:
     # 180 frames / stride 60 -> frame indices 0, 60, 120 -> timestamps 0.0, 2.0, 4.0.
     cap = _make_fake_capture(native_fps=30.0, frame_count=180)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=0.5, scene_change_enabled=False))
 
     timestamps = [t for t, _ in samples]
@@ -138,7 +138,7 @@ def test_sample_frames_stride_at_least_one_when_requested_exceeds_native(
     # Requested fps > native fps -> stride must clamp to 1, yielding every frame.
     cap = _make_fake_capture(native_fps=2.0, frame_count=3)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=10.0, scene_change_enabled=False))
 
     assert [t for t, _ in samples] == [0.0, 0.5, 1.0]
@@ -150,7 +150,7 @@ def test_sample_frames_passes_string_path_to_videocapture(tmp_path: Path) -> Non
     video.write_bytes(b"fake")
     cap = _make_fake_capture(native_fps=30.0, frame_count=1)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap) as mock_vc:
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap) as mock_vc:
         list(sample_frames(video, fps=1.0))
 
     (arg,), _ = mock_vc.call_args
@@ -200,7 +200,7 @@ def _capture_from_frames(native_fps: float, frames: list[np.ndarray]) -> MagicMo
 
 def test_frame_difference_range_zero_and_saturated() -> None:
     """``_frame_difference`` returns 0.0 for identical, 1.0 for full-saturation."""
-    from omniscribe.ocr.frame_sampler import _frame_difference
+    from panoscribe.ocr.frame_sampler import _frame_difference
 
     a = np.zeros((4, 4), dtype=np.uint8)
     b = np.zeros((4, 4), dtype=np.uint8)
@@ -212,7 +212,7 @@ def test_frame_difference_range_zero_and_saturated() -> None:
 
 def test_frame_difference_midrange_value() -> None:
     """Mean-absdiff of abs(50 - 200) over a constant patch = 150 / 255 ~ 0.588."""
-    from omniscribe.ocr.frame_sampler import _frame_difference
+    from panoscribe.ocr.frame_sampler import _frame_difference
 
     a = np.full((4, 4), 50, dtype=np.uint8)
     b = np.full((4, 4), 200, dtype=np.uint8)
@@ -221,7 +221,7 @@ def test_frame_difference_midrange_value() -> None:
 
 def test_downscale_gray_shape_is_single_channel_and_bounded() -> None:
     """1080p BGR input → single-channel grayscale with longest edge ≤ 320."""
-    from omniscribe.ocr.frame_sampler import _downscale_gray
+    from panoscribe.ocr.frame_sampler import _downscale_gray
 
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
     small = _downscale_gray(frame)
@@ -236,7 +236,7 @@ def test_scene_change_disabled_yields_every_strided_frame(tmp_path: Path) -> Non
     frames = [_frame(100), _frame(100), _frame(100)]
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0, scene_change_enabled=False))
 
     assert [t for t, _ in samples] == [0.0, 1.0, 2.0]
@@ -249,7 +249,7 @@ def test_scene_change_first_frame_always_yields(tmp_path: Path) -> None:
     frames = [_frame(100), _frame(100), _frame(100)]
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     assert [t for t, _ in samples] == [0.0]
@@ -262,7 +262,7 @@ def test_scene_change_step_change_yields_both_segments(tmp_path: Path) -> None:
     frames = [_frame(50)] * 5 + [_frame(200)] * 5
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     assert [t for t, _ in samples] == [0.0, 5.0]
@@ -285,7 +285,7 @@ def test_scene_change_gradient_drift_forces_yield_via_max_gap(tmp_path: Path) ->
     frames = [_frame(100)] * 60
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     timestamps = [t for t, _ in samples]
@@ -307,7 +307,7 @@ def test_scene_change_end_of_video_force_yields_nonzero_trailing(tmp_path: Path)
     frames = [_frame(100)] * 3 + [_frame(101)]
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     timestamps = [t for t, _ in samples]
@@ -324,7 +324,7 @@ def test_scene_change_end_of_video_skips_pure_duplicate_trailing(tmp_path: Path)
     frames = [_frame(100)] * 4
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     assert [t for t, _ in samples] == [0.0]
@@ -338,7 +338,7 @@ def test_scene_change_ten_hard_cut_slides_yield_ten_frames(tmp_path: Path) -> No
     frames = [_frame(30), _frame(220)] * 5
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     assert len(samples) == 10
@@ -351,7 +351,7 @@ def test_scene_change_yielded_frame_is_original_bgr_not_downscaled(tmp_path: Pat
     frames = [_frame(100), _frame(200)]
     cap = _capture_from_frames(native_fps=1.0, frames=frames)
 
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
         samples = list(sample_frames(video, fps=1.0))
 
     assert len(samples) == 2

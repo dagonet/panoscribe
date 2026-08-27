@@ -694,74 +694,6 @@ wheels = [
 ]
 
 [[package]]
-name = "omniscribe"
-version = "0.3.0"
-source = { editable = "." }
-dependencies = [
-    { name = "faster-whisper" },
-    { name = "numpy" },
-    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'" },
-    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'" },
-    { name = "nvidia-cufft-cu12", marker = "sys_platform == 'win32'" },
-    { name = "onnxruntime-gpu", marker = "(platform_machine == 'AMD64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'x86_64' and sys_platform == 'win32')" },
-    { name = "opencv-python-headless" },
-    { name = "pydantic-settings" },
-    { name = "rapidfuzz" },
-    { name = "rapidocr" },
-    { name = "rich" },
-    { name = "typer" },
-    { name = "yt-dlp" },
-]
-
-[package.optional-dependencies]
-api = [
-    { name = "fastapi" },
-    { name = "uvicorn" },
-]
-dev = [
-    { name = "httpx" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-llm = [
-    { name = "ollama" },
-]
-photo = [
-    { name = "gallery-dl" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
-    { name = "faster-whisper", specifier = ">=1.1.0" },
-    { name = "gallery-dl", marker = "extra == 'photo'", specifier = ">=1.30" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
-    { name = "numpy", specifier = ">=1.26,<3.0" },
-    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
-    { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
-    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'", specifier = ">=9,<10" },
-    { name = "nvidia-cufft-cu12", marker = "sys_platform == 'win32'", specifier = ">=11,<12" },
-    { name = "ollama", marker = "extra == 'llm'", specifier = ">=0.4" },
-    { name = "onnxruntime-gpu", marker = "(platform_machine == 'AMD64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'x86_64' and sys_platform == 'win32')", specifier = ">=1.20,<2.0" },
-    { name = "opencv-python-headless", specifier = ">=4.9,<5.0" },
-    { name = "pydantic-settings", specifier = ">=2.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "rapidfuzz", specifier = ">=3.9,<4.0" },
-    { name = "rapidocr", specifier = ">=3.8,<4.0" },
-    { name = "rich", specifier = ">=13.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
-    { name = "typer", specifier = ">=0.13" },
-    { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.30" },
-    { name = "yt-dlp", specifier = ">=2024.0" },
-]
-provides-extras = ["photo", "llm", "api", "dev"]
-
-[[package]]
 name = "onnxruntime"
 version = "1.24.4"
 source = { registry = "https://pypi.org/simple" }
@@ -847,6 +779,74 @@ sdist = { url = "https://files.pythonhosted.org/packages/df/de/0d2b39fb4af88a025
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/c2/920ef838e2f0028c8262f16101ec09ebd5969864e5a64c4c05fad0617c56/packaging-26.1-py3-none-any.whl", hash = "sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f", size = 95831, upload-time = "2026-04-14T21:12:47.56Z" },
 ]
+
+[[package]]
+name = "panoscribe"
+version = "0.3.0"
+source = { editable = "." }
+dependencies = [
+    { name = "faster-whisper" },
+    { name = "numpy" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'" },
+    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'" },
+    { name = "nvidia-cufft-cu12", marker = "sys_platform == 'win32'" },
+    { name = "onnxruntime-gpu", marker = "(platform_machine == 'AMD64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'x86_64' and sys_platform == 'win32')" },
+    { name = "opencv-python-headless" },
+    { name = "pydantic-settings" },
+    { name = "rapidfuzz" },
+    { name = "rapidocr" },
+    { name = "rich" },
+    { name = "typer" },
+    { name = "yt-dlp" },
+]
+
+[package.optional-dependencies]
+api = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
+dev = [
+    { name = "httpx" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+llm = [
+    { name = "ollama" },
+]
+photo = [
+    { name = "gallery-dl" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
+    { name = "faster-whisper", specifier = ">=1.1.0" },
+    { name = "gallery-dl", marker = "extra == 'photo'", specifier = ">=1.30" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
+    { name = "numpy", specifier = ">=1.26,<3.0" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
+    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'", specifier = ">=9,<10" },
+    { name = "nvidia-cufft-cu12", marker = "sys_platform == 'win32'", specifier = ">=11,<12" },
+    { name = "ollama", marker = "extra == 'llm'", specifier = ">=0.4" },
+    { name = "onnxruntime-gpu", marker = "(platform_machine == 'AMD64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or (platform_machine == 'x86_64' and sys_platform == 'win32')", specifier = ">=1.20,<2.0" },
+    { name = "opencv-python-headless", specifier = ">=4.9,<5.0" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
+    { name = "rapidfuzz", specifier = ">=3.9,<4.0" },
+    { name = "rapidocr", specifier = ">=3.8,<4.0" },
+    { name = "rich", specifier = ">=13.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
+    { name = "typer", specifier = ">=0.13" },
+    { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.30" },
+    { name = "yt-dlp", specifier = ">=2024.0" },
+]
+provides-extras = ["photo", "llm", "api", "dev"]
 
 [[package]]
 name = "pathspec"

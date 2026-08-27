@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Project renamed: OmniScribe → panoscribe.** `pip install omniscribe` installs an
+  unrelated project (*SoberMind Offline Session Transcriber*), so this project could
+  never be published under that name. `panoscribe` was verified free on PyPI, GitHub,
+  npm, Docker Hub, and `.com`/`.dev`/`.io` before adoption. This is a breaking change
+  for anyone running from source:
+  - Package/import: `omniscribe` → `panoscribe` (`src/omniscribe/` → `src/panoscribe/`)
+  - CLI command: `omniscribe` → `panoscribe`
+  - Environment variable prefix: `OMNI_*` → `PANO_*` (e.g. `OMNI_WHISPER_DEVICE` →
+    `PANO_WHISPER_DEVICE`)
+  - `pip install panoscribe` replaces `pip install omniscribe`
+  See the README "Renamed from OmniScribe" section for the full migration note.
+
 ## [0.3.0] - 2026-08-26
 
 ### Added

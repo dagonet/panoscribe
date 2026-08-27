@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from omniscribe.config import OmniScribeConfig
-from omniscribe.eval.models import GroundTruth
-from omniscribe.eval.scoring import score_video
-from omniscribe.ocr.rapid_ocr import RapidOCREngine
-from omniscribe.platforms.registry import resolve_profile
+from panoscribe.config import PanoScribeConfig
+from panoscribe.eval.models import GroundTruth
+from panoscribe.eval.scoring import score_video
+from panoscribe.ocr.rapid_ocr import RapidOCREngine
+from panoscribe.platforms.registry import resolve_profile
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "eval"
 
@@ -89,7 +89,7 @@ def test_eval_sample_baseline(sample: dict) -> None:
         pytest.skip(f"Ground truth not found: {gt_path}")
 
     gt = GroundTruth.model_validate_json(gt_path.read_text(encoding="utf-8"))
-    config = OmniScribeConfig(ocr_language=sample["language"])
+    config = PanoScribeConfig(ocr_language=sample["language"])
     profile = resolve_profile(config, str(sample.get("video_path") or sample.get("slides_dir")))
 
     ocr_engine = RapidOCREngine(config, profile=profile)

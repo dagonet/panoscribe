@@ -79,7 +79,7 @@ def _already_downloaded(sample: dict) -> bool:
 def _download_photo(sample: dict) -> None:
     """Download a PHOTO post via gallery-dl."""
     try:
-        from omniscribe.acquire.photo import download_photo_post
+        from panoscribe.acquire.photo import download_photo_post
     except ImportError:
         print(
             "The '[photo]' extra is required for photo samples. "
@@ -103,7 +103,7 @@ def _download_photo(sample: dict) -> None:
 
 def _download_video(sample: dict) -> None:
     """Download a VIDEO via yt-dlp and rename to the declared target path."""
-    from omniscribe.acquire.downloader import download_video
+    from panoscribe.acquire.downloader import download_video
 
     dest = _FIXTURES_DIR / sample["target_dir"]
     dest.parent.mkdir(parents=True, exist_ok=True)

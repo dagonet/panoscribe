@@ -1,4 +1,4 @@
-"""Smoke tests for the OmniScribe CLI entry point."""
+"""Smoke tests for the panoscribe CLI entry point."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from omniscribe import __version__
-from omniscribe.cli import app
-from omniscribe.errors import OmniScribeError
-from omniscribe.output import Transcript, TranscriptSegment
+from panoscribe import __version__
+from panoscribe.cli import app
+from panoscribe.errors import PanoScribeError
+from panoscribe.output import Transcript, TranscriptSegment
 
 # ── Sprint 9.11: shared CLI option parity (issue #52) ────────────────────────
 # These nine options are declared by both ``transcribe`` and ``transcribe-many``;
@@ -110,17 +110,17 @@ def _patched_pipeline(tmp_path: Path):
     return is ``(download, extract, whisper, ocr, llm_cleanup, asr_cleanup)``.
     """
     download_patch = patch(
-        "omniscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
+        "panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
     )
-    extract_patch = patch("omniscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav")
-    whisper_patch = patch("omniscribe.pipeline.WhisperTranscriber")
-    ocr_patch = patch("omniscribe.pipeline.RapidOCREngine")
+    extract_patch = patch("panoscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav")
+    whisper_patch = patch("panoscribe.pipeline.WhisperTranscriber")
+    ocr_patch = patch("panoscribe.pipeline.RapidOCREngine")
     llm_cleanup_patch = patch(
-        "omniscribe.pipeline.cleanup_ocr_segments",
+        "panoscribe.pipeline.cleanup_ocr_segments",
         side_effect=lambda segs, cfg: segs,
     )
     asr_cleanup_patch = patch(
-        "omniscribe.pipeline.cleanup_speech_segments",
+        "panoscribe.pipeline.cleanup_speech_segments",
         side_effect=lambda segs, cfg: segs,
     )
     return (
@@ -134,8 +134,8 @@ def _patched_pipeline(tmp_path: Path):
 
 
 def test_transcribe_writes_json_with_segments(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     segments = [
@@ -159,8 +159,8 @@ def test_transcribe_writes_json_with_segments(tmp_path: Path, monkeypatch) -> No
 def test_transcribe_silent_video_produces_zero_segment_transcript(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "silent.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -178,8 +178,8 @@ def test_transcribe_silent_video_produces_zero_segment_transcript(
 
 def test_transcribe_cleans_temp_dir_by_default(tmp_path: Path, monkeypatch) -> None:
     temp_dir = tmp_path / "omni"
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(temp_dir))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "false")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(temp_dir))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "false")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -199,8 +199,8 @@ def test_transcribe_cleans_temp_dir_by_default(tmp_path: Path, monkeypatch) -> N
 
 def test_transcribe_keeps_temp_dir_when_configured(tmp_path: Path, monkeypatch) -> None:
     temp_dir = tmp_path / "omni"
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(temp_dir))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(temp_dir))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -218,14 +218,14 @@ def test_transcribe_keeps_temp_dir_when_configured(tmp_path: Path, monkeypatch) 
     assert (temp_dir / "leftover.bin").is_file()
 
 
-def test_transcribe_omniscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+def test_transcribe_panoscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     with patch(
-        "omniscribe.pipeline.download_video",
-        side_effect=OmniScribeError("ffmpeg not found on PATH"),
+        "panoscribe.pipeline.download_video",
+        side_effect=PanoScribeError("ffmpeg not found on PATH"),
     ):
         result = CliRunner().invoke(
             app,
@@ -239,8 +239,8 @@ def test_transcribe_omniscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) 
 
 
 def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -260,8 +260,8 @@ def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkey
 
 def test_transcribe_passes_detected_language_to_ocr_engine(tmp_path: Path, monkeypatch) -> None:
     """ASR-detected language is forwarded to OCR engine's extract()."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -281,11 +281,11 @@ def test_transcribe_passes_detected_language_to_ocr_engine(tmp_path: Path, monke
 
 
 def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     # Sprint 2.2 dedup defaults drop zero-duration segments; disable the floor
     # here so this test can continue to assert interleaving behaviour.
-    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    monkeypatch.setenv("PANO_DEDUP_MIN_DURATION", "0")
     output = tmp_path / "out.json"
 
     speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
@@ -338,9 +338,9 @@ def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -
 
 
 def test_transcribe_no_ocr_flag_skips_engine(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_OCR_ENABLED", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_OCR_ENABLED", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -356,9 +356,9 @@ def test_transcribe_no_ocr_flag_skips_engine(tmp_path: Path, monkeypatch) -> Non
 
 
 def test_transcribe_env_ocr_disabled_without_flag_skips_engine(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_OCR_ENABLED", "false")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_OCR_ENABLED", "false")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -371,9 +371,9 @@ def test_transcribe_env_ocr_disabled_without_flag_skips_engine(tmp_path: Path, m
 
 
 def test_transcribe_cli_ocr_flag_overrides_env_disabled(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_OCR_ENABLED", "false")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_OCR_ENABLED", "false")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -391,9 +391,9 @@ def test_transcribe_cli_ocr_flag_overrides_env_disabled(tmp_path: Path, monkeypa
 
 def test_transcribe_ocr_dedup_collapses_duplicate_overlays(tmp_path: Path, monkeypatch) -> None:
     """Three identical ON-SCREEN segments + 1 SPEECH → 1 collapsed + 1 SPEECH."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_DEDUP_MIN_DURATION", "0")
     output = tmp_path / "out.json"
 
     speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
@@ -431,8 +431,8 @@ def test_transcribe_ocr_dedup_collapses_duplicate_overlays(tmp_path: Path, monke
 def test_transcribe_zero_speech_zero_ocr_produces_empty_transcript(
     tmp_path: Path, monkeypatch
 ) -> None:
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -452,8 +452,8 @@ def test_transcribe_zero_speech_zero_ocr_produces_empty_transcript(
 
 def test_transcribe_platform_flag_overrides_config(tmp_path: Path, monkeypatch) -> None:
     """--platform tiktok on a non-TikTok source should override platform_profile."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -486,31 +486,31 @@ def test_transcribe_invalid_platform_flag_exits_nonzero(tmp_path: Path) -> None:
 
 
 def test_invalid_platform_profile_env_raises_validation_error(monkeypatch) -> None:
-    """OMNI_PLATFORM_PROFILE=bogus bypasses click.Choice but hits the pydantic validator."""
+    """PANO_PLATFORM_PROFILE=bogus bypasses click.Choice but hits the pydantic validator."""
     from pydantic import ValidationError
 
-    from omniscribe.config import OmniScribeConfig
+    from panoscribe.config import PanoScribeConfig
 
-    monkeypatch.setenv("OMNI_PLATFORM_PROFILE", "bogus")
+    monkeypatch.setenv("PANO_PLATFORM_PROFILE", "bogus")
     with pytest.raises(ValidationError):
-        OmniScribeConfig()
+        PanoScribeConfig()
 
 
 def test_platform_profile_env_threads_into_config(monkeypatch) -> None:
-    """OMNI_PLATFORM_PROFILE=instagram (valid) should land in config."""
-    from omniscribe.config import OmniScribeConfig
+    """PANO_PLATFORM_PROFILE=instagram (valid) should land in config."""
+    from panoscribe.config import PanoScribeConfig
 
-    monkeypatch.setenv("OMNI_PLATFORM_PROFILE", "instagram")
-    cfg = OmniScribeConfig()
+    monkeypatch.setenv("PANO_PLATFORM_PROFILE", "instagram")
+    cfg = PanoScribeConfig()
     assert cfg.platform_profile == "instagram"
 
 
 def test_ui_filter_tiktok_drops_sidebar_handle(tmp_path: Path, monkeypatch) -> None:
     """--platform tiktok --ocr with a sidebar handle + body text:
     the handle must be dropped by the pattern filter; the body survives."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_DEDUP_MIN_DURATION", "0")
     output = tmp_path / "out.json"
 
     ocr_segments = [
@@ -547,9 +547,9 @@ def test_ui_filter_tiktok_drops_sidebar_handle(tmp_path: Path, monkeypatch) -> N
 
 def test_no_ui_filter_flag_keeps_sidebar_handle(tmp_path: Path, monkeypatch) -> None:
     """With --no-ui-filter, the sidebar handle must NOT be dropped."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_DEDUP_MIN_DURATION", "0")
     output = tmp_path / "out.json"
 
     ocr_segments = [
@@ -586,9 +586,9 @@ def test_no_ui_filter_flag_keeps_sidebar_handle(tmp_path: Path, monkeypatch) -> 
 
 def test_scene_change_flag_merges_into_config_true(tmp_path: Path, monkeypatch) -> None:
     """--scene-change merges scene_change_enabled=True into the OCR engine's config."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_SCENE_CHANGE_ENABLED", "false")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_SCENE_CHANGE_ENABLED", "false")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -608,8 +608,8 @@ def test_scene_change_flag_merges_into_config_true(tmp_path: Path, monkeypatch) 
 
 def test_no_scene_change_flag_merges_into_config_false(tmp_path: Path, monkeypatch) -> None:
     """--no-scene-change merges scene_change_enabled=False into the OCR engine's config."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -628,10 +628,10 @@ def test_no_scene_change_flag_merges_into_config_false(tmp_path: Path, monkeypat
 
 
 def test_scene_change_env_disabled_without_flag(tmp_path: Path, monkeypatch) -> None:
-    """OMNI_SCENE_CHANGE_ENABLED=false + no CLI flag → config has False."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_SCENE_CHANGE_ENABLED", "false")
+    """PANO_SCENE_CHANGE_ENABLED=false + no CLI flag → config has False."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_SCENE_CHANGE_ENABLED", "false")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -663,8 +663,8 @@ def _invoke_with_format(
 
     Returns the UTF-8 text of ``output_path`` after the run.
     """
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
 
     speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -728,8 +728,8 @@ def test_format_flag_beats_extension(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_env_format_beats_extension(tmp_path: Path, monkeypatch) -> None:
-    """OMNI_OUTPUT_FORMAT=srt + -o out.txt (no --format): env wins over extension."""
-    monkeypatch.setenv("OMNI_OUTPUT_FORMAT", "srt")
+    """PANO_OUTPUT_FORMAT=srt + -o out.txt (no --format): env wins over extension."""
+    monkeypatch.setenv("PANO_OUTPUT_FORMAT", "srt")
     out = tmp_path / "out.txt"
     text = _invoke_with_format(tmp_path, monkeypatch, output_path=out, extra_args=[])
     assert text.startswith("1\n")
@@ -762,11 +762,11 @@ def test_invalid_format_flag_exits_nonzero(tmp_path: Path) -> None:
 
 
 def test_ui_filter_env_disabled_without_flag_keeps_handle(tmp_path: Path, monkeypatch) -> None:
-    """OMNI_UI_FILTER_ENABLED=false + no CLI flag must let sidebar chrome through."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
-    monkeypatch.setenv("OMNI_UI_FILTER_ENABLED", "false")
+    """PANO_UI_FILTER_ENABLED=false + no CLI flag must let sidebar chrome through."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_DEDUP_MIN_DURATION", "0")
+    monkeypatch.setenv("PANO_UI_FILTER_ENABLED", "false")
     output = tmp_path / "out.json"
 
     ocr_segments = [
@@ -813,7 +813,7 @@ class TestResolveOutputFormat:
     """
 
     def test_flag_overrides_everything(self) -> None:
-        from omniscribe.pipeline import _resolve_output_format
+        from panoscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -826,7 +826,7 @@ class TestResolveOutputFormat:
         )
 
     def test_env_set_wins_over_extension(self) -> None:
-        from omniscribe.pipeline import _resolve_output_format
+        from panoscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -839,12 +839,12 @@ class TestResolveOutputFormat:
         )
 
     def test_env_explicitly_json_still_wins_over_extension(self) -> None:
-        """OMNI_OUTPUT_FORMAT=json with out.srt should write JSON (env > ext).
+        """PANO_OUTPUT_FORMAT=json with out.srt should write JSON (env > ext).
 
         Regression guard for the "env equals hard default" ambiguity:
         presence is the trigger, not value-differs-from-default.
         """
-        from omniscribe.pipeline import _resolve_output_format
+        from panoscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -857,7 +857,7 @@ class TestResolveOutputFormat:
         )
 
     def test_empty_env_value_ignored(self) -> None:
-        from omniscribe.pipeline import _resolve_output_format
+        from panoscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -870,7 +870,7 @@ class TestResolveOutputFormat:
         )
 
     def test_extension_inference_when_env_unset(self) -> None:
-        from omniscribe.pipeline import _resolve_output_format
+        from panoscribe.pipeline import _resolve_output_format
 
         for suffix, expected in (
             (".json", "json"),
@@ -890,7 +890,7 @@ class TestResolveOutputFormat:
             ), suffix
 
     def test_unknown_extension_falls_to_default(self) -> None:
-        from omniscribe.pipeline import _resolve_output_format
+        from panoscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -908,8 +908,8 @@ class TestResolveOutputFormat:
 
 def test_llm_cleanup_flag_invokes_cleanup(tmp_path: Path, monkeypatch) -> None:
     """--llm-cleanup → cleanup_ocr_segments called once with merged config."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -929,9 +929,9 @@ def test_llm_cleanup_flag_invokes_cleanup(tmp_path: Path, monkeypatch) -> None:
 
 def test_llm_cleanup_default_off(tmp_path: Path, monkeypatch) -> None:
     """No flag, no env → cleanup NOT called (opt-in default)."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.delenv("OMNI_LLM_CLEANUP_ENABLED", raising=False)
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.delenv("PANO_LLM_CLEANUP_ENABLED", raising=False)
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -946,10 +946,10 @@ def test_llm_cleanup_default_off(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_llm_cleanup_env_enabled_without_flag(tmp_path: Path, monkeypatch) -> None:
-    """OMNI_LLM_CLEANUP_ENABLED=true + no flag → cleanup IS called."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_LLM_CLEANUP_ENABLED", "true")
+    """PANO_LLM_CLEANUP_ENABLED=true + no flag → cleanup IS called."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_LLM_CLEANUP_ENABLED", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -964,10 +964,10 @@ def test_llm_cleanup_env_enabled_without_flag(tmp_path: Path, monkeypatch) -> No
 
 
 def test_no_llm_cleanup_flag_overrides_env(tmp_path: Path, monkeypatch) -> None:
-    """--no-llm-cleanup with OMNI_LLM_CLEANUP_ENABLED=true → cleanup NOT called."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_LLM_CLEANUP_ENABLED", "true")
+    """--no-llm-cleanup with PANO_LLM_CLEANUP_ENABLED=true → cleanup NOT called."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_LLM_CLEANUP_ENABLED", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -985,9 +985,9 @@ def test_no_llm_cleanup_flag_overrides_env(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_llm_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
-    """OmniScribeError from cleanup → exit 1 + message on stderr."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    """PanoScribeError from cleanup → exit 1 + message on stderr."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -995,7 +995,7 @@ def test_llm_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         mock_ocr_cls.return_value.extract.return_value = []
         mock_ocr_cls.return_value.last_frame_count = 0
-        mock_cleanup.side_effect = OmniScribeError("Ollama not reachable at http://localhost:11434")
+        mock_cleanup.side_effect = PanoScribeError("Ollama not reachable at http://localhost:11434")
         result = CliRunner().invoke(
             app,
             ["transcribe", "fake.mp4", "--output", str(output), "--llm-cleanup"],
@@ -1008,8 +1008,8 @@ def test_llm_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
 
 def test_llm_cleanup_with_no_ocr_runs_on_speech_only(tmp_path: Path, monkeypatch) -> None:
     """--llm-cleanup --no-ocr → cleanup still invoked; SPEECH-only input is fine."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
@@ -1036,8 +1036,8 @@ def test_llm_cleanup_with_no_ocr_runs_on_speech_only(tmp_path: Path, monkeypatch
 
 def test_asr_cleanup_flag_invokes_cleanup(tmp_path: Path, monkeypatch) -> None:
     """--asr-cleanup → cleanup_speech_segments called once with merged config."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -1057,9 +1057,9 @@ def test_asr_cleanup_flag_invokes_cleanup(tmp_path: Path, monkeypatch) -> None:
 
 def test_asr_cleanup_default_off(tmp_path: Path, monkeypatch) -> None:
     """No flag, no env → ASR cleanup NOT called (opt-in default)."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.delenv("OMNI_LLM_ASR_CLEANUP_ENABLED", raising=False)
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.delenv("PANO_LLM_ASR_CLEANUP_ENABLED", raising=False)
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -1074,10 +1074,10 @@ def test_asr_cleanup_default_off(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_asr_cleanup_env_enabled_without_flag(tmp_path: Path, monkeypatch) -> None:
-    """OMNI_LLM_ASR_CLEANUP_ENABLED=true + no flag → ASR cleanup IS called."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_LLM_ASR_CLEANUP_ENABLED", "true")
+    """PANO_LLM_ASR_CLEANUP_ENABLED=true + no flag → ASR cleanup IS called."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_LLM_ASR_CLEANUP_ENABLED", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -1092,14 +1092,14 @@ def test_asr_cleanup_env_enabled_without_flag(tmp_path: Path, monkeypatch) -> No
 
 
 def test_no_asr_cleanup_flag_overrides_env(tmp_path: Path, monkeypatch) -> None:
-    """--no-asr-cleanup with OMNI_LLM_ASR_CLEANUP_ENABLED=true → cleanup NOT called.
+    """--no-asr-cleanup with PANO_LLM_ASR_CLEANUP_ENABLED=true → cleanup NOT called.
 
     Mirrors the 6.1 review-gap fix: negation-overrides-env must be tested for
     each boolean flag with env binding.
     """
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
-    monkeypatch.setenv("OMNI_LLM_ASR_CLEANUP_ENABLED", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_LLM_ASR_CLEANUP_ENABLED", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -1118,8 +1118,8 @@ def test_no_asr_cleanup_flag_overrides_env(tmp_path: Path, monkeypatch) -> None:
 
 def test_both_cleanup_flags_invoke_both_in_order(tmp_path: Path, monkeypatch) -> None:
     """--llm-cleanup --asr-cleanup → OCR cleanup called first, then ASR cleanup."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -1158,9 +1158,9 @@ def test_both_cleanup_flags_invoke_both_in_order(tmp_path: Path, monkeypatch) ->
 
 
 def test_asr_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
-    """OmniScribeError from ASR cleanup → exit 1 + message on stderr."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    """PanoScribeError from ASR cleanup → exit 1 + message on stderr."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
@@ -1168,7 +1168,7 @@ def test_asr_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         mock_ocr_cls.return_value.extract.return_value = []
         mock_ocr_cls.return_value.last_frame_count = 0
-        mock_asr_cleanup.side_effect = OmniScribeError(
+        mock_asr_cleanup.side_effect = PanoScribeError(
             "Ollama not reachable at http://localhost:11434"
         )
         result = CliRunner().invoke(
@@ -1192,11 +1192,11 @@ def _write_urls(tmp_path: Path, urls: list[str]) -> Path:
 
 def test_transcribe_many_empty_file(tmp_path: Path, monkeypatch) -> None:
     """Empty URL list → exit 0, no items processed, no state file written."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls_file = _write_urls(tmp_path, [])
     out_dir = tmp_path / "out"
 
-    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
+    with patch("panoscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             [
@@ -1211,13 +1211,13 @@ def test_transcribe_many_empty_file(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     mock_proc.assert_not_called()
-    state_file = out_dir / ".omniscribe-batch-state.json"
+    state_file = out_dir / ".panoscribe-batch-state.json"
     assert not state_file.exists()
 
 
 def test_transcribe_many_unwritable_output_dir_fails_fast(tmp_path: Path, monkeypatch) -> None:
     """Read-only --output-dir → exit 1, process_single_video never called."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls_file = _write_urls(tmp_path, ["https://a/1"])
     out_dir = tmp_path / "out"
 
@@ -1226,13 +1226,13 @@ def test_transcribe_many_unwritable_output_dir_fails_fast(tmp_path: Path, monkey
     real_write_bytes = Path.write_bytes
 
     def _maybe_deny(self: Path, data: bytes) -> int:
-        if self.name == ".omniscribe-write-probe":
+        if self.name == ".panoscribe-write-probe":
             raise PermissionError("read-only")
         return real_write_bytes(self, data)
 
     monkeypatch.setattr(Path, "write_bytes", _maybe_deny)
 
-    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
+    with patch("panoscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             [
@@ -1255,7 +1255,7 @@ def test_transcribe_many_all_succeed(tmp_path: Path, monkeypatch) -> None:
     """Three URLs, all succeed → state shows three ``done``."""
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls = ["https://a/1", "https://a/2", "https://a/3"]
     urls_file = _write_urls(tmp_path, urls)
     out_dir = tmp_path / "out"
@@ -1266,8 +1266,8 @@ def test_transcribe_many_all_succeed(tmp_path: Path, monkeypatch) -> None:
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1276,16 +1276,16 @@ def test_transcribe_many_all_succeed(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert mock_proc.call_count == 3
-    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    state = _json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
     assert [it["status"] for it in state["items"]] == ["done", "done", "done"]
     assert [it["source"] for it in state["items"]] == urls
 
 
 def test_transcribe_many_mixed_valid_invalid(tmp_path: Path, monkeypatch) -> None:
-    """Two succeed, one raises OmniScribeError → exit 0, failed item recorded."""
+    """Two succeed, one raises PanoScribeError → exit 0, failed item recorded."""
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls = ["https://a/1", "https://a/2", "https://a/3"]
     urls_file = _write_urls(tmp_path, urls)
     out_dir = tmp_path / "out"
@@ -1296,11 +1296,11 @@ def test_transcribe_many_mixed_valid_invalid(tmp_path: Path, monkeypatch) -> Non
 
     def _fake_proc(source, *_a, **_kw):
         if source == "https://a/2":
-            raise OmniScribeError("Video unavailable: this video is private")
+            raise PanoScribeError("Video unavailable: this video is private")
 
     with (
-        patch("omniscribe.pipeline.process_single_video", side_effect=_fake_proc),
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.pipeline.process_single_video", side_effect=_fake_proc),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1309,7 +1309,7 @@ def test_transcribe_many_mixed_valid_invalid(tmp_path: Path, monkeypatch) -> Non
 
     # At least one item succeeded → exit 0.
     assert result.exit_code == 0, result.output
-    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    state = _json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
     statuses = {it["source"]: it["status"] for it in state["items"]}
     assert statuses == {"https://a/1": "done", "https://a/2": "failed", "https://a/3": "done"}
     failed = next(it for it in state["items"] if it["source"] == "https://a/2")
@@ -1318,13 +1318,13 @@ def test_transcribe_many_mixed_valid_invalid(tmp_path: Path, monkeypatch) -> Non
 
 def test_transcribe_many_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
     """Pre-populated state with one ``done`` item → that item is skipped."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls = ["https://a/1", "https://a/2"]
     urls_file = _write_urls(tmp_path, urls)
     out_dir = tmp_path / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path = out_dir / ".panoscribe-batch-state.json"
     state_path.write_text(
         "{\n"
         '  "version": 1,\n'
@@ -1345,8 +1345,8 @@ def test_transcribe_many_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1361,13 +1361,13 @@ def test_transcribe_many_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
 
 def test_transcribe_many_resume_retries_failed_and_pending(tmp_path: Path, monkeypatch) -> None:
     """Pre-populated state with one ``failed`` + one ``pending`` → both retried."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls = ["https://a/1", "https://a/2"]
     urls_file = _write_urls(tmp_path, urls)
     out_dir = tmp_path / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path = out_dir / ".panoscribe-batch-state.json"
     state_path.write_text(
         "{\n"
         '  "version": 1,\n'
@@ -1388,8 +1388,8 @@ def test_transcribe_many_resume_retries_failed_and_pending(tmp_path: Path, monke
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1407,12 +1407,12 @@ def test_transcribe_many_resume_against_edited_list_drops_orphans_and_appends_ne
     """Drop orphan A, skip done B, retry failed C, append new D as pending."""
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     out_dir = tmp_path / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Pre-populate state with A done, B done, C failed.
-    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path = out_dir / ".panoscribe-batch-state.json"
     state_path.write_text(
         "{\n"
         '  "version": 1,\n'
@@ -1436,8 +1436,8 @@ def test_transcribe_many_resume_against_edited_list_drops_orphans_and_appends_ne
         return output_dir / f"{source}{ext}"
 
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1458,7 +1458,7 @@ def test_transcribe_many_ctrl_c_mid_item_keeps_state_valid(tmp_path: Path, monke
     """KeyboardInterrupt mid-batch → state file valid, in-flight item ``pending``."""
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls = ["https://a/1", "https://a/2", "https://a/3"]
     urls_file = _write_urls(tmp_path, urls)
     out_dir = tmp_path / "out"
@@ -1472,8 +1472,8 @@ def test_transcribe_many_ctrl_c_mid_item_keeps_state_valid(tmp_path: Path, monke
             raise KeyboardInterrupt
 
     with (
-        patch("omniscribe.pipeline.process_single_video", side_effect=_fake_proc),
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.pipeline.process_single_video", side_effect=_fake_proc),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1483,7 +1483,7 @@ def test_transcribe_many_ctrl_c_mid_item_keeps_state_valid(tmp_path: Path, monke
 
     # Non-zero exit on Ctrl+C.
     assert result.exit_code != 0
-    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    state = _json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
     statuses = {it["source"]: it["status"] for it in state["items"]}
     # First item completed; second was persisted as pending before the call;
     # third never started.
@@ -1501,7 +1501,7 @@ def test_transcribe_many_expands_playlist_url(tmp_path: Path, monkeypatch) -> No
     """Playlist URL in urls.txt is expanded into per-video items in feed order."""
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls_file = _write_urls(tmp_path, ["https://www.youtube.com/playlist?list=PLx"])
     out_dir = tmp_path / "out"
 
@@ -1515,9 +1515,9 @@ def test_transcribe_many_expands_playlist_url(tmp_path: Path, monkeypatch) -> No
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.expand_url_list", side_effect=_fake_expand),
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.cli.expand_url_list", side_effect=_fake_expand),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1527,14 +1527,14 @@ def test_transcribe_many_expands_playlist_url(tmp_path: Path, monkeypatch) -> No
     assert result.exit_code == 0, result.output
     sources_called = [c.args[0] for c in mock_proc.call_args_list]
     assert sources_called == expanded
-    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    state = _json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
     assert [it["source"] for it in state["items"]] == expanded
     assert [it["status"] for it in state["items"]] == ["done", "done", "done"]
 
 
 def test_transcribe_many_mixed_playlist_and_singles(tmp_path: Path, monkeypatch) -> None:
     """Mixed list [single-A, playlist-X, single-B] expands to 4 calls in order."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     inputs = [
         "https://example.com/single-A",
         "https://www.youtube.com/playlist?list=PLx",
@@ -1558,9 +1558,9 @@ def test_transcribe_many_mixed_playlist_and_singles(tmp_path: Path, monkeypatch)
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.expand_url_list", side_effect=_fake_expand),
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.cli.expand_url_list", side_effect=_fake_expand),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1576,7 +1576,7 @@ def test_transcribe_many_playlist_url_not_in_state(tmp_path: Path, monkeypatch) 
     """After expansion, the playlist URL itself never appears in state.items."""
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     playlist_url = "https://www.youtube.com/playlist?list=PLx"
     urls_file = _write_urls(tmp_path, [playlist_url])
     out_dir = tmp_path / "out"
@@ -1588,9 +1588,9 @@ def test_transcribe_many_playlist_url_not_in_state(tmp_path: Path, monkeypatch) 
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
-        patch("omniscribe.pipeline.process_single_video"),
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
+        patch("panoscribe.pipeline.process_single_video"),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1598,7 +1598,7 @@ def test_transcribe_many_playlist_url_not_in_state(tmp_path: Path, monkeypatch) 
         )
 
     assert result.exit_code == 0, result.output
-    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    state = _json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
     sources = [it["source"] for it in state["items"]]
     assert playlist_url not in sources
     assert sources == expanded
@@ -1606,7 +1606,7 @@ def test_transcribe_many_playlist_url_not_in_state(tmp_path: Path, monkeypatch) 
 
 def test_transcribe_many_playlist_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
     """Pre-existing state with one expanded video done → only the rest are processed."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     playlist_url = "https://www.youtube.com/playlist?list=PLx"
     urls_file = _write_urls(tmp_path, [playlist_url])
     out_dir = tmp_path / "out"
@@ -1618,7 +1618,7 @@ def test_transcribe_many_playlist_resume_skips_done(tmp_path: Path, monkeypatch)
         "https://example.com/v3",
     ]
 
-    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path = out_dir / ".panoscribe-batch-state.json"
     state_path.write_text(
         "{\n"
         '  "version": 1,\n'
@@ -1640,9 +1640,9 @@ def test_transcribe_many_playlist_resume_skips_done(tmp_path: Path, monkeypatch)
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1660,7 +1660,7 @@ def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, m
     """
     import json as _json
 
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     playlist_url = "https://www.youtube.com/playlist?list=BROKEN"
     urls_file = _write_urls(tmp_path, [playlist_url])
     out_dir = tmp_path / "out"
@@ -1670,13 +1670,13 @@ def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, m
         return output_dir / f"{stem}{ext}"
 
     def _fake_proc(source, *_a, **_kw):
-        raise OmniScribeError("Unsupported URL")
+        raise PanoScribeError("Unsupported URL")
 
     with (
         # extraction "failed" → expand_url_list returns the URL unchanged.
-        patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: list(urls)),
-        patch("omniscribe.pipeline.process_single_video", side_effect=_fake_proc),
-        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: list(urls)),
+        patch("panoscribe.pipeline.process_single_video", side_effect=_fake_proc),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
             app,
@@ -1685,7 +1685,7 @@ def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, m
 
     # All items failed → exit 1.
     assert result.exit_code == 1
-    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    state = _json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
     assert [it["source"] for it in state["items"]] == [playlist_url]
     assert state["items"][0]["status"] == "failed"
     assert "Unsupported URL" in state["items"][0]["error"]
@@ -1693,13 +1693,13 @@ def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, m
 
 def test_transcribe_many_all_playlists_empty(tmp_path: Path, monkeypatch) -> None:
     """When every playlist URL expands to nothing, exit 0 without processing."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     urls_file = _write_urls(tmp_path, ["https://www.youtube.com/playlist?list=PL-empty"])
     out_dir = tmp_path / "out"
 
     with (
-        patch("omniscribe.cli.expand_url_list", return_value=[]),
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.cli.expand_url_list", return_value=[]),
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
     ):
         result = CliRunner().invoke(
             app,
@@ -1708,7 +1708,7 @@ def test_transcribe_many_all_playlists_empty(tmp_path: Path, monkeypatch) -> Non
 
     assert result.exit_code == 0, result.output
     mock_proc.assert_not_called()
-    assert not (out_dir / ".omniscribe-batch-state.json").exists()
+    assert not (out_dir / ".panoscribe-batch-state.json").exists()
 
 
 # -- Sprint 9.6: photo-mode routing ------------------------------------------
@@ -1716,8 +1716,8 @@ def test_transcribe_many_all_playlists_empty(tmp_path: Path, monkeypatch) -> Non
 
 def test_transcribe_photo_url_routes_to_photo_path(tmp_path: Path, monkeypatch) -> None:
     """Photo URL is routed to download_photo_post + extract_images."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     photo_post = MagicMock()
@@ -1732,9 +1732,9 @@ def test_transcribe_photo_url_routes_to_photo_path(tmp_path: Path, monkeypatch) 
         oc as mock_ocr_cls,
         lc,
         ac,
-        patch("omniscribe.pipeline.is_photo_post", return_value=True),
-        patch("omniscribe.pipeline.download_photo_post", return_value=photo_post),
-        patch("omniscribe.pipeline.get_duration", return_value=None),
+        patch("panoscribe.pipeline.is_photo_post", return_value=True),
+        patch("panoscribe.pipeline.download_photo_post", return_value=photo_post),
+        patch("panoscribe.pipeline.get_duration", return_value=None),
     ):
         mock_ocr_cls.return_value.extract_images.return_value = []
         mock_ocr_cls.return_value.last_frame_count = 0
@@ -1752,8 +1752,8 @@ def test_transcribe_photo_url_routes_to_photo_path(tmp_path: Path, monkeypatch) 
 
 def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) -> None:
     """Local directory with images triggers scan_photo_dir -> extract_images."""
-    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
-    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
     # Create a directory with images.
@@ -1770,7 +1770,7 @@ def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) 
         oc as mock_ocr_cls,
         lc,
         ac,
-        patch("omniscribe.pipeline.get_duration", return_value=None),
+        patch("panoscribe.pipeline.get_duration", return_value=None),
     ):
         mock_ocr_cls.return_value.extract_images.return_value = []
         mock_ocr_cls.return_value.last_frame_count = 0
@@ -1791,7 +1791,7 @@ def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) 
 def test_translate_flag_sets_whisper_task(tmp_path: Path) -> None:
     """``--translate`` on ``transcribe`` sets whisper_task='translate' on config."""
     output = tmp_path / "out.json"
-    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
+    with patch("panoscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             ["transcribe", "fake.mp4", "--output", str(output), "--translate"],
@@ -1804,7 +1804,7 @@ def test_translate_flag_sets_whisper_task(tmp_path: Path) -> None:
 def test_translate_no_translate_resets_to_transcribe(tmp_path: Path) -> None:
     """``--no-translate`` on ``transcribe`` sets whisper_task='transcribe'."""
     output = tmp_path / "out.json"
-    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
+    with patch("panoscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             ["transcribe", "fake.mp4", "--output", str(output), "--no-translate"],
@@ -1820,9 +1820,9 @@ def test_transcribe_many_translate_flag_sets_whisper_task(tmp_path: Path) -> Non
     urls_file.write_text("https://example.com/1\nhttps://example.com/2\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
         patch(
-            "omniscribe.cli.compute_output_path",
+            "panoscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
         ),
     ):
@@ -1852,9 +1852,9 @@ def test_transcribe_many_ocr_language_flag(tmp_path: Path) -> None:
     urls_file.write_text("https://example.com/1\nhttps://example.com/2\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
         patch(
-            "omniscribe.cli.compute_output_path",
+            "panoscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
         ),
     ):
@@ -1882,9 +1882,9 @@ def test_transcribe_many_ui_filter_flag(tmp_path: Path) -> None:
     urls_file.write_text("https://example.com/1\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
         patch(
-            "omniscribe.cli.compute_output_path",
+            "panoscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
         ),
     ):
@@ -1911,9 +1911,9 @@ def test_transcribe_many_scene_change_flag(tmp_path: Path) -> None:
     urls_file.write_text("https://example.com/1\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.pipeline.process_single_video") as mock_proc,
+        patch("panoscribe.pipeline.process_single_video") as mock_proc,
         patch(
-            "omniscribe.cli.compute_output_path",
+            "panoscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
         ),
     ):
@@ -1934,13 +1934,13 @@ def test_transcribe_many_scene_change_flag(tmp_path: Path) -> None:
         assert call.args[1].scene_change_enabled is False
 
 
-def test_serve_import_error_raises_omniscribe_error(monkeypatch) -> None:
-    """Missing [api] extra raises OmniScribeError with a helpful message."""
+def test_serve_import_error_raises_panoscribe_error(monkeypatch) -> None:
+    """Missing [api] extra raises PanoScribeError with a helpful message."""
     import builtins
     import sys
 
     # Clear module cache so __import__ is called (not cached import).
-    for mod in ("uvicorn", "omniscribe.api.server"):
+    for mod in ("uvicorn", "panoscribe.api.server"):
         sys.modules.pop(mod, None)
 
     orig_import = builtins.__import__

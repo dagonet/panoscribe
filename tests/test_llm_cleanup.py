@@ -1,6 +1,6 @@
-"""Unit tests for :mod:`omniscribe.merge.llm_cleanup` (Sprints 6.1 + 6.2).
+"""Unit tests for :mod:`panoscribe.merge.llm_cleanup` (Sprints 6.1 + 6.2).
 
-Patch targets live at the import site (``omniscribe.merge.llm_cleanup.Client``,
+Patch targets live at the import site (``panoscribe.merge.llm_cleanup.Client``,
 not ``ollama.Client``) so the bound name inside the module under test is
 replaced. Patching at the library path leaves the already-bound alias
 untouched and the real client still runs.
@@ -15,15 +15,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from omniscribe.config import OmniScribeConfig
-from omniscribe.errors import OmniScribeError
-from omniscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
-from omniscribe.output import TranscriptSegment
+from panoscribe.config import PanoScribeConfig
+from panoscribe.errors import PanoScribeError
+from panoscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
+from panoscribe.output import TranscriptSegment
 
 
-def _cfg() -> OmniScribeConfig:
+def _cfg() -> PanoScribeConfig:
     """Config with LLM cleanup enabled and defaults for other fields."""
-    return OmniScribeConfig(llm_cleanup_enabled=True)
+    return PanoScribeConfig(llm_cleanup_enabled=True)
 
 
 def _seg(source: str, text: str, start: float = 0.0, end: float = 1.0) -> TranscriptSegment:
@@ -37,7 +37,7 @@ def test_on_screen_segment_is_cleaned(mock_ollama_client: MagicMock) -> None:
     """ON-SCREEN segment → chat called → text replaced."""
     segments = [_seg("ON-SCREEN", "brok en teext")]
     mock_ollama_client.chat.return_value = {"message": {"content": "broken text"}}
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_ocr_segments(segments, _cfg())
 
     assert len(result) == 1
@@ -50,7 +50,7 @@ def test_both_segment_is_cleaned(mock_ollama_client: MagicMock) -> None:
     """BOTH segment → chat called → text replaced (Phase 4 collapse can leak OCR)."""
     segments = [_seg("BOTH", "hello wrold")]
     mock_ollama_client.chat.return_value = {"message": {"content": "hello world"}}
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_ocr_segments(segments, _cfg())
 
     assert result[0].text == "hello world"
@@ -64,7 +64,7 @@ def test_speech_segment_is_not_cleaned(mock_ollama_client: MagicMock) -> None:
     speech = _seg("SPEECH", "hello world")
     on_screen = _seg("ON-SCREEN", "on screen text", start=1.0, end=2.0)
     mock_ollama_client.chat.return_value = {"message": {"content": "cleaned"}}
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_ocr_segments([speech, on_screen], _cfg())
 
     # Only the ON-SCREEN segment triggered chat.
@@ -86,8 +86,8 @@ def test_mixed_batch_counts_and_log_message(
     ]
     mock_ollama_client.chat.return_value = {"message": {"content": "CLEAN"}}
     with (
-        caplog.at_level(logging.INFO, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.INFO, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         cleanup_ocr_segments(segments, _cfg())
 
@@ -98,16 +98,16 @@ def test_mixed_batch_counts_and_log_message(
 # ── Availability gate ─────────────────────────────────────────────────
 
 
-def test_availability_gate_connection_error_raises_omniscribe_error(
+def test_availability_gate_connection_error_raises_panoscribe_error(
     mock_ollama_client: MagicMock,
 ) -> None:
-    """client.list raises ConnectionError → OmniScribeError with actionable message."""
+    """client.list raises ConnectionError → PanoScribeError with actionable message."""
     mock_ollama_client.list.side_effect = ConnectionError("refused")
     segments = [_seg("ON-SCREEN", "text")]
     cfg = _cfg()
     with (
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
-        pytest.raises(OmniScribeError) as exc,
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        pytest.raises(PanoScribeError) as exc,
     ):
         cleanup_ocr_segments(segments, cfg)
 
@@ -122,14 +122,14 @@ def test_availability_gate_connection_error_raises_omniscribe_error(
 
 
 def test_model_presence_gate_missing_model_raises(mock_ollama_client: MagicMock) -> None:
-    """client.list returns a response without the configured model → OmniScribeError."""
+    """client.list returns a response without the configured model → PanoScribeError."""
     mock_ollama_client.list.return_value = SimpleNamespace(
         models=[SimpleNamespace(model="some-other-model:7b")]
     )
     segments = [_seg("ON-SCREEN", "text")]
     with (
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
-        pytest.raises(OmniScribeError) as exc,
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        pytest.raises(PanoScribeError) as exc,
     ):
         cleanup_ocr_segments(segments, _cfg())
 
@@ -150,8 +150,8 @@ def test_length_rail_rejects_hallucinated_response(
     mock_ollama_client.chat.return_value = {"message": {"content": "x" * 11}}
     segments = [_seg("ON-SCREEN", original)]
     with (
-        caplog.at_level(logging.WARNING, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.WARNING, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         result = cleanup_ocr_segments(segments, _cfg())
 
@@ -166,8 +166,8 @@ def test_empty_response_keeps_original(
     mock_ollama_client.chat.return_value = {"message": {"content": "   \n\t  "}}
     segments = [_seg("ON-SCREEN", "keep me")]
     with (
-        caplog.at_level(logging.WARNING, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.WARNING, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         result = cleanup_ocr_segments(segments, _cfg())
 
@@ -179,14 +179,14 @@ def test_empty_response_keeps_original(
 
 
 def test_missing_ollama_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Client unset (extras missing) raises OmniScribeError pointing at install cmd."""
+    """Client unset (extras missing) raises PanoScribeError pointing at install cmd."""
     # The module-top import uses ``try: from ollama import Client except
     # ImportError: Client = None``. When the ``[llm]`` extras aren't
     # installed, ``Client`` ends up as ``None`` at module scope. Simulate
     # that state by patching the bound name directly.
-    monkeypatch.setattr("omniscribe.merge.llm_cleanup.Client", None)
+    monkeypatch.setattr("panoscribe.merge.llm_cleanup.Client", None)
     segments = [_seg("ON-SCREEN", "text")]
-    with pytest.raises(OmniScribeError) as exc:
+    with pytest.raises(PanoScribeError) as exc:
         cleanup_ocr_segments(segments, _cfg())
 
     assert "uv sync --extra llm" in str(exc.value)
@@ -211,7 +211,7 @@ def test_no_op_short_circuit_skips_import(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_no_op_short_circuit_info_log(caplog: pytest.LogCaptureFixture) -> None:
     """Empty / SPEECH-only input emits the 'no target-source segments' INFO line."""
-    with caplog.at_level(logging.INFO, logger="omniscribe.merge.llm_cleanup"):
+    with caplog.at_level(logging.INFO, logger="panoscribe.merge.llm_cleanup"):
         cleanup_ocr_segments([_seg("SPEECH", "hi")], _cfg())
 
     assert "no target-source segments" in caplog.text
@@ -225,7 +225,7 @@ def test_input_list_not_mutated(mock_ollama_client: MagicMock) -> None:
     mock_ollama_client.chat.return_value = {"message": {"content": "cleaned"}}
     segments = [_seg("ON-SCREEN", "dirty"), _seg("SPEECH", "speech", 1.0, 2.0)]
     snapshot = list(segments)
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_ocr_segments(segments, _cfg())
 
     assert result is not segments
@@ -255,7 +255,7 @@ def test_narrow_catch_does_not_swallow_attribute_error() -> None:
 
     segments = [_seg("ON-SCREEN", "text")]
     with (
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock),
         pytest.raises(AttributeError),
     ):
         cleanup_ocr_segments(segments, _cfg())
@@ -271,7 +271,7 @@ def test_integration_live_ollama_smoke() -> None:  # pragma: no cover
     Skipped by default; run with `uv run pytest -m integration`. Requires a
     running local Ollama with `llama3.2:3b` pulled.
     """
-    cfg = OmniScribeConfig(llm_cleanup_enabled=True)
+    cfg = PanoScribeConfig(llm_cleanup_enabled=True)
     segments = [_seg("ON-SCREEN", "heIIo w0rId")]
     result = cleanup_ocr_segments(segments, cfg)
 
@@ -282,16 +282,16 @@ def test_integration_live_ollama_smoke() -> None:  # pragma: no cover
 # ── Sprint 6.2: cleanup_speech_segments ───────────────────────────────────
 
 
-def _asr_cfg() -> OmniScribeConfig:
+def _asr_cfg() -> PanoScribeConfig:
     """Config with ASR cleanup enabled."""
-    return OmniScribeConfig(llm_asr_cleanup_enabled=True)
+    return PanoScribeConfig(llm_asr_cleanup_enabled=True)
 
 
 def test_speech_segment_is_cleaned(mock_ollama_client: MagicMock) -> None:
     """SPEECH segment → chat called → text replaced with punctuated output."""
     segments = [_seg("SPEECH", "hello world")]
     mock_ollama_client.chat.return_value = {"message": {"content": "Hello, world."}}
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_speech_segments(segments, _asr_cfg())
 
     assert len(result) == 1
@@ -316,8 +316,8 @@ def test_asr_mixed_batch_counts_and_passthrough(
     ]
     mock_ollama_client.chat.return_value = {"message": {"content": "CLEAN"}}
     with (
-        caplog.at_level(logging.INFO, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.INFO, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         result = cleanup_speech_segments(segments, _asr_cfg())
 
@@ -338,8 +338,8 @@ def test_asr_length_rail_rejects_hallucinated_response(
     mock_ollama_client.chat.return_value = {"message": {"content": "x" * 11}}
     segments = [_seg("SPEECH", original)]
     with (
-        caplog.at_level(logging.WARNING, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.WARNING, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         result = cleanup_speech_segments(segments, _asr_cfg())
 
@@ -355,8 +355,8 @@ def test_asr_empty_response_keeps_original(
     mock_ollama_client.chat.return_value = {"message": {"content": "   \n\t  "}}
     segments = [_seg("SPEECH", "keep me")]
     with (
-        caplog.at_level(logging.WARNING, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.WARNING, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         result = cleanup_speech_segments(segments, _asr_cfg())
 
@@ -371,8 +371,8 @@ def test_asr_no_op_short_circuit_on_on_screen_only(
     """ON-SCREEN-only input must NOT call Ollama; INFO log fires."""
     segments = [_seg("ON-SCREEN", "overlay one"), _seg("BOTH", "overlay two", 1.0, 2.0)]
     with (
-        caplog.at_level(logging.INFO, logger="omniscribe.merge.llm_cleanup"),
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        caplog.at_level(logging.INFO, logger="panoscribe.merge.llm_cleanup"),
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
     ):
         result = cleanup_speech_segments(segments, _asr_cfg())
 
@@ -383,25 +383,25 @@ def test_asr_no_op_short_circuit_on_on_screen_only(
 
 
 def test_asr_missing_ollama_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Client unset (extras missing) raises OmniScribeError pointing at install cmd."""
-    monkeypatch.setattr("omniscribe.merge.llm_cleanup.Client", None)
+    """Client unset (extras missing) raises PanoScribeError pointing at install cmd."""
+    monkeypatch.setattr("panoscribe.merge.llm_cleanup.Client", None)
     segments = [_seg("SPEECH", "text")]
-    with pytest.raises(OmniScribeError) as exc:
+    with pytest.raises(PanoScribeError) as exc:
         cleanup_speech_segments(segments, _asr_cfg())
 
     assert "uv sync --extra llm" in str(exc.value)
 
 
-def test_asr_availability_gate_connection_error_raises_omniscribe_error(
+def test_asr_availability_gate_connection_error_raises_panoscribe_error(
     mock_ollama_client: MagicMock,
 ) -> None:
-    """client.list raises ConnectionError → OmniScribeError pointing at --no-asr-cleanup."""
+    """client.list raises ConnectionError → PanoScribeError pointing at --no-asr-cleanup."""
     mock_ollama_client.list.side_effect = ConnectionError("refused")
     segments = [_seg("SPEECH", "text")]
     cfg = _asr_cfg()
     with (
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
-        pytest.raises(OmniScribeError) as exc,
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        pytest.raises(PanoScribeError) as exc,
     ):
         cleanup_speech_segments(segments, cfg)
 
@@ -415,14 +415,14 @@ def test_asr_availability_gate_connection_error_raises_omniscribe_error(
 def test_asr_model_presence_gate_missing_model_raises(
     mock_ollama_client: MagicMock,
 ) -> None:
-    """client.list returns a response without the configured model → OmniScribeError."""
+    """client.list returns a response without the configured model → PanoScribeError."""
     mock_ollama_client.list.return_value = SimpleNamespace(
         models=[SimpleNamespace(model="some-other-model:7b")]
     )
     segments = [_seg("SPEECH", "text")]
     with (
-        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
-        pytest.raises(OmniScribeError) as exc,
+        patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        pytest.raises(PanoScribeError) as exc,
     ):
         cleanup_speech_segments(segments, _asr_cfg())
 
@@ -460,9 +460,9 @@ def test_sequential_cleanup_respects_disjoint_targets(mock_ollama_client: MagicM
         return {"message": {"content": f"ASR[{text}]"}}
 
     mock_ollama_client.chat.side_effect = _chat_side_effect
-    cfg = OmniScribeConfig(llm_cleanup_enabled=True, llm_asr_cleanup_enabled=True)
+    cfg = PanoScribeConfig(llm_cleanup_enabled=True, llm_asr_cleanup_enabled=True)
 
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         step1 = cleanup_ocr_segments(segments, cfg)
         step2 = cleanup_speech_segments(step1, cfg)
 
@@ -489,7 +489,7 @@ def test_carriage_return_stripped_from_response(
     """\\r\\n line endings and stray \\r are removed from cleaned text."""
     segments = [_seg("ON-SCREEN", "abcdef")]
     mock_ollama_client.chat.return_value = {"message": {"content": "ab\r\ncd\ref\rgh"}}
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_ocr_segments(segments, _cfg())
 
     # \r\n → \n, stray \r → removed
@@ -499,8 +499,8 @@ def test_carriage_return_stripped_from_response(
 def test_keep_alive_passed_to_chat(mock_ollama_client: MagicMock) -> None:
     """keep_alive kwarg is forwarded to client.chat()."""
     segments = [_seg("ON-SCREEN", "text")]
-    cfg = OmniScribeConfig(llm_cleanup_enabled=True, llm_cleanup_keep_alive_s=60.0)
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    cfg = PanoScribeConfig(llm_cleanup_enabled=True, llm_cleanup_keep_alive_s=60.0)
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         cleanup_ocr_segments(segments, cfg)
 
     assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == 60.0
@@ -509,8 +509,8 @@ def test_keep_alive_passed_to_chat(mock_ollama_client: MagicMock) -> None:
 def test_keep_alive_sentinel_negative_one(mock_ollama_client: MagicMock) -> None:
     """-1.0 sentinel passes through as-is (ollama forever)."""
     segments = [_seg("ON-SCREEN", "text")]
-    cfg = OmniScribeConfig(llm_cleanup_enabled=True, llm_cleanup_keep_alive_s=-1.0)
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    cfg = PanoScribeConfig(llm_cleanup_enabled=True, llm_cleanup_keep_alive_s=-1.0)
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         cleanup_ocr_segments(segments, cfg)
 
     assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == -1.0
@@ -519,8 +519,8 @@ def test_keep_alive_sentinel_negative_one(mock_ollama_client: MagicMock) -> None
 def test_keep_alive_passed_to_speech_chat(mock_ollama_client: MagicMock) -> None:
     """keep_alive kwarg forwarded in cleanup_speech_segments too."""
     segments = [_seg("SPEECH", "text")]
-    cfg = OmniScribeConfig(llm_asr_cleanup_enabled=True, llm_cleanup_keep_alive_s=120.0)
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    cfg = PanoScribeConfig(llm_asr_cleanup_enabled=True, llm_cleanup_keep_alive_s=120.0)
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         cleanup_speech_segments(segments, cfg)
 
     assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == 120.0
@@ -541,7 +541,7 @@ def test_models_presence_gate_list_as_tags(
         SimpleNamespace(model="llama3.2:3b"),
     ]
     segments = [_seg("ON-SCREEN", "text")]
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         # No error means the gate passed.
         cleanup_ocr_segments(segments, _cfg())
 
@@ -558,7 +558,7 @@ def test_models_presence_gate_dict_entries(
         {"model": "llama3.2:3b"},
     ]
     segments = [_seg("ON-SCREEN", "text")]
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         cleanup_ocr_segments(segments, _cfg())
 
 
@@ -575,7 +575,7 @@ def test_response_as_namespace_object(
     mock_ollama_client.chat.return_value = SimpleNamespace(
         message=SimpleNamespace(content="world"),
     )
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_ocr_segments(segments, _cfg())
 
     assert result[0].text == "world"
@@ -589,7 +589,7 @@ def test_asr_models_presence_gate_list_as_tags(
         SimpleNamespace(model="llama3.2:3b"),
     ]
     segments = [_seg("SPEECH", "text")]
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         cleanup_speech_segments(segments, _asr_cfg())
 
 
@@ -601,7 +601,7 @@ def test_asr_models_presence_gate_dict_entries(
         {"model": "llama3.2:3b"},
     ]
     segments = [_seg("SPEECH", "text")]
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         cleanup_speech_segments(segments, _asr_cfg())
 
 
@@ -613,7 +613,7 @@ def test_asr_response_as_namespace_object(
     mock_ollama_client.chat.return_value = SimpleNamespace(
         message=SimpleNamespace(content="world"),
     )
-    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+    with patch("panoscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
         result = cleanup_speech_segments(segments, _asr_cfg())
 
     assert result[0].text == "world"
@@ -626,7 +626,7 @@ def test_integration_asr_live_ollama_smoke() -> None:  # pragma: no cover
     Skipped by default; run with `uv run pytest -m integration`. Requires a
     running local Ollama with `llama3.2:3b` pulled.
     """
-    cfg = OmniScribeConfig(llm_asr_cleanup_enabled=True)
+    cfg = PanoScribeConfig(llm_asr_cleanup_enabled=True)
     segments = [_seg("SPEECH", "hello world how are you today")]
     result = cleanup_speech_segments(segments, cfg)
 

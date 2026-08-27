@@ -2,11 +2,11 @@
 
 ## Model downloads on first run
 
-OmniScribe does not bundle models outside the Docker image. On first run
+panoscribe does not bundle models outside the Docker image. On first run
 (non-container installs), the two backends pull their weights from
 Hugging Face Hub automatically:
 
-- **faster-whisper** downloads the configured `OMNI_WHISPER_MODEL`
+- **faster-whisper** downloads the configured `PANO_WHISPER_MODEL`
   (default `large-v3-turbo`) — roughly **1.6 GB**.
 - **RapidOCR** downloads its detection/recognition models — roughly
   **15 MB**.
@@ -18,11 +18,11 @@ containerized runs never hit the network for models.
 ### Using a Hugging Face mirror (`HF_ENDPOINT`)
 
 If `huggingface.co` is slow or blocked from your network, point the
-Hugging Face client at a mirror before running OmniScribe:
+Hugging Face client at a mirror before running panoscribe:
 
 ```bash
 export HF_ENDPOINT=https://hf-mirror.com
-omniscribe transcribe ./video.mp4 -o transcript.json
+panoscribe transcribe ./video.mp4 -o transcript.json
 ```
 
 ### Relocating the cache (`HF_HOME`)
@@ -33,7 +33,7 @@ space):
 
 ```bash
 export HF_HOME=/path/to/cache
-omniscribe transcribe ./video.mp4 -o transcript.json
+panoscribe transcribe ./video.mp4 -o transcript.json
 ```
 
 Set `HF_HOME` before the first run so both the Whisper and RapidOCR
@@ -60,14 +60,14 @@ This is the same technique the Dockerfile uses at build time.
 
 ## CUDA not found
 
-If `OMNI_WHISPER_DEVICE=cuda` or `OMNI_OCR_DEVICE=cuda` (the defaults) and
-no CUDA-capable device is available, OmniScribe fails fast at model-load
+If `PANO_WHISPER_DEVICE=cuda` or `PANO_OCR_DEVICE=cuda` (the defaults) and
+no CUDA-capable device is available, panoscribe fails fast at model-load
 time with an error naming the exact remedy, e.g.:
 
 ```
 ASR (CTranslate2): No CUDA-capable device was found. Run on CPU instead: set
-OMNI_WHISPER_DEVICE=cpu and OMNI_WHISPER_COMPUTE_TYPE=int8 for ASR, and
-OMNI_OCR_DEVICE=cpu for OCR. See docs/troubleshooting.md#cuda-not-found for
+PANO_WHISPER_DEVICE=cpu and PANO_WHISPER_COMPUTE_TYPE=int8 for ASR, and
+PANO_OCR_DEVICE=cpu for OCR. See docs/troubleshooting.md#cuda-not-found for
 details.
 ```
 
@@ -79,10 +79,10 @@ This check only detects an **absent CUDA runtime** — it does not catch
 every GPU misconfiguration. The most common Windows failure mode is a
 broken cuDNN sub-library resolution (`cublas64_12.dll` / `cudnn64_9.dll`
 not found even though a CUDA-capable card is present); that failure is
-currently `DEBUG`-only in `src/omniscribe/asr/whisper.py` and surfaces as
+currently `DEBUG`-only in `src/panoscribe/asr/whisper.py` and surfaces as
 a raw CTranslate2 error rather than the friendly message above. If you see
 a CTranslate2 or ONNXRuntime error mentioning a missing DLL or shared
-library rather than the message above, run with `OMNI_LOG_LEVEL=DEBUG` to
+library rather than the message above, run with `PANO_LOG_LEVEL=DEBUG` to
 see the DLL-directory registration log, and confirm the `nvidia-cudnn-cu12`
 / `nvidia-cublas-cu12` wheels installed alongside `ctranslate2` (`uv pip
 list | grep nvidia`).
@@ -93,7 +93,7 @@ list | grep nvidia`).
   CPU build of ONNXRuntime automatically via `pyproject.toml` markers —
   there is no separate install incantation and no known resolver failure
   on any of them.
-- **Python version**: OmniScribe supports Python 3.11–3.13
+- **Python version**: panoscribe supports Python 3.11–3.13
   (`requires-python = ">=3.11,<3.14"` in `pyproject.toml`). If `uv sync` or
   `pip install` fails to resolve, check your interpreter version first
   (`python --version`).
@@ -107,7 +107,7 @@ list | grep nvidia`).
 
 ## ffmpeg missing
 
-OmniScribe shells out to `ffmpeg` for audio extraction and frame sampling.
+panoscribe shells out to `ffmpeg` for audio extraction and frame sampling.
 If you see an error indicating `ffmpeg` (or `ffprobe`) could not be found:
 
 - **Docker**: not applicable — the image installs `ffmpeg` at build time
@@ -118,5 +118,5 @@ If you see an error indicating `ffmpeg` (or `ffprobe`) could not be found:
 - **Windows**: install from [ffmpeg.org](https://ffmpeg.org/download.html)
   or `winget install ffmpeg`, and ensure the `bin/` directory is on `PATH`.
 
-Verify with `ffmpeg -version` on the same shell/environment OmniScribe runs
+Verify with `ffmpeg -version` on the same shell/environment panoscribe runs
 in.

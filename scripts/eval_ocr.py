@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OCR-only evaluation harness for OmniScribe.
+"""OCR-only evaluation harness for panoscribe.
 
 Usage
 -----
@@ -18,14 +18,14 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from omniscribe.config import OmniScribeConfig
-from omniscribe.eval.funnel import FunnelCounts
-from omniscribe.eval.models import GroundTruth
-from omniscribe.eval.scoring import score_video
-from omniscribe.ocr.deduplicator import dedup_segments
-from omniscribe.ocr.rapid_ocr import RapidOCREngine
-from omniscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
-from omniscribe.platforms.registry import resolve_profile
+from panoscribe.config import PanoScribeConfig
+from panoscribe.eval.funnel import FunnelCounts
+from panoscribe.eval.models import GroundTruth
+from panoscribe.eval.scoring import score_video
+from panoscribe.ocr.deduplicator import dedup_segments
+from panoscribe.ocr.rapid_ocr import RapidOCREngine
+from panoscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
+from panoscribe.platforms.registry import resolve_profile
 
 _IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 
@@ -103,7 +103,7 @@ def main() -> None:
     ocr_language = args.ocr_language or gt.language
 
     # Build config overridden for evaluation.
-    config = OmniScribeConfig()
+    config = PanoScribeConfig()
     config_updates: dict[str, object] = {"ocr_language": ocr_language}
     if args.no_scene_change:
         config_updates["scene_change_enabled"] = False

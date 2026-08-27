@@ -1,15 +1,15 @@
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/dagonet/omniscribe)
-[![CI](https://github.com/dagonet/OmniScribe/actions/workflows/ci.yml/badge.svg)](https://github.com/dagonet/OmniScribe/actions/workflows/ci.yml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/dagonet/panoscribe)
+[![CI](https://github.com/dagonet/panoscribe/actions/workflows/ci.yml/badge.svg)](https://github.com/dagonet/panoscribe/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11 | 3.12](https://img.shields.io/badge/Python-3.11_%7C_3.12-blue.svg)](https://www.python.org/downloads/)
 [![Status: In Development](https://img.shields.io/badge/Status-In%20Development-orange.svg)]()
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
-# OmniScribe
+# panoscribe
 
 **Extract complete transcripts from any video — speech AND on-screen text, combined.**
 
-Existing transcription tools only capture what's *spoken*. But video creators — on TikTok, YouTube, Instagram, and beyond — pack critical information into **on-screen text overlays**: instructions, captions, labels, commentary that never appears in audio-only transcripts. OmniScribe combines **speech recognition (ASR)** with **on-screen text extraction (OCR)** to produce a unified, timestamped transcript that captures *everything*.
+Existing transcription tools only capture what's *spoken*. But video creators — on TikTok, YouTube, Instagram, and beyond — pack critical information into **on-screen text overlays**: instructions, captions, labels, commentary that never appears in audio-only transcripts. panoscribe combines **speech recognition (ASR)** with **on-screen text extraction (OCR)** to produce a unified, timestamped transcript that captures *everything*.
 
 ## How It Works
 
@@ -33,56 +33,56 @@ Video URL (TikTok, YouTube, Reels, Shorts, ...) or local file
 
 ```bash
 # Install
-uv pip install omniscribe
+uv pip install panoscribe
 
 # Transcribe a TikTok
-omniscribe transcribe https://www.tiktok.com/@user/video/123456
+panoscribe transcribe https://www.tiktok.com/@user/video/123456
 
 # YouTube video
-omniscribe transcribe https://www.youtube.com/watch?v=abc123
+panoscribe transcribe https://www.youtube.com/watch?v=abc123
 
 # Instagram Reel
-omniscribe transcribe https://www.instagram.com/reel/xyz789
+panoscribe transcribe https://www.instagram.com/reel/xyz789
 
 # Local file
-omniscribe transcribe ./video.mp4 --format json --output transcript.json
+panoscribe transcribe ./video.mp4 --format json --output transcript.json
 
 # Speech-only (no OCR)
-omniscribe transcribe <url> --no-ocr
+panoscribe transcribe <url> --no-ocr
 
 # SubRip subtitles
-omniscribe transcribe ./video.mp4 --format srt --output transcript.srt
+panoscribe transcribe ./video.mp4 --format srt --output transcript.srt
 
 # Markdown digest
-omniscribe transcribe ./video.mp4 --format md --output transcript.md
+panoscribe transcribe ./video.mp4 --format md --output transcript.md
 
 # LLM-cleaned OCR (opt-in; requires `uv sync --extra llm` + running Ollama)
-omniscribe transcribe ./video.mp4 --ocr --llm-cleanup --output transcript.json
+panoscribe transcribe ./video.mp4 --ocr --llm-cleanup --output transcript.json
 
 # LLM punctuation cleanup on speech segments (opt-in; same extras + Ollama)
-omniscribe transcribe ./video.mp4 --llm-cleanup --asr-cleanup --output transcript.md
+panoscribe transcribe ./video.mp4 --llm-cleanup --asr-cleanup --output transcript.md
 
 # Batch — one URL per line in urls.txt; outputs land in transcripts/
-omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
+panoscribe transcribe-many urls.txt --output-dir transcripts/ --format md
 
 # Batch a whole YouTube channel or playlist (auto-expanded inline)
 echo "https://www.youtube.com/@channel/videos" > urls.txt
-omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
+panoscribe transcribe-many urls.txt --output-dir transcripts/ --format md
 
 # Speech translation: transcribe German speech as English text
-omniscribe transcribe ./video.mp4 --translate --output transcript.json
+panoscribe transcribe ./video.mp4 --translate --output transcript.json
 ```
 
 Playlist + channel URLs in the URL list are automatically expanded via yt-dlp;
 mix freely with single-video URLs and local file paths in the same `urls.txt`.
 
 Re-running `transcribe-many` with the same `--output-dir` resumes from
-`{output_dir}/.omniscribe-batch-state.json` — completed items are skipped, and
+`{output_dir}/.panoscribe-batch-state.json` — completed items are skipped, and
 `pending`/`failed` items are re-attempted. Delete the state file to start fresh.
 
 ## Supported Platforms
 
-OmniScribe uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) under the hood, which supports **hundreds of platforms** out of the box. The ASR and OCR pipeline is fully platform-agnostic. Platform-specific **UI filtering profiles** (to exclude like buttons, share icons, etc. from OCR) are provided for:
+panoscribe uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) under the hood, which supports **hundreds of platforms** out of the box. The ASR and OCR pipeline is fully platform-agnostic. Platform-specific **UI filtering profiles** (to exclude like buttons, share icons, etc. from OCR) are provided for:
 
 - ✅ TikTok
 - ✅ YouTube / YouTube Shorts
@@ -108,17 +108,17 @@ Videos from any other platform work too — just without UI-specific filtering.
 ## TikTok Photo Posts
 
 TikTok ``/photo/`` posts are image slideshows with optional audio. yt-dlp cannot
-download these; OmniScribe uses **gallery-dl** instead.
+download these; panoscribe uses **gallery-dl** instead.
 
 ```bash
 # Install with the photo extra
 uv sync --extra photo
 
 # Transcribe a TikTok photo post (auto-detected)
-omniscribe transcribe https://www.tiktok.com/@user/photo/1234567890
+panoscribe transcribe https://www.tiktok.com/@user/photo/1234567890
 
 # Process a local directory of slides + optional audio
-omniscribe transcribe ./my-photo-dir/
+panoscribe transcribe ./my-photo-dir/
 ```
 
 **Timestamp semantics:** When the photo post has an audio track, slides are evenly
@@ -131,7 +131,7 @@ detection boxes vs ~17 on stitched frames).
 
 ## Translation
 
-When using ``--translate`` (or ``OMNI_WHISPER_TASK=translate``), Whisper transcribes
+When using ``--translate`` (or ``PANO_WHISPER_TASK=translate``), Whisper transcribes
 source-language speech directly into English. Segment-level ``language`` fields
 report ``en`` (the text language), while the top-level transcript ``language`` field
 retains the detected source language — this ensures OCR language auto-resolution
@@ -141,7 +141,7 @@ speech and source-language OCR), so segments remain ``[SPEECH]`` + ``[ON-SCREEN]
 
 ## API Mode (HTTP Server)
 
-OmniScribe provides an HTTP API for submitting transcription jobs and polling
+panoscribe provides an HTTP API for submitting transcription jobs and polling
 for results. The server is single-worker (one job at a time) and uses the same
 pipeline as the CLI.
 
@@ -150,10 +150,10 @@ pipeline as the CLI.
 uv sync --extra api
 
 # Start the server (default: http://127.0.0.1:8000)
-omniscribe serve
+panoscribe serve
 
 # Custom host/port
-omniscribe serve --host 127.0.0.1 --port 9000
+panoscribe serve --host 127.0.0.1 --port 9000
 ```
 
 ### Endpoints
@@ -161,7 +161,7 @@ omniscribe serve --host 127.0.0.1 --port 9000
 ```bash
 # Health check
 curl http://127.0.0.1:8000/healthz
-# {"status":"ok","version":"..."}   # reports the installed omniscribe package version
+# {"status":"ok","version":"..."}   # reports the installed panoscribe package version
 
 # Submit a job
 curl -X POST http://127.0.0.1:8000/jobs \
@@ -203,7 +203,7 @@ localhost or use a reverse proxy with authentication.
 
 ## Known Limitations
 
-OmniScribe is in active development (alpha). The pipeline produces a usable
+panoscribe is in active development (alpha). The pipeline produces a usable
 combined transcript on most short-form videos. The most visible current
 constraint is documented below; the full set of tracked limitations and
 planned improvements lives in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
@@ -232,24 +232,24 @@ segments. The noise sits alongside them.
   multi-second clusters that represent real captions. The `|=` form
   preserves the wrapping object (language, source path metadata); plain
   `|` would flatten to just the filtered array.
-- Tune `OMNI_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
+- Tune `PANO_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
   low-confidence partial detections, at the cost of also missing some real
   text.
-- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`OMNI_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5). `OMNI_OCR_DET_LANG` (`en` | `ch` | `multi`) selects the detection model independently of the recognition language; the default `en` (`en_PP-OCRv3_det_mobile`) is retained after a Sprint 13 A/B, and `multi` (`multi_PP-OCRv3_det_mobile`, the multilingual detector) is an opt-in for hard / low-recall latin-script content — it trades ~3–5× more raw detections for a small quality edge, so it is not the default (see [`docs/plans/2026-07-16-ocr-det-ab.md`](docs/plans/2026-07-16-ocr-det-ab.md)).
+- The `PANO_OCR_DET_LIMIT_SIDE_LEN` / `PANO_OCR_DET_THRESH` / `PANO_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`PANO_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5). `PANO_OCR_DET_LANG` (`en` | `ch` | `multi`) selects the detection model independently of the recognition language; the default `en` (`en_PP-OCRv3_det_mobile`) is retained after a Sprint 13 A/B, and `multi` (`multi_PP-OCRv3_det_mobile`, the multilingual detector) is an opt-in for hard / low-recall latin-script content — it trades ~3–5× more raw detections for a small quality edge, so it is not the default (see [`docs/plans/2026-07-16-ocr-det-ab.md`](docs/plans/2026-07-16-ocr-det-ab.md)).
 
 ## Docker
 
 ```bash
 # Build
-docker build -t omniscribe .
+docker build -t panoscribe .
 
 # GPU transcription
-docker run --gpus all --rm -v ./output:/output omniscribe transcribe \
+docker run --gpus all --rm -v ./output:/output panoscribe transcribe \
   "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -o /output/transcript.json
 
 # CPU-only (override defaults)
-docker run --rm -e OMNI_WHISPER_DEVICE=cpu -e OMNI_WHISPER_COMPUTE_TYPE=int8 \
-  -e OMNI_OCR_DEVICE=cpu omniscribe transcribe ./video.mp4 -o /output/transcript.json
+docker run --rm -e PANO_WHISPER_DEVICE=cpu -e PANO_WHISPER_COMPUTE_TYPE=int8 \
+  -e PANO_OCR_DEVICE=cpu panoscribe transcribe ./video.mp4 -o /output/transcript.json
 ```
 
 The image bundles Whisper `large-v3-turbo` (~1.5 GB) and RapidOCR models (~15 MB)
@@ -279,19 +279,19 @@ named remedy if no CUDA-capable device is found (see
 To run entirely on CPU, set:
 
 ```bash
-export OMNI_WHISPER_DEVICE=cpu
-export OMNI_WHISPER_COMPUTE_TYPE=int8
-export OMNI_OCR_DEVICE=cpu
+export PANO_WHISPER_DEVICE=cpu
+export PANO_WHISPER_COMPUTE_TYPE=int8
+export PANO_OCR_DEVICE=cpu
 ```
 
-`OMNI_WHISPER_COMPUTE_TYPE` matters here: the default, `float16`, is a
+`PANO_WHISPER_COMPUTE_TYPE` matters here: the default, `float16`, is a
 GPU-only compute type and is not valid on CPU — always pair
-`OMNI_WHISPER_DEVICE=cpu` with `OMNI_WHISPER_COMPUTE_TYPE=int8`.
+`PANO_WHISPER_DEVICE=cpu` with `PANO_WHISPER_COMPUTE_TYPE=int8`.
 
 The default ASR model, `large-v3-turbo`, is noticeably slow on CPU. For CPU
-runs, `OMNI_WHISPER_MODEL=small` is the practical choice — it was used to
-verify this section end-to-end (`OMNI_WHISPER_DEVICE=cpu
-OMNI_WHISPER_COMPUTE_TYPE=int8 OMNI_OCR_DEVICE=cpu OMNI_WHISPER_MODEL=small`
+runs, `PANO_WHISPER_MODEL=small` is the practical choice — it was used to
+verify this section end-to-end (`PANO_WHISPER_DEVICE=cpu
+PANO_WHISPER_COMPUTE_TYPE=int8 PANO_OCR_DEVICE=cpu PANO_WHISPER_MODEL=small`
 against a 13-second local fixture): both the ASR and OCR stages ran on CPU
 (confirmed from the logs: `Loading Whisper model small on cpu
 (compute_type=int8)`) and produced a transcript with both `SPEECH` and
@@ -304,6 +304,21 @@ is a CPU-only measurement — the equivalent GPU run on this fixture was not
 timed, so no CPU-vs-GPU speedup ratio is claimed here. `large-v3-turbo` is a
 substantially larger model than `small` and was not benchmarked on CPU;
 expect it to be markedly slower per the model-size difference alone.
+
+## Renamed from OmniScribe
+
+This project was called **OmniScribe** and is now **panoscribe**. The `omniscribe` name
+on PyPI belongs to an unrelated project (*SoberMind Offline Session Transcriber*), so
+this project could never be published under it — `pip install omniscribe` gets you
+different software.
+
+What changed for anyone running from source:
+
+- Install command: `uv pip install panoscribe` (was `uv pip install omniscribe`)
+- CLI command: `panoscribe` (was `omniscribe`)
+- Environment variables: `PANO_*` (was `OMNI_*`), e.g. `PANO_WHISPER_DEVICE`
+
+The GitHub repository URL redirects from the old name, so existing links keep working.
 
 ## Status
 

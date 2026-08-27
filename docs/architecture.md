@@ -1,12 +1,12 @@
-# OmniScribe Architecture
+# panoscribe Architecture
 
-System-level overview of how OmniScribe transcribes videos by combining
+System-level overview of how panoscribe transcribes videos by combining
 Automatic Speech Recognition (ASR) with Optical Character Recognition (OCR),
 then merging the two streams into a single transcript.
 
 ## Overview
 
-OmniScribe takes a video URL or local file, downloads it if needed, extracts
+panoscribe takes a video URL or local file, downloads it if needed, extracts
 audio and transcribes it via Whisper (ASR), optionally samples frames and runs
 OCR to capture on-screen text, then merges both streams into a unified
 transcript in JSON, TXT, SRT, or Markdown format. A platform-profile system
@@ -17,36 +17,36 @@ exclusion zones, auto-caption bands, and text patterns.
 
 | Module | Responsibility |
 |---|---|
-| `omniscribe/cli.py` | Typer CLI entry points: `transcribe`, `transcribe-many`, `serve` |
-| `omniscribe/pipeline.py` | Orchestration logic — routes video/photo sources through the ASR/OCR/merge chain |
-| `omniscribe/config.py` | Pydantic-settings config loaded from `OMNI_` env vars and `.env` file |
-| `omniscribe/output.py` | `Transcript` / `TranscriptSegment` models, format writers, `merge_channels` cross-source dedup |
-| `omniscribe/errors.py` | `OmniScribeError` base class and intended hierarchy |
-| `omniscribe/batch.py` | Batch state dataclass, URL parsing, output-path collision resolution |
-| `omniscribe/audio.py` | Audio extraction (16 kHz mono WAV) via subprocess ffmpeg |
-| `omniscribe/acquire/downloader.py` | yt-dlp wrapper for video URL download; local-file passthrough |
-| `omniscribe/acquire/platform.py` | `Platform` enum + URL keyword detection |
-| `omniscribe/acquire/photo.py` | Photo-post download via gallery-dl and local-directory scanning |
-| `omniscribe/acquire/playlist.py` | YouTube playlist / channel URL expansion |
-| `omniscribe/asr/whisper.py` | Faster-Whisper wrapper with lazy model init, batched inference, Windows DLL preload |
-| `omniscribe/ocr/protocol.py` | `OcrEngine` typing.Protocol for swappable backends |
-| `omniscribe/ocr/rapid_ocr.py` | RapidOCR engine wrapper — frame sampling, preprocessing, zone masking, OCR inference, bbox aggregation |
-| `omniscribe/ocr/frame_sampler.py` | Video frame sampling with optional scene-change detection |
-| `omniscribe/ocr/preprocessor.py` | Frame-to-grayscale conversion for OCR |
-| `omniscribe/ocr/ui_filter.py` | Zone masking, regex-pattern filtering, frequency-based UI chrome suppression |
-| `omniscribe/ocr/deduplicator.py` | Same-source OCR segment deduplication |
-| `omniscribe/ocr/bbox_aggregator.py` | Per-frame bounding-box y-line grouping and left-to-right text joining |
-| `omniscribe/ocr/_text_match.py` | Internal canonical-key and fuzzy-match helpers |
-| `omniscribe/merge/llm_cleanup.py` | Ollama-backed per-segment OCR artefact repair and ASR punctuation cleanup |
-| `omniscribe/platforms/base.py` | `RelativeRect` and `PlatformProfile` frozen dataclasses |
-| `omniscribe/platforms/registry.py` | Profile registry + `resolve_profile` from config + source URL |
-| `omniscribe/platforms/tiktok.py` | TikTok profile: UI exclusion zones, auto-caption band, patterns |
-| `omniscribe/platforms/youtube.py` | YouTube Shorts profile |
-| `omniscribe/platforms/instagram.py` | Instagram Reels profile |
-| `omniscribe/api/server.py` | FastAPI app with single-worker job queue, per-job temp dirs |
-| `omniscribe/eval/funnel.py` | `FunnelCounts` — stage-wise segment count diagnostics |
-| `omniscribe/eval/models.py` | Evaluation datamodels |
-| `omniscribe/eval/scoring.py` | Scoring metrics |
+| `panoscribe/cli.py` | Typer CLI entry points: `transcribe`, `transcribe-many`, `serve` |
+| `panoscribe/pipeline.py` | Orchestration logic — routes video/photo sources through the ASR/OCR/merge chain |
+| `panoscribe/config.py` | Pydantic-settings config loaded from `PANO_` env vars and `.env` file |
+| `panoscribe/output.py` | `Transcript` / `TranscriptSegment` models, format writers, `merge_channels` cross-source dedup |
+| `panoscribe/errors.py` | `PanoScribeError` base class and intended hierarchy |
+| `panoscribe/batch.py` | Batch state dataclass, URL parsing, output-path collision resolution |
+| `panoscribe/audio.py` | Audio extraction (16 kHz mono WAV) via subprocess ffmpeg |
+| `panoscribe/acquire/downloader.py` | yt-dlp wrapper for video URL download; local-file passthrough |
+| `panoscribe/acquire/platform.py` | `Platform` enum + URL keyword detection |
+| `panoscribe/acquire/photo.py` | Photo-post download via gallery-dl and local-directory scanning |
+| `panoscribe/acquire/playlist.py` | YouTube playlist / channel URL expansion |
+| `panoscribe/asr/whisper.py` | Faster-Whisper wrapper with lazy model init, batched inference, Windows DLL preload |
+| `panoscribe/ocr/protocol.py` | `OcrEngine` typing.Protocol for swappable backends |
+| `panoscribe/ocr/rapid_ocr.py` | RapidOCR engine wrapper — frame sampling, preprocessing, zone masking, OCR inference, bbox aggregation |
+| `panoscribe/ocr/frame_sampler.py` | Video frame sampling with optional scene-change detection |
+| `panoscribe/ocr/preprocessor.py` | Frame-to-grayscale conversion for OCR |
+| `panoscribe/ocr/ui_filter.py` | Zone masking, regex-pattern filtering, frequency-based UI chrome suppression |
+| `panoscribe/ocr/deduplicator.py` | Same-source OCR segment deduplication |
+| `panoscribe/ocr/bbox_aggregator.py` | Per-frame bounding-box y-line grouping and left-to-right text joining |
+| `panoscribe/ocr/_text_match.py` | Internal canonical-key and fuzzy-match helpers |
+| `panoscribe/merge/llm_cleanup.py` | Ollama-backed per-segment OCR artefact repair and ASR punctuation cleanup |
+| `panoscribe/platforms/base.py` | `RelativeRect` and `PlatformProfile` frozen dataclasses |
+| `panoscribe/platforms/registry.py` | Profile registry + `resolve_profile` from config + source URL |
+| `panoscribe/platforms/tiktok.py` | TikTok profile: UI exclusion zones, auto-caption band, patterns |
+| `panoscribe/platforms/youtube.py` | YouTube Shorts profile |
+| `panoscribe/platforms/instagram.py` | Instagram Reels profile |
+| `panoscribe/api/server.py` | FastAPI app with single-worker job queue, per-job temp dirs |
+| `panoscribe/eval/funnel.py` | `FunnelCounts` — stage-wise segment count diagnostics |
+| `panoscribe/eval/models.py` | Evaluation datamodels |
+| `panoscribe/eval/scoring.py` | Scoring metrics |
 
 ## Pipeline flow
 
@@ -151,8 +151,8 @@ and OCR text are similar enough become `[BOTH]`.
 Two optional post-merge passes run sequentially against a local Ollama model:
 OCR-cleaning targets `ON-SCREEN` and `BOTH` segments (fixing OCR artefacts),
 ASR-cleaning targets `SPEECH` segments (punctuation and capitalisation). Both
-are opt-in via `--llm-cleanup` and `--asr-cleanup` (or `OMNI_LLM_CLEANUP_ENABLED`,
-`OMNI_LLM_ASR_CLEANUP_ENABLED`).
+are opt-in via `--llm-cleanup` and `--asr-cleanup` (or `PANO_LLM_CLEANUP_ENABLED`,
+`PANO_LLM_ASR_CLEANUP_ENABLED`).
 
 ## Layering rules
 
@@ -168,17 +168,17 @@ api ──→ pipeline          (no cli import)
 - Subsystem modules (`asr/`, `ocr/`, `acquire/`, `merge/`, `platforms/`) do not
   import from each other — all coordination is in `pipeline`.
 - The cross-module data types are `TranscriptSegment`, `Transcript`, and
-  `OmniScribeConfig`.
+  `PanoScribeConfig`.
 - No circular imports exist between any two modules.
 
 ## Extension seams
 
 | Seam | Mechanism | Key file |
 |---|---|---|
-| New OCR backend | Implement the `OcrEngine` Protocol (structural typing — no inheritance required) | `src/omniscribe/ocr/protocol.py` |
-| New platform profile | Define a `PlatformProfile` frozen dataclass with zones and patterns; register in `PROFILES` dict | `src/omniscribe/platforms/base.py` + `registry.py` |
-| New output format | Write a `write_*` function; add it to the `_writer_registry` dict in `write_transcript` | `src/omniscribe/output.py` |
-| New error type | Subclass `OmniScribeError` (future hierarchy noted in docstring) | `src/omniscribe/errors.py` |
+| New OCR backend | Implement the `OcrEngine` Protocol (structural typing — no inheritance required) | `src/panoscribe/ocr/protocol.py` |
+| New platform profile | Define a `PlatformProfile` frozen dataclass with zones and patterns; register in `PROFILES` dict | `src/panoscribe/platforms/base.py` + `registry.py` |
+| New output format | Write a `write_*` function; add it to the `_writer_registry` dict in `write_transcript` | `src/panoscribe/output.py` |
+| New error type | Subclass `PanoScribeError` (future hierarchy noted in docstring) | `src/panoscribe/errors.py` |
 
 Unregistered platforms still work — `resolve_profile` returns `GENERIC_PROFILE`
 (no exclusion zones, no patterns, no auto-caption bands) for any `Platform`

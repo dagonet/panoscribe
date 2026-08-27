@@ -13,9 +13,9 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from omniscribe.api.server import create_app
-from omniscribe.config import OmniScribeConfig
-from omniscribe.errors import OmniScribeError
+from panoscribe.api.server import create_app
+from panoscribe.config import PanoScribeConfig
+from panoscribe.errors import PanoScribeError
 
 
 class _SyncFuture:
@@ -46,13 +46,13 @@ def sync_executor():
 
 
 @pytest.fixture
-def test_config(tmp_path: Path) -> OmniScribeConfig:
+def test_config(tmp_path: Path) -> PanoScribeConfig:
     """Return a config with a temp dir under tmp_path."""
-    return OmniScribeConfig(_env_file=None, temp_dir=str(tmp_path / "omni"))
+    return PanoScribeConfig(_env_file=None, temp_dir=str(tmp_path / "omni"))
 
 
 @pytest.fixture
-def client(sync_executor, test_config: OmniScribeConfig) -> TestClient:
+def client(sync_executor, test_config: PanoScribeConfig) -> TestClient:
     """Return a TestClient with a synchronous executor."""
     app = create_app(config=test_config, executor=sync_executor)
     return TestClient(app)
@@ -81,7 +81,7 @@ def test_healthz_returns_ok_and_version(client: TestClient) -> None:
 
 
 def test_submit_job_returns_202_with_job_id(client: TestClient) -> None:
-    with patch("omniscribe.api.server.process_single_video", side_effect=_fake_transcribe_success):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_fake_transcribe_success):
         resp = client.post("/jobs", json={"source": "fake.mp4"})
 
     assert resp.status_code == 202
@@ -91,7 +91,7 @@ def test_submit_job_returns_202_with_job_id(client: TestClient) -> None:
 
 
 def test_submitted_job_appears_in_list(client: TestClient) -> None:
-    with patch("omniscribe.api.server.process_single_video", side_effect=_fake_transcribe_success):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_fake_transcribe_success):
         post_resp = client.post("/jobs", json={"source": "fake.mp4"})
     job_id = post_resp.json()["job_id"]
 
@@ -103,7 +103,7 @@ def test_submitted_job_appears_in_list(client: TestClient) -> None:
 
 def test_job_lifecycle_happy_path(client: TestClient) -> None:
     """Job goes through queued -> running -> done, result is populated."""
-    with patch("omniscribe.api.server.process_single_video", side_effect=_fake_transcribe_success):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_fake_transcribe_success):
         post_resp = client.post("/jobs", json={"source": "fake.mp4"})
     job_id = post_resp.json()["job_id"]
 
@@ -116,11 +116,11 @@ def test_job_lifecycle_happy_path(client: TestClient) -> None:
     assert len(body["result"]["segments"]) == 1
 
 
-def test_job_failed_on_omniscribe_error(client: TestClient) -> None:
+def test_job_failed_on_panoscribe_error(client: TestClient) -> None:
     def _fail(source, config, output_path, *, ocr_active, output_format):
-        raise OmniScribeError("ffmpeg not found")
+        raise PanoScribeError("ffmpeg not found")
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_fail):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_fail):
         post_resp = client.post("/jobs", json={"source": "fake.mp4"})
     job_id = post_resp.json()["job_id"]
 
@@ -136,7 +136,7 @@ def test_job_failed_on_unexpected_exception(client: TestClient) -> None:
     def _crash(source, config, output_path, *, ocr_active, output_format):
         raise ValueError("something broke")
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_crash):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_crash):
         post_resp = client.post("/jobs", json={"source": "fake.mp4"})
     job_id = post_resp.json()["job_id"]
 
@@ -155,10 +155,10 @@ def test_get_unknown_job_returns_404(client: TestClient) -> None:
 
 
 def test_request_language_maps_to_whisper_language(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
     """language field maps to whisper_language on config."""
-    captured_configs: list[OmniScribeConfig] = []
+    captured_configs: list[PanoScribeConfig] = []
 
     def _capture(source, cfg, output_path, *, ocr_active, output_format):
         captured_configs.append(cfg)
@@ -169,7 +169,7 @@ def test_request_language_maps_to_whisper_language(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake.mp4", "language": "fr"})
 
     assert len(captured_configs) == 1
@@ -177,10 +177,10 @@ def test_request_language_maps_to_whisper_language(
 
 
 def test_request_translate_maps_to_whisper_task(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
     """translate=True maps to whisper_task=translate."""
-    captured_configs: list[OmniScribeConfig] = []
+    captured_configs: list[PanoScribeConfig] = []
 
     def _capture(source, cfg, output_path, *, ocr_active, output_format):
         captured_configs.append(cfg)
@@ -191,7 +191,7 @@ def test_request_translate_maps_to_whisper_task(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake.mp4", "translate": True})
 
     assert len(captured_configs) == 1
@@ -199,10 +199,10 @@ def test_request_translate_maps_to_whisper_task(
 
 
 def test_request_translate_false_maps_to_transcribe(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
     """translate=False maps to whisper_task=transcribe."""
-    captured_configs: list[OmniScribeConfig] = []
+    captured_configs: list[PanoScribeConfig] = []
 
     def _capture(source, cfg, output_path, *, ocr_active, output_format):
         captured_configs.append(cfg)
@@ -213,7 +213,7 @@ def test_request_translate_false_maps_to_transcribe(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake.mp4", "translate": False})
 
     assert len(captured_configs) == 1
@@ -221,7 +221,7 @@ def test_request_translate_false_maps_to_transcribe(
 
 
 def test_request_ocr_false_disables_ocr(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
     """ocr=False sets ocr_active to False in the worker."""
     captured_args: list[dict] = []
@@ -235,7 +235,7 @@ def test_request_ocr_false_disables_ocr(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake.mp4", "ocr": False})
 
     assert len(captured_args) == 1
@@ -243,9 +243,9 @@ def test_request_ocr_false_disables_ocr(
 
 
 def test_request_ocr_language_maps_to_config(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
-    captured_configs: list[OmniScribeConfig] = []
+    captured_configs: list[PanoScribeConfig] = []
 
     def _capture(source, cfg, output_path, *, ocr_active, output_format):
         captured_configs.append(cfg)
@@ -256,7 +256,7 @@ def test_request_ocr_language_maps_to_config(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake.mp4", "ocr_language": "ch"})
 
     assert len(captured_configs) == 1
@@ -264,9 +264,9 @@ def test_request_ocr_language_maps_to_config(
 
 
 def test_request_platform_maps_to_platform_profile(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
-    captured_configs: list[OmniScribeConfig] = []
+    captured_configs: list[PanoScribeConfig] = []
 
     def _capture(source, cfg, output_path, *, ocr_active, output_format):
         captured_configs.append(cfg)
@@ -277,7 +277,7 @@ def test_request_platform_maps_to_platform_profile(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake.mp4", "platform": "tiktok"})
 
     assert len(captured_configs) == 1
@@ -285,10 +285,10 @@ def test_request_platform_maps_to_platform_profile(
 
 
 def test_per_job_temp_dir_is_distinct(
-    client: TestClient, sync_executor, test_config: OmniScribeConfig
+    client: TestClient, sync_executor, test_config: PanoScribeConfig
 ) -> None:
     """Two sequential jobs get distinct temp_dir values under the base temp."""
-    captured_configs: list[OmniScribeConfig] = []
+    captured_configs: list[PanoScribeConfig] = []
 
     def _capture(source, cfg, output_path, *, ocr_active, output_format):
         captured_configs.append(cfg)
@@ -299,7 +299,7 @@ def test_per_job_temp_dir_is_distinct(
     app = create_app(config=test_config, executor=sync_executor)
     client = TestClient(app)
 
-    with patch("omniscribe.api.server.process_single_video", side_effect=_capture):
+    with patch("panoscribe.api.server.process_single_video", side_effect=_capture):
         client.post("/jobs", json={"source": "fake1.mp4"})
         client.post("/jobs", json={"source": "fake2.mp4"})
 

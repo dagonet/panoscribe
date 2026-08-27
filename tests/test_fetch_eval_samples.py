@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from omniscribe.acquire.photo import PhotoPost
+from panoscribe.acquire.photo import PhotoPost
 
 
 @pytest.fixture
@@ -83,7 +83,7 @@ def test_photo_download_creates_slides_dir(
 
     sample = fetcher.SAMPLES[0]
 
-    with patch("omniscribe.acquire.photo.download_photo_post", return_value=post):
+    with patch("panoscribe.acquire.photo.download_photo_post", return_value=post):
         fetcher._download_photo(sample)
 
     dest = fixtures_dir / sample["target_dir"]
@@ -109,7 +109,7 @@ def test_photo_download_uses_shutil_move(
     sample = fetcher.SAMPLES[0]
 
     with (
-        patch("omniscribe.acquire.photo.download_photo_post", return_value=post),
+        patch("panoscribe.acquire.photo.download_photo_post", return_value=post),
         patch("scripts.fetch_eval_samples.shutil.move") as mock_move,
     ):
         fetcher._download_photo(sample)
@@ -132,7 +132,7 @@ def test_video_download_creates_parent_dir(
         return dest
 
     with patch(
-        "omniscribe.acquire.downloader.download_video", side_effect=_fake_download
+        "panoscribe.acquire.downloader.download_video", side_effect=_fake_download
     ) as mock_dl:
         fetcher._download_video(sample)
 
@@ -152,7 +152,7 @@ def test_video_download_renames_on_mismatch(
     temp_path = fixtures_dir / "videos" / "abc123.mp4"  # yt-dlp naming
 
     with (
-        patch("omniscribe.acquire.downloader.download_video", return_value=temp_path),
+        patch("panoscribe.acquire.downloader.download_video", return_value=temp_path),
         patch("scripts.fetch_eval_samples.shutil.move") as mock_move,
     ):
         fetcher._download_video(sample)

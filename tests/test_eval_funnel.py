@@ -1,8 +1,8 @@
-"""Unit tests for omniscribe.eval.funnel."""
+"""Unit tests for panoscribe.eval.funnel."""
 
 from __future__ import annotations
 
-from omniscribe.eval.funnel import FunnelCounts
+from panoscribe.eval.funnel import FunnelCounts
 
 
 class TestFunnelCounts:

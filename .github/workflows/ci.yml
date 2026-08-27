@@ -32,7 +32,7 @@ jobs:
         run: uv run ruff check .
 
       - name: Run tests
-        run: uv run pytest --cov=omniscribe --cov-report=term-missing --cov-fail-under=95
+        run: uv run pytest --cov=panoscribe --cov-report=term-missing --cov-fail-under=95
 
   resolve:
     runs-on: ubuntu-latest
