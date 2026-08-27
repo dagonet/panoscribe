@@ -61,7 +61,7 @@ def _flush_cluster(
     if duration < min_duration:
         return None
 
-    confidences = [s.confidence for s in cluster if s.confidence is not None]
+    confidences = [s.ocr_confidence for s in cluster if s.ocr_confidence is not None]
     mean_conf = sum(confidences) / len(confidences) if confidences else None
 
     return _TranscriptSegment(
@@ -69,7 +69,7 @@ def _flush_cluster(
         end=last.end,
         text=first.text,
         source="ON-SCREEN",
-        confidence=mean_conf,
+        ocr_confidence=mean_conf,
         language=first.language,
     )
 

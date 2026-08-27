@@ -177,7 +177,7 @@ class WhisperTranscriber:
                 start=float(s.start),
                 end=float(s.end),
                 text=s.text.strip(),
-                confidence=getattr(s, "avg_logprob", None),
+                asr_logprob=getattr(s, "avg_logprob", None),
                 language=segment_language,
             )
             for s in segments_gen

@@ -128,6 +128,14 @@ def cleanup_ocr_segments(
 
     - Empty / whitespace-only response.
     - Response longer than ``len(original) * _MAX_LENGTH_MULTIPLIER``.
+
+    ``ocr_confidence`` / ``asr_logprob`` decision: cleanup only touches
+    ``text`` via ``model_copy(update={"text": ...})``, so both confidence
+    fields carry through unchanged even though the cleaned text is
+    unscored. This is a deliberate choice, not an oversight — cleanup is a
+    light OCR-artefact fixup, not a re-transcription, so the original score
+    remains the best available signal. Clearing it would discard
+    information with no compensating benefit.
     """
     total = len(segments)
     # (1) No-op short-circuit BEFORE any import. SPEECH-only or empty input
@@ -278,6 +286,9 @@ def cleanup_speech_segments(
 
     Log prefix is ``"LLM ASR cleanup:"`` so log consumers can distinguish
     from OCR cleanup's ``"LLM cleanup:"`` prefix.
+
+    ``asr_logprob`` carries through unchanged (see the matching note on
+    :func:`cleanup_ocr_segments`) — this pass only rewrites ``text``.
     """
     total = len(segments)
     # (1) No-op short-circuit BEFORE any Client construction. ON-SCREEN /

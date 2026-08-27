@@ -252,7 +252,7 @@ def test_extract_filters_below_confidence_threshold(tmp_path: Path) -> None:
         segments = RapidOCREngine(config).extract(video)
 
     assert [s.text for s in segments] == ["keep me", "also keep"]
-    assert [s.confidence for s in segments] == [0.95, 0.60]
+    assert [s.ocr_confidence for s in segments] == [0.95, 0.60]
 
 
 def test_extract_handles_empty_frame_result(tmp_path: Path) -> None:
@@ -302,7 +302,7 @@ def test_extract_segment_fields(tmp_path: Path) -> None:
     assert seg.source == "ON-SCREEN"
     assert seg.language == "en"
     assert seg.text == "overlay text"
-    assert seg.confidence == 0.88
+    assert seg.ocr_confidence == 0.88
 
 
 def test_extract_logs_info_before_first_init(
@@ -667,7 +667,7 @@ def test_extract_aggregates_same_line_bboxes_into_one_segment(tmp_path: Path) ->
     assert seg.start == 2.5
     assert seg.end == 2.5
     # Mean confidence of (0.9, 0.8).
-    assert seg.confidence == pytest.approx(0.85)
+    assert seg.ocr_confidence == pytest.approx(0.85)
 
 
 # ── Sprint 9.5: model-variant knob wiring ────────────────────────────────────

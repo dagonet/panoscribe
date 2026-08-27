@@ -154,6 +154,23 @@ ASR-cleaning targets `SPEECH` segments (punctuation and capitalisation). Both
 are opt-in via `--llm-cleanup` and `--asr-cleanup` (or `PANO_LLM_CLEANUP_ENABLED`,
 `PANO_LLM_ASR_CLEANUP_ENABLED`).
 
+### JSON output schema — confidence fields
+
+`--format json` (`write_json`) emits `TranscriptSegment.model_dump_json()`, which
+includes two independent, non-comparable confidence-like fields (as of v0.4.0;
+previously a single unified `confidence` key — **breaking change**, see CHANGELOG):
+
+| Field | Range | Populated for | Origin |
+|---|---|---|---|
+| `asr_logprob` | roughly `-3.0..0.0`, negative, closer to `0` is more confident | `SPEECH` and `BOTH` segments | Whisper's raw `avg_logprob` — **not** a probability |
+| `ocr_confidence` | `[0.0, 1.0]`, higher is more confident | `ON-SCREEN` segments | RapidOCR pixel-match score, averaged across cross-frame duplicates |
+
+A single-source segment (`SPEECH` or `ON-SCREEN`) populates exactly one of the
+two fields; the other is `null`. `BOTH` segments (cross-source merge) inherit
+only `asr_logprob` from their speech side — `ocr_confidence` is dropped rather
+than mixed in, because the two scales are not comparable. `write_txt`,
+`write_srt`, and `write_markdown` do not expose either field.
+
 ## Layering rules
 
 ```
