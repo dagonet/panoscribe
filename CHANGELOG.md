@@ -5,6 +5,54 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-08-28
+
+### Changed
+
+- **`aggregate_frame_bboxes` now returns `list[AggregatedLine]` instead of
+  `list[tuple[str, float]]`** (`src/panoscribe/ocr/bbox_aggregator.py`, #116) —
+  each element is a `NamedTuple` (`text`, `mean_conf`, `mean_box_height`,
+  `y_center`, `x_center`) instead of a `(text, mean_confidence)` pair. This is
+  a public, importable function, so any caller unpacking or indexing its
+  return value as a 2-tuple breaks — hence the minor bump rather than a
+  patch. The function's own parameter list is unchanged; `frame_height` is
+  read by the caller (`_process_frame` in `rapid_ocr.py`), not passed into
+  `aggregate_frame_bboxes` itself. `TranscriptSegment` and the JSON output
+  schema are untouched — no user-facing transcription behavior changed.
+
+### Evaluated, not shipped
+
+- **Typography as an OCR junk discriminator** (#116) — evaluated whether
+  ink-height, position, or a lowercase/caps signal could separate junk
+  background text from required overlays, and it does not: on the corrected
+  fixture (background text now includes ALL-CAPS and large/bold samples, and
+  overlays include a lowercase line and normally-sized short-lived
+  instances), junk ink-height range `[13, 34]px` fully contains the
+  required-overlay range `[15, 26]px`. In the real pipeline the matched and
+  unmatched normalized-height min/max are identical — no threshold
+  separates them, not because the threshold was mistuned but because none
+  exists. The prior fixture's apparent height signal was an artifact of
+  lowercase-vs-caps rendering (lowercase carries ascenders/descenders, so
+  background prose measured taller than ALL-CAPS overlays at equal font
+  scale) — `cv2.getTextSize` hides this; only the rendered ink bbox that OCR
+  detection returns exposes it. Per-line geometry (`mean_box_height`,
+  `y_center`, `x_center`) is now carried internally from
+  `aggregate_frame_bboxes` through to `_process_frame` for diagnostics
+  (`scripts/eval_ocr.py` reports normalized height) — internal only, no
+  schema change. **No filtering behavior changed; the OCR junk limitation
+  remains open.** This is the fourth discriminator closed by measurement,
+  after detector-swap, low-recurrence filtering (#110), and frequency
+  filtering. Findings: `docs/plans/2026-08-28-ocr-phase3-typography.md`.
+
+### Docs
+
+- **`uv` serves a stale cached index right after a release, making a
+  successful publish look broken** (#115) — observed on the 0.5.0 and 0.6.0
+  releases: `uv pip install panoscribe==X.Y.Z` fails with "no version of
+  panoscribe==X.Y.Z" for several minutes after PyPI shows the upload
+  succeeded. Documented as a troubleshooting entry plus a release-process
+  note so it isn't re-diagnosed as a publish failure next time.
+
 ## [0.6.0] - 2026-08-28
 
 ### ⚠️ Behavioral change — re-tune `PANO_SCENE_CHANGE_THRESHOLD` if set
@@ -461,6 +509,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.7.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.4.0

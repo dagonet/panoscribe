@@ -1,6 +1,6 @@
 [project]
 name = "panoscribe"
-version = "0.6.0"
+version = "0.7.0"
 description = "Extract complete video transcripts — speech AND on-screen text — from TikTok, YouTube, Instagram and more."
 readme = "README.md"
 license = "MIT"
