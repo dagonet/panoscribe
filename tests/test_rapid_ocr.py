@@ -305,6 +305,60 @@ def test_extract_segment_fields(tmp_path: Path) -> None:
     assert seg.ocr_confidence == 0.88
 
 
+def test_extract_geometry_diagnostic_is_none_by_default(tmp_path: Path) -> None:
+    """Without a ``geometry`` list, no diagnostic collection happens."""
+    config = _make_config()
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=("overlay text",), scores=(0.9,))
+
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "panoscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([(0.0, _fake_frame())]),
+        ),
+    ):
+        segments = RapidOCREngine(config).extract(video)
+
+    assert len(segments) == 1  # unaffected -- purely additive diagnostic
+
+
+def test_extract_geometry_diagnostic_populated_when_requested(tmp_path: Path) -> None:
+    """A ``geometry`` list gets one SegmentGeometry per segment, same order,
+    and never touches TranscriptSegment's own fields."""
+    config = _make_config()
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(
+        texts=("small required overlay", "junk line"),
+        scores=(0.9, 0.9),
+    )
+
+    geometry: list = []
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "panoscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([(1.0, _fake_frame())]),
+        ),
+    ):
+        segments = RapidOCREngine(config).extract(video, geometry=geometry)
+
+    assert len(segments) == 2
+    assert len(geometry) == 2
+    assert [g.text for g in geometry] == [s.text for s in segments]
+    assert all(float(g.normalized_height) >= 0.0 for g in geometry)
+    # The small required overlay must survive geometry collection unmodified
+    # -- diagnostics are purely additive, never filtering.
+    assert segments[0].text == "small required overlay"
+    assert not hasattr(segments[0], "normalized_height")
+
+
 def test_extract_logs_info_before_first_init(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

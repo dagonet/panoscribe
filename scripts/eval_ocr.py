@@ -20,7 +20,7 @@ from pathlib import Path
 
 from panoscribe.config import PanoScribeConfig
 from panoscribe.eval.funnel import FunnelCounts
-from panoscribe.eval.junk import compute_junk_metrics
+from panoscribe.eval.junk import compute_junk_metrics, is_matched_to_ground_truth
 from panoscribe.eval.models import GroundTruth
 from panoscribe.eval.scoring import score_video
 from panoscribe.ocr.deduplicator import dedup_segments
@@ -98,6 +98,18 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--typography",
+        action="store_true",
+        help=(
+            "Collect per-segment normalized bbox height (raw stage, before "
+            "any filter) and print a matched-vs-unmatched separation table. "
+            "Diagnostic only -- see panoscribe.ocr.rapid_ocr.SegmentGeometry "
+            "and docs/plans/2026-08-28-ocr-phase3-typography.md. Height is "
+            "``mean_box_height / frame_height`` (scale-invariant, no resize "
+            "in panoscribe.ocr.preprocessor.preprocess)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         "-o",
         type=str,
@@ -140,6 +152,7 @@ def main() -> None:
     # OCR pipeline (no ASR, no merge).
     ocr_engine = RapidOCREngine(config, profile=profile)
     funnel = FunnelCounts() if args.funnel else None
+    geometry: list = [] if args.typography else None
 
     if args.images is not None:
         # Images mode: scan directory for slides.
@@ -149,9 +162,11 @@ def main() -> None:
         )
         if not image_paths:
             parser.error(f"No image files found in {args.images}")
-        ocr_segments = ocr_engine.extract_images(image_paths, timestamps=None, funnel=funnel)
+        ocr_segments = ocr_engine.extract_images(
+            image_paths, timestamps=None, funnel=funnel, geometry=geometry
+        )
     else:
-        ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel)
+        ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel, geometry=geometry)
 
     fuzzy_threshold = config.dedup_similarity_threshold
     junk_stages: dict[str, dict[str, object]] | None = {} if args.junk else None
@@ -214,12 +229,45 @@ def main() -> None:
     if junk_stages is not None:
         result.junk = junk_stages
 
+    # Typography diagnostic: raw-stage (pre-filter) normalized height,
+    # matched vs unmatched. See --typography help and
+    # docs/plans/2026-08-28-ocr-phase3-typography.md step 3.
+    typography_str = ""
+    if geometry:
+        fuzzy_threshold_typo = config.dedup_similarity_threshold
+        matched_heights = []
+        unmatched_heights = []
+        for seg, geo in zip(ocr_segments, geometry, strict=False):
+            bucket = (
+                matched_heights
+                if is_matched_to_ground_truth(seg, gt, fuzzy_threshold_typo)
+                else unmatched_heights
+            )
+            bucket.append(geo.normalized_height)
+
+        def _stats(values: list[float]) -> str:
+            if not values:
+                return "n=0"
+            return (
+                f"n={len(values)} min={min(values):.4f} "
+                f"max={max(values):.4f} mean={sum(values) / len(values):.4f}"
+            )
+
+        typography_str = (
+            chr(10) * 2 + "Typography diagnostic (raw stage, normalized height = "
+            "mean_box_height / frame_height; post-CLAHE, no resize):"
+            + chr(10)
+            + f"  matched (real overlays):   {_stats(matched_heights)}"
+            + chr(10)
+            + f"  unmatched (junk):          {_stats(unmatched_heights)}"
+        )
+
     # Console output.
     funnel_str = ""
     if args.funnel and funnel is not None:
         funnel_str = chr(10) * 2 + funnel.report()
     print(
-        result.model_dump_json(indent=2) + funnel_str,
+        result.model_dump_json(indent=2) + funnel_str + typography_str,
     )
 
     # File output.

@@ -31,9 +31,8 @@ def test_single_bbox_returns_single_segment() -> None:
     out = aggregate_frame_bboxes(boxes, ["hello"], [0.9], min_confidence=0.6)
 
     assert len(out) == 1
-    text, conf = out[0]
-    assert text == "hello"
-    assert conf == pytest.approx(0.9)
+    assert out[0].text == "hello"
+    assert out[0].mean_conf == pytest.approx(0.9)
 
 
 def test_two_bboxes_same_line_joined_left_to_right() -> None:
@@ -45,9 +44,8 @@ def test_two_bboxes_same_line_joined_left_to_right() -> None:
     out = aggregate_frame_bboxes(boxes, ["left", "right"], [0.8, 0.9], min_confidence=0.6)
 
     assert len(out) == 1
-    text, conf = out[0]
-    assert text == "left right"
-    assert conf == pytest.approx(0.85)
+    assert out[0].text == "left right"
+    assert out[0].mean_conf == pytest.approx(0.85)
 
 
 def test_two_bboxes_different_lines_yield_two_segments() -> None:
@@ -59,7 +57,7 @@ def test_two_bboxes_different_lines_yield_two_segments() -> None:
     ]
     out = aggregate_frame_bboxes(boxes, ["top", "bottom"], [0.9, 0.9], min_confidence=0.6)
 
-    assert [t for t, _ in out] == ["top", "bottom"]
+    assert [line.text for line in out] == ["top", "bottom"]
 
 
 def test_three_bboxes_one_line_out_of_x_order_sorts_by_x() -> None:
@@ -100,8 +98,7 @@ def test_mean_confidence_aggregation_on_one_line() -> None:
     out = aggregate_frame_bboxes(boxes, ["a", "b", "c"], [0.6, 0.9, 0.9], min_confidence=0.6)
 
     assert len(out) == 1
-    _, conf = out[0]
-    assert conf == pytest.approx(0.8)
+    assert out[0].mean_conf == pytest.approx(0.8)
 
 
 def test_tolerance_boundary_inclusive_merges() -> None:
@@ -161,7 +158,7 @@ def test_three_separate_lines_emit_three_segments() -> None:
         boxes, ["top", "middle", "bottom"], [0.9, 0.9, 0.9], min_confidence=0.6
     )
 
-    assert [t for t, _ in out] == ["top", "middle", "bottom"]
+    assert [line.text for line in out] == ["top", "middle", "bottom"]
 
 
 def test_mixed_confidence_within_line_keeps_only_high_bbox() -> None:
@@ -174,9 +171,8 @@ def test_mixed_confidence_within_line_keeps_only_high_bbox() -> None:
     out = aggregate_frame_bboxes(boxes, ["lo", "hi"], [0.5, 0.8], min_confidence=0.6)
 
     assert len(out) == 1
-    text, conf = out[0]
-    assert text == "hi"
-    assert conf == pytest.approx(0.8)
+    assert out[0].text == "hi"
+    assert out[0].mean_conf == pytest.approx(0.8)
 
 
 # ── Sprint 9.3: Column-aware line splitting ────────────────────────────────
@@ -247,7 +243,7 @@ def test_two_by_two_grid_emits_four_segments() -> None:
         min_confidence=0.6,
     )
 
-    assert [t for t, _ in out] == ["r1c1", "r1c2", "r2c1", "r2c2"]
+    assert [line.text for line in out] == ["r1c1", "r1c2", "r2c1", "r2c2"]
 
 
 def test_split_chunks_have_independent_mean_confidence() -> None:
@@ -340,3 +336,44 @@ def test_same_text_adjacent_non_overlapping_joined() -> None:
     # Same line, gap below threshold → joined "A A"
     assert len(out) == 1
     assert out[0][0] == "A A"
+
+
+# ── Phase 3: geometry plumbing (AggregatedLine) ──────────────────────────────
+
+
+def test_single_bbox_geometry_matches_box_dimensions() -> None:
+    """mean_box_height/y_center/x_center reflect the single survivor's geometry."""
+    boxes = [_box(0.0, 10.0, 100.0, 40.0)]  # height=30, y_center=25, x_center=50
+    out = aggregate_frame_bboxes(boxes, ["hello"], [0.9], min_confidence=0.6)
+
+    assert len(out) == 1
+    assert out[0].mean_box_height == pytest.approx(30.0)
+    assert out[0].y_center == pytest.approx(25.0)
+    assert out[0].x_center == pytest.approx(50.0)
+
+
+def test_joined_line_geometry_is_averaged_over_chunk() -> None:
+    """A 2-box joined chunk's geometry is the mean over both survivors."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 20.0),  # height=20, y_center=10, x_center=25
+        _box(60.0, 0.0, 110.0, 40.0),  # height=40, y_center=20, x_center=85
+    ]
+    out = aggregate_frame_bboxes(boxes, ["left", "right"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 1
+    assert out[0].mean_box_height == pytest.approx(30.0)
+    assert out[0].y_center == pytest.approx(15.0)
+    assert out[0].x_center == pytest.approx(55.0)
+
+
+def test_column_split_chunks_have_independent_geometry() -> None:
+    """Each column-split chunk carries its own geometry, not the whole line's."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # col 1, height=30
+        _box(200.0, 0.0, 250.0, 50.0),  # col 2, height=50, gap=150 -> split
+    ]
+    out = aggregate_frame_bboxes(boxes, ["A", "B"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 2
+    assert out[0].mean_box_height == pytest.approx(30.0)
+    assert out[1].mean_box_height == pytest.approx(50.0)

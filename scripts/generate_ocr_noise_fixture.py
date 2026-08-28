@@ -28,6 +28,21 @@ Synthesizes a short "slide sequence" with:
   runs -- unlike the phase-1 fixture, which only ever resolved to
   ``GENERIC_PROFILE`` (empty patterns), making the pattern filter untestable
   by construction.
+* PHASE 3 additions (see ``docs/plans/2026-08-28-ocr-phase3-typography.md``),
+  designed to remove confounds a naive typography/height filter could hide
+  behind:
+    - ALL-CAPS background junk at prose scale (removes the casing confound
+      -- the phase-2 fixture's only junk was lowercase, so any filter that
+      merely detected "no descenders" would have looked like a typography
+      filter without being one).
+    - Large/bold background junk (a headline/sign in the scene) -- the
+      phase-2 fixture had no large junk, which flatters any height filter.
+    - A lowercase REQUIRED overlay -- every phase-2 required overlay is
+      ALL-CAPS, so casing could be used as a proxy for "deliberate caption"
+      instead of anything typographic.
+    - A normally-sized short-lived overlay, alongside the two deliberately
+      tiny ones -- phase 2 only covered the hardest corner (tiny
+      short-lived captions).
 
 Two output modes:
 
@@ -119,7 +134,7 @@ _WINDOW_LINES = 4
 # caption is still overwhelmingly the majority signal (a real "stable
 # caption" pattern).
 _OVERLAY_TEXT = "SEASON FINALE LIVE NOW"
-_OVERLAY_Y = 380
+_OVERLAY_Y = 316
 _OVERLAY_SKIP_FRAME_INDICES = frozenset({2, 7})
 
 # Short-lived REAL overlays -- 1-2 sampled frames each, required=True. A
@@ -127,20 +142,49 @@ _OVERLAY_SKIP_FRAME_INDICES = frozenset({2, 7})
 # invisibly; phase 1's fixture had no such case, so it could not fail a
 # filter that would break real short-lived captions (burned-in subtitles,
 # fast lower-thirds).
+# NOTE on all Y constants below: the YouTube platform profile's bottom
+# ``ui_exclusion_zones`` band covers y >= 0.88 * 480 = 422.4px (see
+# ``panoscribe.platforms.youtube.YOUTUBE_PROFILE``) and is masked out
+# BEFORE OCR ever runs (``RapidOCREngine.extract`` -> ``mask_zones``). Every
+# required-overlay Y below is kept comfortably above that line -- an
+# earlier draft of this fixture placed two short-lived overlays inside the
+# masked band and it silently zeroed their recall when evaluated with
+# ``--platform-profile youtube``, which looked like a typography-filter
+# problem until traced back to frame masking.
 _SHORT_LIVED_A_TEXT = "BREAKING NEWS UPDATE"
-_SHORT_LIVED_A_Y = 300
+_SHORT_LIVED_A_Y = 337
 _SHORT_LIVED_A_FRAME_INDICES = frozenset({4})
 
 _SHORT_LIVED_B_TEXT = "FLASH SALE ENDS SOON"
-_SHORT_LIVED_B_Y = 335
+_SHORT_LIVED_B_Y = 358
 _SHORT_LIVED_B_FRAME_INDICES = frozenset({9, 10})
+
+# Phase 3 -- a NORMALLY-SIZED short-lived overlay (main-overlay scale/
+# thickness), alongside the two deliberately-small ones above. The phase-2
+# fixture only ever exercised the hardest corner (tiny short-lived
+# captions); real burned-in alerts/lower-thirds are often full-size, so a
+# height filter tuned only against the small cases would never see this
+# shape of required overlay.
+_SHORT_LIVED_C_TEXT = "TRAFFIC ALERT NOW"
+_SHORT_LIVED_C_Y = 390
+_SHORT_LIVED_C_FRAME_INDICES = frozenset({6})
+
+# Phase 3 -- a lowercase REQUIRED overlay. Every other required overlay
+# above is ALL-CAPS, which (see the plan doc) makes casing -- not
+# typography -- do all the separating work of a height filter. This one is
+# lowercase, at overlay chrome colour, appearing on most (not all) frames
+# like the main overlay, so casing cannot be used as a proxy for
+# "deliberate caption".
+_LOWERCASE_OVERLAY_TEXT = "storm warning issued now"
+_LOWERCASE_OVERLAY_Y = 279
+_LOWERCASE_OVERLAY_SKIP_FRAME_INDICES = frozenset({3, 8})
 
 # Stable junk -- a static "channel bug" watermark. Persists across most (not
 # all) frames but stays below the default frequency-filter drop threshold
 # (0.95), so recurrence-based filtering structurally cannot remove it. Not
 # listed in ground truth -- it must never fuzzy-match a required text.
 _STABLE_JUNK_TEXT = "STUDIO NINE FEED"
-_STABLE_JUNK_Y = 265
+_STABLE_JUNK_Y = 253
 _STABLE_JUNK_X = 380
 _STABLE_JUNK_SKIP_FRAME_INDICES = frozenset({1, 5, 9})
 
@@ -151,10 +195,27 @@ _STABLE_JUNK_SKIP_FRAME_INDICES = frozenset({1, 5, 9})
 # runs -- unlike phase 1, where the fixture only ever resolved to
 # GENERIC_PROFILE (empty patterns) and the pattern filter was untestable.
 _CHROME_SUBSCRIBE_TEXT = "SUBSCRIBE"
-_CHROME_SUBSCRIBE_Y = 195
+_CHROME_SUBSCRIBE_Y = 213
 _CHROME_HANDLE_TEXT = "@creator_handle"
-_CHROME_HANDLE_Y = 230
+_CHROME_HANDLE_Y = 234
 _CHROME_X = 40
+
+# Phase 3 -- ALL-CAPS background junk, at the *same* nominal scale as the
+# lowercase background paragraph. Removes the casing confound outright: if
+# a height filter only separates junk from overlays because junk happens to
+# be lowercase (ascenders+descenders) and overlays happen to be all-caps
+# (cap-height only), this line proves it by being junk that is ALSO
+# all-caps at prose scale. Never listed in ground truth.
+_ALL_CAPS_BG_TEXT = "URGENT SYSTEM NOTICE FOR ALL VIEWERS"
+_ALL_CAPS_BG_Y = 152
+
+# Phase 3 -- large/bold background junk (a headline or sign in the scene).
+# The phase-2 fixture had NO large junk at all, which would flatter any
+# height filter by construction (every junk line was small). This is
+# rendered larger than every required overlay's ink height. Never listed in
+# ground truth.
+_LARGE_BG_TEXT = "GRAND OPENING TODAY"
+_LARGE_BG_Y = 192
 
 
 class Fixture(NamedTuple):
@@ -190,9 +251,9 @@ def generate_frames(
         window = _BACKGROUND_LINE_POOL[window_start : window_start + _WINDOW_LINES]
         dx = int(rng.integers(-_JITTER_PX, _JITTER_PX + 1))
         dy = int(rng.integers(-_JITTER_PX, _JITTER_PX + 1))
-        y0 = 60 + dy
+        y0 = 48 + dy
         for line_idx, line in enumerate(window):
-            y = y0 + line_idx * 32
+            y = y0 + line_idx * 26
             cv2.putText(
                 frame,
                 line,
@@ -203,6 +264,34 @@ def generate_frames(
                 1,
                 cv2.LINE_AA,
             )
+
+        # Phase 3 -- ALL-CAPS background junk at the SAME nominal scale as
+        # the lowercase paragraph above (casing confound removed). Every
+        # frame, never jittered (it is not the instability signal under
+        # test), never listed in ground truth.
+        cv2.putText(
+            frame,
+            _ALL_CAPS_BG_TEXT,
+            (30, _ALL_CAPS_BG_Y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (40, 40, 40),
+            1,
+            cv2.LINE_AA,
+        )
+
+        # Phase 3 -- large/bold background junk (headline/sign in the
+        # scene). Every frame, never listed in ground truth.
+        cv2.putText(
+            frame,
+            _LARGE_BG_TEXT,
+            (30, _LARGE_BG_Y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.3,
+            (40, 40, 40),
+            3,
+            cv2.LINE_AA,
+        )
 
         # Stable deliberate overlay caption -- fixed position, no jitter,
         # skipped in a minority of frames.
@@ -215,6 +304,22 @@ def generate_frames(
                 1.0,
                 (0, 0, 0),
                 2,
+                cv2.LINE_AA,
+            )
+
+        # Phase 3 -- lowercase REQUIRED overlay. Same treatment as the main
+        # overlay (fixed position, no jitter, majority-present) but
+        # lowercase, so casing cannot be used as a proxy for "deliberate
+        # caption" the way it can for the ALL-CAPS overlays above.
+        if i not in _LOWERCASE_OVERLAY_SKIP_FRAME_INDICES:
+            cv2.putText(
+                frame,
+                _LOWERCASE_OVERLAY_TEXT,
+                (40, _LOWERCASE_OVERLAY_Y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 0),
+                1,
                 cv2.LINE_AA,
             )
 
@@ -240,6 +345,20 @@ def generate_frames(
                 0.6,
                 (0, 0, 0),
                 1,
+                cv2.LINE_AA,
+            )
+
+        # Phase 3 -- a NORMALLY-SIZED short-lived overlay (main-overlay
+        # scale/thickness), required=True, appearing in only 1 frame.
+        if i in _SHORT_LIVED_C_FRAME_INDICES:
+            cv2.putText(
+                frame,
+                _SHORT_LIVED_C_TEXT,
+                (40, _SHORT_LIVED_C_Y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 0, 0),
+                2,
                 cv2.LINE_AA,
             )
 
@@ -308,6 +427,16 @@ def generate_frames(
                 "text": _SHORT_LIVED_B_TEXT,
                 "required": True,
                 "appearances": [(float(i), float(i)) for i in sorted(_SHORT_LIVED_B_FRAME_INDICES)],
+            },
+            {
+                "text": _SHORT_LIVED_C_TEXT,
+                "required": True,
+                "appearances": [(float(i), float(i)) for i in sorted(_SHORT_LIVED_C_FRAME_INDICES)],
+            },
+            {
+                "text": _LOWERCASE_OVERLAY_TEXT,
+                "required": True,
+                "appearances": _appearances(_LOWERCASE_OVERLAY_SKIP_FRAME_INDICES),
             },
         ],
     }
