@@ -23,7 +23,10 @@ Algorithm (per frame):
        to the current line, otherwise start a new line. ``<=`` is inclusive —
        a delta exactly equal to the tolerance joins the current line.
     6. Within each line, sort by ``x_center`` for left-to-right reading order.
-    7. Emit one ``(joined_text, mean_confidence)`` tuple per line.
+    7. Emit one :class:`AggregatedLine` per line, carrying joined text, mean
+       confidence, and line geometry (``mean_box_height``, ``y_center``,
+       ``x_center``) for internal (non-schema) diagnostics -- see
+       ``docs/plans/2026-08-28-ocr-phase3-typography.md``.
 """
 
 from __future__ import annotations
@@ -32,6 +35,24 @@ from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+
+class AggregatedLine(NamedTuple):
+    """One aggregated text line/chunk plus its geometry.
+
+    Internal to the OCR pipeline -- never serialized. ``mean_box_height`` /
+    ``y_center`` / ``x_center`` are averages over the surviving bboxes that
+    make up this line/chunk, in the same pixel coordinate space as the input
+    ``boxes``. Callers wanting a scale-invariant height should divide
+    ``mean_box_height`` by the frame height themselves (safe because
+    :func:`panoscribe.ocr.preprocessor.preprocess` never resizes).
+    """
+
+    text: str
+    mean_conf: float
+    mean_box_height: float
+    y_center: float
+    x_center: float
 
 
 class _Survivor(NamedTuple):
@@ -79,7 +100,7 @@ def aggregate_frame_bboxes(
     min_confidence: float,
     y_tolerance_ratio: float = 0.5,
     x_gap_tolerance_ratio: float = 2.0,
-) -> list[tuple[str, float]]:
+) -> list[AggregatedLine]:
     """Group bboxes into reading-order lines, splitting on column gaps.
 
     Parameters
@@ -111,11 +132,11 @@ def aggregate_frame_bboxes(
 
     Returns
     -------
-    list[tuple[str, float]]
-        One ``(joined_text, mean_confidence)`` tuple per detected text chunk,
-        in top-to-bottom, left-to-right reading order. Within each line, words
-        with gap > ``x_gap_tolerance_ratio * mean_height`` produce separate
-        chunks. Empty input returns an empty list.
+    list[AggregatedLine]
+        One :class:`AggregatedLine` per detected text chunk, in top-to-bottom,
+        left-to-right reading order. Within each line, words with gap >
+        ``x_gap_tolerance_ratio * mean_height`` produce separate chunks.
+        Empty input returns an empty list.
 
     Raises
     ------
@@ -197,7 +218,7 @@ def aggregate_frame_bboxes(
             line_centers.append(entry.y_center)
 
     # Steps 6+7: within each line sort by x_center, then split on column gaps.
-    out: list[tuple[str, float]] = []
+    out: list[AggregatedLine] = []
     for line in lines:
         line.sort(key=lambda s: s.x_center)
         # Split the line into chunks where adjacent x-gap exceeds threshold.
@@ -210,9 +231,21 @@ def aggregate_frame_bboxes(
                 current = []
             current.append(nxt)
         chunks.append(current)
-        # Each chunk emits its own joined text and independent mean confidence.
+        # Each chunk emits its own joined text, mean confidence, and geometry
+        # (averaged over the chunk's surviving bboxes).
         for chunk in chunks:
             joined_text = " ".join(s.text for s in chunk)
             mean_conf = sum(s.score for s in chunk) / len(chunk)
-            out.append((joined_text, mean_conf))
+            chunk_mean_height = sum(s.box_height for s in chunk) / len(chunk)
+            chunk_y_center = sum(s.y_center for s in chunk) / len(chunk)
+            chunk_x_center = sum(s.x_center for s in chunk) / len(chunk)
+            out.append(
+                AggregatedLine(
+                    text=joined_text,
+                    mean_conf=mean_conf,
+                    mean_box_height=chunk_mean_height,
+                    y_center=chunk_y_center,
+                    x_center=chunk_x_center,
+                )
+            )
     return out

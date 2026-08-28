@@ -12,7 +12,7 @@ GPU init surfaces as the native library exception (wrapped by the caller).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import cv2
 import numpy as np
@@ -36,6 +36,30 @@ if TYPE_CHECKING:
     from panoscribe.platforms.base import PlatformProfile
 
 logger = logging.getLogger(__name__)
+
+
+class SegmentGeometry(NamedTuple):
+    """Per-segment geometry diagnostic, parallel to the emitted segment list.
+
+    Internal/diagnostic only -- **never** attached to
+    :class:`panoscribe.output.TranscriptSegment` (that would widen the public
+    JSON schema; see ``docs/plans/2026-08-28-ocr-phase3-typography.md``).
+    Callers that pass a ``geometry`` list to :meth:`RapidOCREngine.extract` /
+    :meth:`RapidOCREngine.extract_images` get one entry per returned
+    :class:`TranscriptSegment`, in the same order, purely for eval-harness
+    measurement.
+
+    ``normalized_height`` is ``mean_box_height / frame_height`` -- scale
+    invariant because :func:`panoscribe.ocr.preprocessor.preprocess` never
+    resizes the frame.
+    """
+
+    text: str
+    start: float
+    end: float
+    normalized_height: float
+    y_center: float
+    x_center: float
 
 
 def _read_image(path: Path) -> np.ndarray | None:
@@ -266,6 +290,7 @@ class RapidOCREngine:
         end: float,
         mask_rects: list,
         funnel: FunnelCounts | None,
+        geometry: list[SegmentGeometry] | None = None,
     ) -> list[TranscriptSegment]:
         """Process a single frame through the OCR pipeline.
 
@@ -273,11 +298,19 @@ class RapidOCREngine:
         unpacking, bbox aggregation, and segment construction. Used by both
         :meth:`extract` (video frames) and :meth:`extract_images` (photo
         slides).
+
+        When ``geometry`` is provided, one :class:`SegmentGeometry` is
+        appended per emitted segment (same order) -- internal diagnostic
+        only, never part of :class:`TranscriptSegment`.
         """
         threshold = self._config.ocr_min_confidence
         language = self._config.ocr_language
 
         processed_frame = preprocess(frame)
+        # Frame height for scale-invariant geometry -- captured before
+        # zone masking (masking never resizes) and matches
+        # ``preprocess``'s no-resize contract.
+        frame_height = processed_frame.shape[0]
         if mask_rects:
             processed_frame = mask_zones(processed_frame, mask_rects)
         result = self._engine(processed_frame)
@@ -303,17 +336,28 @@ class RapidOCREngine:
         if funnel is not None:
             funnel.post_aggregation += len(aggregated)
         frame_segments: list[TranscriptSegment] = []
-        for text, mean_score in aggregated:
+        for line in aggregated:
             frame_segments.append(
                 TranscriptSegment(
                     start=start,
                     end=end,
-                    text=text,
+                    text=line.text,
                     source="ON-SCREEN",
-                    ocr_confidence=mean_score,
+                    ocr_confidence=line.mean_conf,
                     language=language,
                 )
             )
+            if geometry is not None:
+                geometry.append(
+                    SegmentGeometry(
+                        text=line.text,
+                        start=start,
+                        end=end,
+                        normalized_height=line.mean_box_height / frame_height,
+                        y_center=line.y_center,
+                        x_center=line.x_center,
+                    )
+                )
         return frame_segments
 
     def extract(
@@ -322,6 +366,7 @@ class RapidOCREngine:
         *,
         detected_language: str | None = None,
         funnel: FunnelCounts | None = None,
+        geometry: list[SegmentGeometry] | None = None,
     ) -> list[TranscriptSegment]:
         """Sample frames from ``video_path`` and return on-screen text segments.
 
@@ -336,7 +381,9 @@ class RapidOCREngine:
         dedup grows the span downstream.
 
         When ``funnel`` is provided, stage-wise counts are recorded on the
-        :class:`FunnelCounts` instance for pipeline diagnostics.
+        :class:`FunnelCounts` instance for pipeline diagnostics. When
+        ``geometry`` is provided, one :class:`SegmentGeometry` is appended per
+        returned segment (same order) -- eval-harness diagnostic only.
         """
         self._ensure_loaded(detected_language=detected_language)
 
@@ -364,6 +411,7 @@ class RapidOCREngine:
                     end=timestamp,
                     mask_rects=mask_rects,
                     funnel=funnel,
+                    geometry=geometry,
                 )
             )
         if funnel is not None:
@@ -378,6 +426,7 @@ class RapidOCREngine:
         detected_language: str | None = None,
         funnel: FunnelCounts | None = None,
         timestamps: Sequence[tuple[float, float]] | None = None,
+        geometry: list[SegmentGeometry] | None = None,
     ) -> list[TranscriptSegment]:
         """OCR each image in ``image_paths`` and return text segments.
 
@@ -397,6 +446,10 @@ class RapidOCREngine:
             If provided, ``timestamps[i]`` = (start, end) for image i, and
             must have the same length as ``image_paths``. If omitted, defaults
             to ``(float(i), float(i) + 1.0)`` for each image.
+        geometry:
+            Optional list; when provided, one :class:`SegmentGeometry` is
+            appended per returned segment (same order) -- eval-harness
+            diagnostic only, never part of :class:`TranscriptSegment`.
 
         Returns
         -------
@@ -430,6 +483,7 @@ class RapidOCREngine:
                     end=end,
                     mask_rects=mask_rects,
                     funnel=funnel,
+                    geometry=geometry,
                 )
             )
             processed_count += 1

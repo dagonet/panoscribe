@@ -20,14 +20,19 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from generate_ocr_noise_fixture import (  # noqa: E402
+    _ALL_CAPS_BG_TEXT,
     _CHROME_HANDLE_TEXT,
     _CHROME_SUBSCRIBE_TEXT,
+    _LARGE_BG_TEXT,
+    _LOWERCASE_OVERLAY_TEXT,
     _OVERLAY_SKIP_FRAME_INDICES,
     _OVERLAY_TEXT,
     _SHORT_LIVED_A_FRAME_INDICES,
     _SHORT_LIVED_A_TEXT,
     _SHORT_LIVED_B_FRAME_INDICES,
     _SHORT_LIVED_B_TEXT,
+    _SHORT_LIVED_C_FRAME_INDICES,
+    _SHORT_LIVED_C_TEXT,
     _STABLE_JUNK_TEXT,
     VIDEO_FILENAME,
     generate_frames,
@@ -75,11 +80,17 @@ class TestGenerateFramesDeterminism:
 class TestGenerateFramesGroundTruth:
     """Ground-truth content matches the fixture's overlay-caption design."""
 
-    def test_ground_truth_contains_the_three_required_overlays(self) -> None:
+    def test_ground_truth_contains_the_required_overlays(self) -> None:
         fixture = generate_frames(num_frames=12, seed=42)
         expected_texts = fixture.ground_truth["expected_texts"]
         texts = {e["text"] for e in expected_texts}
-        assert texts == {_OVERLAY_TEXT, _SHORT_LIVED_A_TEXT, _SHORT_LIVED_B_TEXT}
+        assert texts == {
+            _OVERLAY_TEXT,
+            _SHORT_LIVED_A_TEXT,
+            _SHORT_LIVED_B_TEXT,
+            _SHORT_LIVED_C_TEXT,
+            _LOWERCASE_OVERLAY_TEXT,
+        }
         assert all(e["required"] is True for e in expected_texts)
 
     def test_ground_truth_omits_stable_junk_and_chrome(self) -> None:
@@ -89,6 +100,21 @@ class TestGenerateFramesGroundTruth:
         assert _STABLE_JUNK_TEXT not in texts
         assert _CHROME_SUBSCRIBE_TEXT not in texts
         assert _CHROME_HANDLE_TEXT not in texts
+
+    def test_ground_truth_omits_typography_confound_junk(self) -> None:
+        """Phase 3's ALL-CAPS and large background junk are never listed in GT."""
+        fixture = generate_frames(num_frames=12, seed=42)
+        texts = {e["text"] for e in fixture.ground_truth["expected_texts"]}
+        assert _ALL_CAPS_BG_TEXT not in texts
+        assert _LARGE_BG_TEXT not in texts
+
+    def test_short_lived_c_has_exactly_its_declared_appearance(self) -> None:
+        fixture = generate_frames(num_frames=12, seed=42)
+        by_text = {e["text"]: e for e in fixture.ground_truth["expected_texts"]}
+        c_appearances = by_text[_SHORT_LIVED_C_TEXT]["appearances"]
+        assert {tuple(w) for w in c_appearances} == {
+            (float(i), float(i)) for i in _SHORT_LIVED_C_FRAME_INDICES
+        }
 
     def test_short_lived_overlays_have_exactly_their_declared_appearances(self) -> None:
         fixture = generate_frames(num_frames=12, seed=42)
