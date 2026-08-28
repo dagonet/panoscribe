@@ -62,6 +62,15 @@ before a real PyPI publish).
    intentional "file already exists" failure from step 5, so recover by
    creating the Release by hand instead of re-running the workflow.
 
+## Known post-publish artifact: stale uv cache
+
+Right after a successful `publish-pypi` run, an install with `uv pip install
+panoscribe==<version>` can fail with a misleading "no version" error even
+though the package is live — this is a stale `uv` package-index cache, not a
+failed release. See
+[docs/troubleshooting.md#stale-uv-cache-right-after-a-release](troubleshooting.md#stale-uv-cache-right-after-a-release)
+before assuming the publish itself needs to be re-run.
+
 ## TestPyPI first
 
 The `panoscribe` name is not yet registered on real PyPI. Until the pending

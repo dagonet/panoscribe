@@ -105,6 +105,33 @@ list | grep nvidia`).
   or manually `pip uninstall onnxruntime onnxruntime-gpu` and reinstall
   only the one your platform needs.
 
+## Stale uv cache right after a release
+
+If you run `uv pip install panoscribe==<new version>` immediately after a
+release and see:
+
+```
+No solution found ... no version of panoscribe==0.6.0
+```
+
+the package is very likely already published — `uv` served a stale cached
+`simple-index` response for `pypi.org/simple/panoscribe/` (it may even log
+`Found fresh response for: https://pypi.org/simple/panoscribe/` while doing
+so). Confirm by checking `https://pypi.org/simple/panoscribe/` or
+`https://pypi.org/pypi/panoscribe/json` directly — if the new version is
+listed there, this is a client-side cache artifact, not a broken release.
+
+Fix by bypassing the cache:
+
+```bash
+uv pip install --refresh --no-cache panoscribe==<new version>
+# or
+uv cache clean panoscribe
+```
+
+This has been observed on consecutive releases (0.5.0 and 0.6.0), resolving
+correctly on retry both times.
+
 ## ffmpeg missing
 
 panoscribe shells out to `ffmpeg` for audio extraction and frame sampling.
