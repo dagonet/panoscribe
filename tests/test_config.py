@@ -63,13 +63,19 @@ def test_temp_dir_is_path_under_platform_temp(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_scene_change_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sprint 2.5 — documented defaults for scene-change fields."""
+    """Sprint 2.5.1 — documented defaults for scene-change fields.
+
+    ``scene_change_threshold`` default corrected from ``0.02`` to ``0.05``: sprint
+    2.5.1 replaced the frame-difference statistic (whole-frame mean absdiff -> block-max
+    absdiff, see ``docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md``), which changed
+    the statistic's magnitude, so the old threshold no longer means the same thing.
+    """
     _strip_pano_env(monkeypatch)
 
     cfg = PanoScribeConfig()
 
     assert cfg.scene_change_enabled is True
-    assert cfg.scene_change_threshold == 0.02
+    assert cfg.scene_change_threshold == 0.05
 
 
 @pytest.mark.parametrize("bad", [0.0, 1.5, -0.1])
