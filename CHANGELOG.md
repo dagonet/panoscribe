@@ -5,6 +5,59 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-28
+
+### ⚠️ Behavioral change — re-tune `PANO_SCENE_CHANGE_THRESHOLD` if set
+
+- **`scene_change_threshold` default moved 0.02 -> 0.05, and the statistic it
+  measures changed meaning** (#113). It used to be whole-frame mean absolute
+  difference; it is now the **max per-block mean absdiff over a 16x16 grid**.
+  These are not the same scale — a custom threshold tuned against the old
+  statistic will behave differently (typically far more permissive) against
+  the new one. Anyone with `PANO_SCENE_CHANGE_THRESHOLD` set in their
+  environment or config should re-tune it, which is why this ships as a minor
+  version bump rather than a patch. Sampling density also increases as a
+  result (12/12 vs 6/12 frames on the reference fixture), raising downstream
+  OCR runtime cost.
+
+### Fixed
+
+- **Scene-change gating dropped frames containing new caption text** (#113) —
+  whole-frame mean absolute difference is a poor proxy for "new text
+  appeared": text occupies a tiny fraction of pixels, so a localized
+  high-contrast change is averaged away by background churn elsewhere in the
+  frame. On the reference fixture, frame 3->4 differed by only 0.01400 despite
+  frame 4 adding an entire new caption line (background band absdiff 0.02781
+  vs. overlay band 0.00414 — background dominated the average by ~7x). Both
+  short-lived overlays were lost *before OCR ran*, uncorrectable downstream.
+  `_frame_difference` now pools the downscaled buffer into a 16x16 grid and
+  takes the max per-block mean absdiff, so a spatially small but strong change
+  is no longer diluted by an unrelated large-area change; the default
+  threshold was re-derived to 0.05 for the new statistic. Also added
+  `_MAX_GAP_FRAMES = 10`, a forced-yield safety net that is now reachable on
+  short clips — the previous `round(fps * 30) = 30` frames could never fire on
+  a 12-frame video.
+  Measured on the reference fixture: `recall` 0.333 -> **1.0**,
+  `retained_overlay_recall` 0.3077 -> **1.0**, frames yielded 6/12 -> 12/12.
+  **Trade-off, reported honestly:** `precision` drops 0.174 -> 0.130 and the
+  unmatched/noise rate rises, because recovering real overlays also admits
+  more background text through the gate. Recall was the correct thing to buy
+  here; junk filtering remains future work (see "Evaluated, not shipped" in
+  0.5.0).
+  **Known limitation:** on this adversarial churning-background fixture,
+  yielding 12/12 is identical to `--no-scene-change`, and a 6-seed sweep found
+  no configuration that saves frames without risking recall. Operators
+  processing text-heavy video should expect scene-change gating to provide
+  little or no speedup on similar content, and may prefer
+  `scene_change_enabled=False` explicitly.
+
+### Fixed (CI)
+
+- **`create-release` inherited a propagated `if:` skip and silently did
+  nothing inside an overall-green run** (#112) — added `always()` to the
+  job's condition and hardened `publish-status` to fail loudly on this skip
+  pattern, the same class of bug fixed for `publish-pypi` in 0.5.0 (#106).
+
 ## [0.5.0] - 2026-08-28
 
 ### Added
@@ -408,6 +461,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.6.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.5.0
 [0.4.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.4.0
 [0.2.5]: https://github.com/dagonet/panoscribe/releases/tag/v0.2.5
