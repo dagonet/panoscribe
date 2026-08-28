@@ -23,6 +23,7 @@ from panoscribe.eval.funnel import FunnelCounts
 from panoscribe.eval.junk import compute_junk_metrics, is_matched_to_ground_truth
 from panoscribe.eval.models import GroundTruth
 from panoscribe.eval.scoring import score_video
+from panoscribe.eval.spatial import compute_cluster_spatial_stats, format_joint_distribution_table
 from panoscribe.ocr.deduplicator import dedup_segments
 from panoscribe.ocr.rapid_ocr import RapidOCREngine
 from panoscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
@@ -110,6 +111,18 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--spatial",
+        action="store_true",
+        help=(
+            "Collect per-cluster position-stability (in addition to "
+            "typography) and print the joint height x stability "
+            "distribution table for matched vs unmatched clusters. "
+            "Diagnostic only -- see panoscribe.eval.spatial and "
+            "docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md. "
+            "Implies the same raw-stage geometry collection as --typography."
+        ),
+    )
+    parser.add_argument(
         "--output",
         "-o",
         type=str,
@@ -152,7 +165,7 @@ def main() -> None:
     # OCR pipeline (no ASR, no merge).
     ocr_engine = RapidOCREngine(config, profile=profile)
     funnel = FunnelCounts() if args.funnel else None
-    geometry: list = [] if args.typography else None
+    geometry: list = [] if (args.typography or args.spatial) else None
 
     if args.images is not None:
         # Images mode: scan directory for slides.
@@ -167,6 +180,16 @@ def main() -> None:
         )
     else:
         ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel, geometry=geometry)
+
+    # Snapshot the raw-stage segments now, before the UI-filter block below
+    # reassigns ``ocr_segments`` in place. ``geometry`` is index-aligned
+    # with THIS list (both are populated together by ``extract``/
+    # ``extract_images``); zipping it against the post-filter
+    # ``ocr_segments`` instead (as this used to do) silently mispairs
+    # segments with the wrong geometry once filtering drops entries from
+    # the middle of the list -- see
+    # docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md.
+    raw_segments = list(ocr_segments)
 
     fuzzy_threshold = config.dedup_similarity_threshold
     junk_stages: dict[str, dict[str, object]] | None = {} if args.junk else None
@@ -233,16 +256,15 @@ def main() -> None:
     # matched vs unmatched. See --typography help and
     # docs/plans/2026-08-28-ocr-phase3-typography.md step 3.
     typography_str = ""
+    matched_flags: list[bool] = []
     if geometry:
         fuzzy_threshold_typo = config.dedup_similarity_threshold
         matched_heights = []
         unmatched_heights = []
-        for seg, geo in zip(ocr_segments, geometry, strict=False):
-            bucket = (
-                matched_heights
-                if is_matched_to_ground_truth(seg, gt, fuzzy_threshold_typo)
-                else unmatched_heights
-            )
+        for seg, geo in zip(raw_segments, geometry, strict=True):
+            is_matched = is_matched_to_ground_truth(seg, gt, fuzzy_threshold_typo)
+            matched_flags.append(is_matched)
+            bucket = matched_heights if is_matched else unmatched_heights
             bucket.append(geo.normalized_height)
 
         def _stats(values: list[float]) -> str:
@@ -253,13 +275,28 @@ def main() -> None:
                 f"max={max(values):.4f} mean={sum(values) / len(values):.4f}"
             )
 
-        typography_str = (
-            chr(10) * 2 + "Typography diagnostic (raw stage, normalized height = "
-            "mean_box_height / frame_height; post-CLAHE, no resize):"
+        if args.typography:
+            typography_str = (
+                chr(10) * 2 + "Typography diagnostic (raw stage, normalized height = "
+                "mean_box_height / frame_height; post-CLAHE, no resize):"
+                + chr(10)
+                + f"  matched (real overlays):   {_stats(matched_heights)}"
+                + chr(10)
+                + f"  unmatched (junk):          {_stats(unmatched_heights)}"
+            )
+
+    # Spatial diagnostic (phase 4): per-cluster position-stability joined
+    # with normalized height, matched vs unmatched. See --spatial help and
+    # docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md.
+    spatial_str = ""
+    if args.spatial and geometry:
+        cluster_stats = compute_cluster_spatial_stats(geometry, matched_flags)
+        spatial_str = (
+            chr(10) * 2 + "Spatial diagnostic (raw stage, per identity-cluster; "
+            "position_stability = sqrt(var(x_center_norm) + var(y_center_norm)), "
+            "n/a when a cluster has only 1 occurrence):"
             + chr(10)
-            + f"  matched (real overlays):   {_stats(matched_heights)}"
-            + chr(10)
-            + f"  unmatched (junk):          {_stats(unmatched_heights)}"
+            + format_joint_distribution_table(cluster_stats)
         )
 
     # Console output.
@@ -267,7 +304,7 @@ def main() -> None:
     if args.funnel and funnel is not None:
         funnel_str = chr(10) * 2 + funnel.report()
     print(
-        result.model_dump_json(indent=2) + funnel_str + typography_str,
+        result.model_dump_json(indent=2) + funnel_str + typography_str + spatial_str,
     )
 
     # File output.

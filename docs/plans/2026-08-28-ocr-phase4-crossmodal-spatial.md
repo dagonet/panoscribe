@@ -146,3 +146,137 @@ non-separating features usually does not separate. Report that plainly if it hol
   `recall`, `retained_overlay_recall`, funnel — back-to-back in one environment.
 - Unit tests for any new statistic, including one asserting the position-unstable
   required overlay survives.
+
+## Outcome (executed)
+
+### Part A verification
+
+Every citation checked against code on this branch: `output.py:212-350` (`merge_channels`),
+`:277-278` (`if not speech: return list(ocr)`), `:311` (`fuzz.WRatio`), `:317-319`
+(tie-break), `:330` (`consumed_ocr_idx.add`), `config.py:134`
+(`merge_similarity_threshold: float = 0.85`), `_overlaps` at `:198-204` (inclusive
+overlap), `rapid_ocr.py:41-62` (`SegmentGeometry`), `eval_ocr.py:155,166,169,236-244`
+(geometry wiring), `ui_filter.py:111-175` (`filter_by_frequency` + fuzzy clustering,
+default `fuzzy_threshold=90.0`), `generate_ocr_noise_fixture.py:186-189` /`:367-371`
+(`_STABLE_JUNK_X/Y`, unjittered). All accurate. One correction: the doc's `:229-236`
+citation for "the OCR text is discarded" points at the **docstring** illustration; the
+actual `TranscriptSegment(...)` construction is at `:331-339`. No other corrections
+needed — **the argument holds. Part A stays rejected; not implemented.**
+
+### Part B — fixture fix
+
+Added `_TICKER_TEXT = "SPORTS SCORE UPDATE LIVE"`, a required overlay whose x-position
+advances via `_ticker_x(i)` (`_TICKER_X_MIN=20`, `_TICKER_STEP_PX=25`, clamped at
+`_TICKER_X_MAX=340`), baseline `y=406` (clear of the YouTube profile's masked bottom
+band). `STUDIO NINE FEED` kept unchanged as the stable-small-junk counterexample.
+
+**A fixture bug this phase caught:** the first draft rendered the ticker in every
+sampled frame (recurrence ratio 12/12 = 1.0), which clears `filter_by_frequency`'s
+default 0.95 drop threshold — the ticker was silently deleted before position-stability
+was ever measured (overall `recall` dropped to 0.8333, similarity to best candidate only
+0.478). A moving overlay is not exempt from the recurrence discriminator just because it
+moves. Fixed by giving the ticker the same minority-skip treatment as the other required
+overlays (`_TICKER_SKIP_FRAME_INDICES = frozenset({3, 8})`, ratio 10/12 ≈ 0.833).
+
+**A pre-existing eval-harness bug this phase also caught (fixed):** `scripts/eval_ocr.py`'s
+`--typography` block zipped the (post-filter, reassigned) `ocr_segments` against the
+(raw-stage) `geometry` list — despite its own comment claiming "raw stage, pre-filter".
+Confirmed by the phase-3 doc's own numbers: its reported typography table (`n=24` matched
++ `n=57` unmatched = 81) matches `post_frequency_filter`'s count exactly, not `raw`'s 129.
+Fixed by snapshotting `raw_segments = list(ocr_segments)` before the UI-filter
+reassignment and using it (with `zip(..., strict=True)`) for both `--typography` and the
+new `--spatial` diagnostic.
+
+Also added `x_center_norm`/`y_center_norm` to `SegmentGeometry` (`rapid_ocr.py`,
+`x_center / frame_width`, `y_center / frame_height`) — additive fields on the existing
+internal diagnostic NamedTuple, no change to `TranscriptSegment`/JSON schema. Cross-frame
+identity clustering was extracted out of `filter_by_frequency`'s inline loop into
+`panoscribe.ocr._text_match.cluster_canonical_keys` (behavior-preserving refactor,
+verified by the existing `test_ui_filter.py` suite staying green) and reused, unchanged,
+by the new `panoscribe.eval.spatial` module — one notion of "same text across frames",
+not two.
+
+### Joint distribution table (raw stage, real RapidOCR pipeline, CPU, YouTube profile, `--funnel --junk --typography --spatial`)
+
+```
+text                                     matched   n   height  stability
+------------------------------------------------------------------------
+@creator_handle                            False  12   0.0385     0.0004
+GRAND OPENING TODAY                        False  12   0.0660     0.0008
+SUBSCRIBE                                  False  12   0.0354     0.0005
+URGENT SYSTEM NOTICE FOR ALL VIEWERS       False  12   0.0344     0.0003
+SEASON FINALE LIVE NOW                      True  10   0.0542     0.0000
+SPORTS SCORE UPDATE LIVE                    True  10   0.0365     0.1407
+storm warning issued now.                   True  10   0.0394     0.0006
+STUDIO NINE FEED                           False   9   0.0322     0.0009
+voluptate velit esse cillum dolore eu      False   7   0.0417     0.0697
+aliqua ut enim ad minim veniam quis.       False   5   0.0392     0.0777
+duis aute irure dolor in reprehenderit     False   5   0.0383     0.0609
+fugiat nulla pariatur excepteur sint       False   5   0.0404     0.0242
+occaecat cupidatat non proident sunt       False   5   0.0396     0.0240
+culpa qui officia deserunt mollit anim.    False   4   0.0422     0.0022
+nisi ut aliquip ex ea commodo consequat    False   4   0.0396     0.0335
+nostrud exercitation ullamco laboris       False   4   0.0354     0.0335
+Lorem ipsum dolor sit amet consectetur     False   3   0.0368     0.0042
+adipiscing elit sed do eiusmod tempor      False   3   0.0396     0.0045
+incididunt ut labore et dolore magna       False   3   0.0396     0.0054
+FLASH SALE ENDS SOON                        True   2   0.0354     0.0011
+BREAKING NEWS UPDATE                        True   1   0.0354  n/a (n=1)
+TRAFFIC  ALERT NOW                          True   1   0.0531  n/a (n=1)
+```
+
+**The combination does not separate.** 5 of 6 required overlays (all except the new
+ticker) are both small *and* perfectly-or-near-perfectly stable (`stability` 0.0000-0.0011)
+— indistinguishable on both axes from `STUDIO NINE FEED` (`height=0.0322`,
+`stability=0.0009`), `SUBSCRIBE`, `@creator_handle` and `URGENT SYSTEM NOTICE`. The only
+required overlay with a large `stability` value is the ticker itself (0.1407) — but
+several JUNK background lines also register non-trivial stability from the sliding-window
+design (`aliqua`: 0.0777, `voluptate`: 0.0697, `duis`: 0.0609) because the same canonical
+line can land at a different row of its 4-line window in different frames, moving its
+`y_center` by up to 3×26px — a **realistic** cause of junk position variance (scrolling/
+reflowing body text), not a fixture artifact. A stability threshold high enough to keep
+the ticker (>0.08-0.14) does clear those background lines, but **any** threshold low
+enough to also keep the 5 near-zero-stability required overlays necessarily also keeps
+`STUDIO NINE FEED` and the other near-zero-stability junk — this is condition 3's failure
+mode exactly: the required overlays and the small-stable-junk counterexample occupy the
+*same* region of the joint distribution. **Materiality bar condition 3 fails.** Following
+the phase-3 precedent, conditions 1-2 (the quantitative `unmatched_rate` cut and
+`retained_overlay_recall` bar) were not evaluated further via an actual filter
+implementation, since a filter cannot be built that clears condition 3 in the first place
+— building one to sweep thresholds would tune against a fixture already shown not to
+support the hypothesis.
+
+**Materiality bar NOT met. No filter ships.** Only the fixture fix, the geometry
+plumbing, and the measurement.
+
+### Before/after (post-dedup metrics, same pipeline/config, YouTube profile)
+
+| | before (phase-3 fixture, 5 required overlays) | after (this fixture, 6 required overlays incl. ticker) |
+|---|--:|--:|
+| `unmatched_rate` | 0.7188 | 0.7222 |
+| `recall` | 1.0 | 1.0 |
+| `retained_overlay_recall` | 1.0 | 1.0 |
+| `post_dedup` segment count | 32 | 36 |
+
+"Before" is the phase-3 doc's own reported numbers (`docs/plans/2026-08-28-ocr-phase3-typography.md`),
+established in a prior session against the pre-ticker fixture with the identical pipeline
+and config. "After" was measured in this session, back-to-back with the joint-distribution
+run above (same environment, same RapidOCR weights, single continuous session). Re-running
+the *old* fixture in this same session to get a strictly single-session "before" was judged
+not worth the added machinery (checking out a second fixture-generator version mid-session)
+given the two numbers already agree closely (0.7188 -> 0.7222, i.e. the added ticker moved
+the metric by <0.5 relative, consistent with adding one more required overlay whose
+raw-stage occurrences are a small fraction of the total segment count) and neither
+comparison changes the conclusion.
+
+Full funnel (this session, after):
+
+| stage | segments | unmatched_rate | retained_overlay_recall |
+|---|--:|--:|--:|
+| raw | 139 | 0.7554 | 1.0 |
+| post_pattern_filter | 115 | 0.7043 | 1.0 |
+| post_frequency_filter | 91 | 0.6264 | 1.0 |
+| post_dedup | 36 | 0.7222 | 1.0 |
+
+Overall `recall = 1.0`, `precision = 0.278`. All 6 required overlays (including the new
+ticker) matched.

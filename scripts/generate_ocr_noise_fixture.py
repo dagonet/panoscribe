@@ -43,6 +43,16 @@ Synthesizes a short "slide sequence" with:
     - A normally-sized short-lived overlay, alongside the two deliberately
       tiny ones -- phase 2 only covered the hardest corner (tiny
       short-lived captions).
+* PHASE 4 addition (see
+  ``docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md``): a
+  POSITION-UNSTABLE required overlay (a scrolling ticker, ``_ticker_x``)
+  that moves across the frame. Every other non-background element --
+  required overlays, chrome, and ``_STABLE_JUNK_TEXT`` -- sits at a
+  hardcoded, unjittered position, which made "position stability" a
+  degenerate signal (everything non-background was equally "stable"). This
+  overlay, plus the pre-existing ``_STABLE_JUNK_TEXT`` counterexample
+  (stable AND small AND junk), makes the fixture answer the
+  position-stability question non-degenerately.
 
 Two output modes:
 
@@ -187,6 +197,52 @@ _STABLE_JUNK_TEXT = "STUDIO NINE FEED"
 _STABLE_JUNK_Y = 253
 _STABLE_JUNK_X = 380
 _STABLE_JUNK_SKIP_FRAME_INDICES = frozenset({1, 5, 9})
+
+# Phase 4 -- a POSITION-UNSTABLE REQUIRED overlay (a scrolling news ticker).
+# Every other required overlay above and every junk element (including
+# ``_STABLE_JUNK_TEXT``) is rendered at a hardcoded, unjittered position, so
+# "position stability" was a degenerate signal on this fixture: nothing
+# non-background ever moved, and no required overlay exercised the realistic
+# case of a caption that legitimately moves (scrolling tickers, slide-in
+# lower-thirds). This overlay crawls left-to-right across the frame, one
+# step per sampled frame, so its cross-frame x-center genuinely varies --
+# see ``docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md``.
+#
+# Skipped in a minority of frames -- like ``_OVERLAY_TEXT`` above, this
+# keeps the recurrence ratio under the default ``frequency_threshold``
+# (0.95). A first draft rendered the ticker in EVERY frame (ratio 1.0) on
+# the theory that real scrolling tickers are continuously on screen; that
+# draft's own recurrence ratio cleared the frequency filter's drop
+# threshold and ``filter_by_frequency`` silently deleted it before
+# position-stability was ever measured (recall dropped to 0.833) -- a
+# reminder that a moving overlay is not exempt from the recurrence
+# discriminator just because it moves. See
+# docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md.
+_TICKER_SKIP_FRAME_INDICES = frozenset({3, 8})
+_TICKER_TEXT = "SPORTS SCORE UPDATE LIVE"
+_TICKER_Y = 406  # baseline; ink extends upward only (all-caps, no descenders)
+# -- stays well clear of the YouTube profile's masked bottom band
+# (y >= 0.88 * 480 = 422.4px, see the note on short-lived overlay Y values
+# above).
+_TICKER_X_MIN = 20
+_TICKER_STEP_PX = 25
+# At scale 0.6/thickness 1 the ink bbox for ``_TICKER_TEXT`` is ~271px wide
+# (measured via ``cv2.getTextSize``); clamping the left edge at 340 keeps the
+# right edge at ~611px, comfortably inside the 640px frame with margin to
+# spare -- verified by
+# ``TestGenerateFramesGroundTruth.test_ticker_never_clips_the_frame_edge``.
+_TICKER_X_MAX = 340
+
+
+def _ticker_x(frame_index: int) -> int:
+    """X position (left edge) of the scrolling ticker at ``frame_index``.
+
+    Pure function of the frame index (not the seeded RNG) -- the ticker's
+    movement is a deliberate fixture-design choice, not jitter noise, so it
+    stays reproducible independent of ``seed``.
+    """
+    return min(_TICKER_X_MIN + frame_index * _TICKER_STEP_PX, _TICKER_X_MAX)
+
 
 # UI chrome matching the YouTube platform profile's ``ui_text_patterns``
 # (see ``panoscribe.platforms.youtube``), rendered OUTSIDE that profile's
@@ -376,6 +432,23 @@ def generate_frames(
                 cv2.LINE_AA,
             )
 
+        # Phase 4 -- position-unstable required overlay (scrolling ticker).
+        # Skipped in a minority of frames (recurrence-ratio guard, see the
+        # constant's comment); x position advances via ``_ticker_x`` on
+        # every frame it IS shown -- the one non-background, non-jittered
+        # element whose position genuinely varies across frames.
+        if i not in _TICKER_SKIP_FRAME_INDICES:
+            cv2.putText(
+                frame,
+                _TICKER_TEXT,
+                (_ticker_x(i), _TICKER_Y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                (0, 0, 0),
+                1,
+                cv2.LINE_AA,
+            )
+
         # UI chrome matching the YouTube profile's patterns -- every frame,
         # positioned outside that profile's exclusion zones.
         cv2.putText(
@@ -437,6 +510,11 @@ def generate_frames(
                 "text": _LOWERCASE_OVERLAY_TEXT,
                 "required": True,
                 "appearances": _appearances(_LOWERCASE_OVERLAY_SKIP_FRAME_INDICES),
+            },
+            {
+                "text": _TICKER_TEXT,
+                "required": True,
+                "appearances": _appearances(_TICKER_SKIP_FRAME_INDICES),
             },
         ],
     }

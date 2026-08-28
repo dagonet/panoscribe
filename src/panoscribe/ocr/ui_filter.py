@@ -40,7 +40,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 
-from panoscribe.ocr._text_match import _canonical_key, _fuzzy_match
+from panoscribe.ocr._text_match import _canonical_key, cluster_canonical_keys
 
 logger = logging.getLogger(__name__)
 
@@ -177,25 +177,12 @@ def filter_by_frequency(
 
     # Greedy single-link clustering over the unique non-empty keys.
     # Iteration order is the input-Counter order (deterministic in
-    # CPython 3.7+). For each key, walk existing clusters and join the
-    # first whose any member matches; otherwise start a new cluster.
+    # CPython 3.7+). Empty canonical keys cannot meaningfully cluster —
+    # excluded before calling :func:`cluster_canonical_keys`; the lookup
+    # loop below treats them as their own (zero-count) bucket so behavior
+    # matches the pre-existing exact-match pass.
     fuzzy_ratio = fuzzy_threshold / 100.0
-    clusters: list[list[str]] = []
-    for key in counts:
-        if not key:
-            # Empty canonical keys cannot meaningfully cluster — drop
-            # them out of the cluster set; the lookup loop below treats
-            # them as their own (zero-count) bucket so behavior matches
-            # the pre-existing exact-match pass.
-            continue
-        joined = False
-        for cluster in clusters:
-            if any(_fuzzy_match(key, member, fuzzy_ratio) for member in cluster):
-                cluster.append(key)
-                joined = True
-                break
-        if not joined:
-            clusters.append([key])
+    clusters = cluster_canonical_keys((key for key in counts if key), fuzzy_ratio)
 
     # Map each key to its cluster's combined count.
     cluster_counts: dict[str, int] = {}
