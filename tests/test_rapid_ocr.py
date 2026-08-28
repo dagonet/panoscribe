@@ -29,7 +29,7 @@ from panoscribe.ocr.rapid_ocr import RapidOCREngine
 
 def _make_config(**overrides: object) -> PanoScribeConfig:
     # Sprint 2.5: ``scene_change_enabled`` / ``scene_change_threshold`` are
-    # omitted here on purpose — Pydantic supplies their defaults (True, 0.02).
+    # omitted here on purpose — Pydantic supplies their defaults (True, 0.05).
     # Tests that patch ``sample_frames`` don't care about the values, and
     # ``test_extract_passes_scene_change_kwargs_to_sampler`` overrides explicitly.
     base: dict[str, object] = {

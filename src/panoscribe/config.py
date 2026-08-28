@@ -66,7 +66,12 @@ class PanoScribeConfig(BaseSettings):
     ocr_min_confidence: float = 0.6
     ocr_device: str = "cuda"
     scene_change_enabled: bool = True
-    scene_change_threshold: float = 0.02
+    # Sprint 2.5.1: re-derived for the block-max frame-difference statistic
+    # (panoscribe.ocr.frame_sampler._frame_difference); NOT comparable to the
+    # old whole-frame-mean default of 0.02, which was ~7x smaller in
+    # magnitude for the same visual change and dropped short-lived overlay
+    # captions (see docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md).
+    scene_change_threshold: float = 0.05
     # Sprint 9.2: guard only activates below 10 sampled frames (~10 s at 1 fps);
     # at N=10 a 9/10 text (0.9 < 0.95) already survives the default threshold,
     # so the guard protects exactly the pathological ≤9-frame zone (2-frame
@@ -170,7 +175,8 @@ class PanoScribeConfig(BaseSettings):
         """Reject thresholds outside (0.0, 1.0].
 
         ``0.0`` means "every frame passes" (defeats the feature); values above
-        ``1.0`` are impossible for a mean-absdiff normalized into ``[0.0, 1.0]``.
+        ``1.0`` are impossible for a block-max absdiff normalized into
+        ``[0.0, 1.0]``.
         """
         if not (0.0 < v <= 1.0):
             raise ValueError(f"scene_change_threshold must be in (0.0, 1.0]; got {v!r}")

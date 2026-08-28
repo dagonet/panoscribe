@@ -5,11 +5,22 @@ UNC paths), so every video path is coerced to ``str(Path.resolve())`` before
 reaching ``cv2.VideoCapture``.
 
 Sprint 2.5 adds pre-OCR **scene-change detection** via frame-to-frame pixel
-mean-absdiff at a 320-longest-edge grayscale downscale. Frames near-identical
-to the last yielded frame are skipped. First frame always yields; a bounded
+diffing at a 320-longest-edge grayscale downscale. Frames near-identical to
+the last yielded frame are skipped. First frame always yields; a bounded
 max-gap forces periodic yields for slow gradient drift; an end-of-video rule
 guarantees the final visible frame reaches OCR unless it is a pure duplicate.
 Phase 2 behavior is recoverable via ``scene_change_enabled=False``.
+
+Sprint 2.5.1 replaced the frame-difference statistic. A whole-frame mean
+absdiff is a poor proxy for "new text appeared": text occupies a small
+fraction of pixels, so a localized, high-contrast change (a new caption) is
+averaged away by a changing background (see
+``docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md``). ``_frame_difference``
+now grids the downscaled buffer and takes the **max** per-block mean absdiff,
+so a caption saturates the blocks it occupies instead of being diluted by the
+rest of the frame. ``scene_change_threshold``'s default was re-derived for
+this new, larger-magnitude statistic -- the old ``0.02`` (tuned for a global
+mean) no longer applies.
 """
 
 from __future__ import annotations
@@ -34,10 +45,28 @@ logger = logging.getLogger(__name__)
 # as config: speculative failure-mode mitigation, revisit only on evidence.
 _MAX_GAP_SECONDS: float = 30.0
 
+# Absolute frame-count ceiling on the gap floor above, independent of fps.
+# ``round(fps * _MAX_GAP_SECONDS)`` is 30 frames at the default 1 fps, which
+# cannot fire at all on a clip shorter than 30 sampled frames -- on a 12-frame
+# fixture the "safety net" never engages. Capping the *frame count* (not just
+# the wall-clock duration) guarantees the floor is reachable regardless of
+# clip length.
+_MAX_GAP_FRAMES: int = 10
+
 # Downscale longest edge for the absdiff comparison buffer. 320 x (aspect) is
 # ~80 KB per frame vs ~8.3 MB for 4K input, preserves signal for slide cuts,
 # and keeps the absdiff O(H*W) work bounded regardless of source resolution.
+# Measured (see plan doc): dropping this downscale for the diff did not
+# materially change which frames a recall-safe threshold must yield, so the
+# resolution cut is kept for its performance benefit.
 _DOWNSCALE_LONGEST_EDGE: int = 320
+
+# Grid size (edge count) for the block-max frame-difference statistic. The
+# downscaled buffer is pooled to a ``_DIFF_GRID x _DIFF_GRID`` grid (via
+# area-average downsampling) and the *max* pooled block is used instead of
+# the global mean, so a small high-contrast region (new caption text) is not
+# diluted by a much larger changing background.
+_DIFF_GRID: int = 16
 
 
 def _downscale_gray(frame_bgr: np.ndarray) -> np.ndarray:
@@ -60,13 +89,26 @@ def _downscale_gray(frame_bgr: np.ndarray) -> np.ndarray:
 
 
 def _frame_difference(prev_small: np.ndarray, curr_small: np.ndarray) -> float:
-    """Return mean-absdiff between two grayscale buffers, normalized to ``[0.0, 1.0]``.
+    """Return the block-max mean-absdiff between two grayscale buffers, in ``[0.0, 1.0]``.
 
-    ``0.0`` means pixel-identical. ``1.0`` means every pixel saturated (all-white
-    vs all-black), implausible in practice but mathematically possible.
+    The buffer is pooled down to a ``_DIFF_GRID x _DIFF_GRID`` grid via
+    ``cv2.resize(..., interpolation=cv2.INTER_AREA)`` -- an area-average
+    downsample, so each pooled cell holds the *mean* absdiff of the source
+    pixels it covers -- and the **maximum** pooled cell is returned. A global
+    mean over the whole frame dilutes a small, high-contrast region (e.g. a
+    new caption line) with a much larger unchanged or noisily-changing
+    background; a small pooled cell exposes it instead.
+
+    ``0.0`` means pixel-identical. ``1.0`` means at least one pooled block is
+    fully saturated (all-white vs all-black in that block), implausible in
+    practice but mathematically possible.
     """
-    diff = cv2.absdiff(prev_small, curr_small)
-    return float(np.mean(diff)) / 255.0
+    diff = cv2.absdiff(prev_small, curr_small).astype(np.float32)
+    height, width = diff.shape[:2]
+    grid_h = min(_DIFF_GRID, height)
+    grid_w = min(_DIFF_GRID, width)
+    pooled = cv2.resize(diff, (grid_w, grid_h), interpolation=cv2.INTER_AREA)
+    return float(np.max(pooled)) / 255.0
 
 
 def sample_frames(
@@ -74,7 +116,7 @@ def sample_frames(
     fps: float,
     *,
     scene_change_enabled: bool = True,
-    scene_change_threshold: float = 0.02,
+    scene_change_threshold: float = 0.05,
 ) -> Iterator[tuple[float, np.ndarray]]:
     """Yield ``(timestamp_seconds, bgr_frame)`` tuples at roughly ``fps`` samples/sec.
 
@@ -84,14 +126,16 @@ def sample_frames(
     raise. A capture that fails to open raises :class:`PanoScribeError`.
 
     With ``scene_change_enabled=True`` (default), stride-picked frames are further
-    filtered against the previous yielded frame via grayscale mean-absdiff at a
-    320-longest-edge downscale. Yield rules (evaluated in order):
+    filtered against the previous yielded frame via :func:`_frame_difference` (a
+    block-max grayscale absdiff at a 320-longest-edge downscale — see that
+    function's docstring). Yield rules (evaluated in order):
 
     1. First stride-picked frame — always yield (cold start).
     2. ``_frame_difference >= scene_change_threshold`` — yield.
     3. ``frames_since_yield >= max_gap_frames`` — force-yield (bounded gap,
-       ``max_gap_frames = max(1, round(fps * _MAX_GAP_SECONDS))``, fps-invariant
-       in wall-clock terms).
+       ``max_gap_frames = max(1, min(round(fps * _MAX_GAP_SECONDS), _MAX_GAP_FRAMES))``:
+       an absolute frame-count cap in addition to the wall-clock-derived one, so
+       the floor is reachable on short clips too).
     4. Else advance without yielding.
 
     After the read loop terminates, an end-of-video rule force-yields the final
@@ -107,8 +151,18 @@ def sample_frames(
             sampler does not re-validate.
         scene_change_enabled: When ``False``, short-circuits the downscale + diff
             path entirely — every stride-picked frame yields (Phase 2 baseline).
-        scene_change_threshold: Mean-absdiff threshold in ``(0.0, 1.0]`` above
-            which a stride-picked frame is considered a scene change.
+        scene_change_threshold: Block-max absdiff threshold (see
+            :func:`_frame_difference`) in ``(0.0, 1.0]`` above which a
+            stride-picked frame is considered a scene change. Default
+            re-derived for the block-max statistic (sprint 2.5.1) — NOT
+            comparable to the old whole-frame-mean default of ``0.02``, which
+            was ~7x smaller in magnitude for the same visual change and left
+            real short-lived overlays unrecoverable at any setting (see
+            ``docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md``). Gating
+            is a performance optimisation, not a correctness gate: a false
+            positive (extra OCR pass) is cheap, a false negative (permanently
+            lost caption) is not, so this default is deliberately biased
+            toward yielding.
 
     Yields:
         ``(timestamp_seconds, bgr_frame)`` for each selected frame. ``timestamp_seconds``
@@ -130,7 +184,7 @@ def sample_frames(
             )
 
         stride = max(1, round(native_fps / fps))
-        max_gap_frames = max(1, round(fps * _MAX_GAP_SECONDS))
+        max_gap_frames = max(1, min(round(fps * _MAX_GAP_SECONDS), _MAX_GAP_FRAMES))
         logger.debug(
             "Frame sampler: native_fps=%.3f target_fps=%.3f stride=%d "
             "scene_change=%s threshold=%.4f max_gap_frames=%d",

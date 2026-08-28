@@ -7,6 +7,7 @@ codec support on CI.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -16,6 +17,15 @@ import pytest
 
 from panoscribe.errors import PanoScribeError
 from panoscribe.ocr.frame_sampler import sample_frames
+
+# scripts/ is not a package; import the module directly by path so this test
+# does not require an editable/namespace-package install of scripts/. Reuses
+# the fixture generator's noise model (churning background + short-lived
+# overlays) instead of inventing a second one, per
+# docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md.
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
 
 def _make_fake_capture(
@@ -269,16 +279,17 @@ def test_scene_change_step_change_yields_both_segments(tmp_path: Path) -> None:
 
 
 def test_scene_change_gradient_drift_forces_yield_via_max_gap(tmp_path: Path) -> None:
-    """Gradient drift below threshold for 60 frames at fps=1.0 → forced yield fires.
+    """Identical frames below threshold → forced yield fires at the frame-count cap.
 
-    Threshold 0.02 at constant +1 per frame from a baseline of value=50 means
-    each incremental diff is 1/255 ≈ 0.004 (below threshold). After 30 frames
-    the cumulative absdiff vs the first yielded frame is 30/255 ≈ 0.118, which
-    would trip the scene-change rule. To isolate the *max-gap* rule we build
-    frames that stay within threshold of the *last yielded* frame yet drift.
-
-    Practical test: 60 identical frames at fps=1.0 → max_gap_frames = 30 →
-    at least the first yield + one forced yield at frame 30.
+    Corrected baseline (sprint 2.5.1, docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md):
+    ``max_gap_frames`` used to be purely wall-clock-derived
+    (``round(fps * _MAX_GAP_SECONDS)`` = 30 at fps=1.0), which could never
+    fire at all on clips shorter than 30 sampled frames -- not a safety net
+    on short videos. It is now additionally capped by ``_MAX_GAP_FRAMES``
+    (10), so the forced yield lands at frame 10 instead of frame 30 for an
+    fps=1.0 clip. This test's expected value moved from 30.0 to 10.0 to match
+    the corrected floor; the underlying frame content (60 identical frames)
+    is unchanged.
     """
     video = tmp_path / "v.mp4"
     video.write_bytes(b"fake")
@@ -291,8 +302,9 @@ def test_scene_change_gradient_drift_forces_yield_via_max_gap(tmp_path: Path) ->
     timestamps = [t for t, _ in samples]
     assert len(timestamps) >= 2
     assert timestamps[0] == 0.0
-    # Max-gap is 30 seconds at fps=1.0; forced yield lands at stride index 30.
-    assert timestamps[1] == pytest.approx(30.0)
+    # _MAX_GAP_FRAMES caps the gap at 10 frames regardless of fps; forced
+    # yield lands at stride index 10 (corrected from 30 — see docstring).
+    assert timestamps[1] == pytest.approx(10.0)
 
 
 def test_scene_change_end_of_video_force_yields_nonzero_trailing(tmp_path: Path) -> None:
@@ -358,3 +370,40 @@ def test_scene_change_yielded_frame_is_original_bgr_not_downscaled(tmp_path: Pat
     for _, frame in samples:
         assert frame.ndim == 3
         assert frame.shape[2] == 3
+
+
+def test_scene_change_recovers_short_lived_overlays_amid_churning_background(
+    tmp_path: Path,
+) -> None:
+    """Regression for docs/plans/2026-08-28-ocr-phase2.5-sampler-recall.md.
+
+    Reuses ``scripts/generate_ocr_noise_fixture.py``'s noise model: a
+    per-frame churning background (jittered, sliding-window text) plus two
+    short-lived overlays that each appear in only 1-2 frames. A whole-frame
+    mean absdiff averages the localized overlay text away against the
+    dominant background churn and drops both required frames -- this must
+    FAIL on main and pass once the sampler is sensitive to localized change.
+    """
+    from generate_ocr_noise_fixture import (
+        _SHORT_LIVED_A_FRAME_INDICES,
+        _SHORT_LIVED_B_FRAME_INDICES,
+        generate_frames,
+    )
+
+    fixture = generate_frames(num_frames=12, seed=42)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    cap = _capture_from_frames(native_fps=1.0, frames=fixture.frames)
+
+    with patch("panoscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
+        samples = list(sample_frames(video, fps=1.0))
+
+    yielded_timestamps = {t for t, _ in samples}
+    required_timestamps = {
+        float(i) for i in (_SHORT_LIVED_A_FRAME_INDICES | _SHORT_LIVED_B_FRAME_INDICES)
+    }
+    missing = required_timestamps - yielded_timestamps
+    assert not missing, (
+        f"scene-change gating dropped required short-lived-overlay frame(s) {missing}; "
+        f"yielded={sorted(yielded_timestamps)}"
+    )
