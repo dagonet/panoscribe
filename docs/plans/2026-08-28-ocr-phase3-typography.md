@@ -2,6 +2,57 @@
 
 Tier: T3
 
+> **Amendment (phase 4, `docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md`):**
+> phase 4 found and fixed a real-data-pairing bug in `scripts/eval_ocr.py`'s `--typography`
+> diagnostic that was present, unchanged, at this phase's merge commit (`f02c369`) and
+> used to produce the "Step 3 result" numbers below. **The bug did not change this
+> phase's conclusion**, but the specific numbers it reported were wrong. Corrected here
+> rather than silently left in place (the rest of this document's findings and
+> methodology stand):
+>
+> 1. **The bug.** The `--typography` block zipped `ocr_segments` against `geometry`
+>    (`for seg, geo in zip(ocr_segments, geometry, strict=False)`). By that point in
+>    `main()`, `ocr_segments` had already been reassigned twice by the UI-filter block
+>    above it (`filter_by_patterns`, then `filter_by_frequency`) — a shorter, filtered
+>    list — while `geometry` was still the full raw-stage list populated during
+>    `extract()`. `zip(..., strict=False)` silently truncated to the shorter list without
+>    erroring, pairing the first N filtered segments with the first N *raw* geometry
+>    entries — not their own geometry. This is confirmed present, unchanged, at `f02c369`
+>    (this phase's own merge commit): the same `zip(ocr_segments, geometry, strict=False)`
+>    line, with the same UI-filter reassignment above it, applies whenever
+>    `ui_filter_enabled` and a profile are set — exactly the `--platform-profile youtube`
+>    configuration this phase measured with.
+> 2. **The recorded "Step 3 result" numbers were produced through the buggy path, not a
+>    correct one.** The reported `n=24` matched + `n=57` unmatched = 81 total matches
+>    `post_frequency_filter`'s count in the very next table (81), not `raw`'s count (129)
+>    that the surrounding prose claimed ("collected ... at the **raw** stage"). That
+>    equality is the direct evidence the pairing used the post-filter `ocr_segments`, not
+>    the raw one.
+> 3. **Corrected numbers (measured in phase 4, fixed code, current fixture — which by
+>    then also includes phase 4's added ticker overlay, hence a different `n`):**
+>    ```
+>    matched (real overlays):   n=34 min=0.0354 max=0.0542 mean=0.0429
+>    unmatched (junk):          n=105 min=0.0312 max=0.0667 mean=0.0407
+>    ```
+>    The matched group's minimum height moved from the erroneous `0.0312` to `0.0354` —
+>    some of what was counted as "matched" under the buggy pairing was actually junk
+>    geometry mispaired against a filtered-in real segment. Despite that, **the matched
+>    range `[0.0354, 0.0542]` remains fully contained inside the unmatched range
+>    `[0.0312, 0.0667]`** — the conclusion below is unchanged: no threshold on
+>    normalized bbox height separates matched from unmatched segments.
+> 4. **Why the conclusion survives independent of this bug.** The isolated-render
+>    ink-bbox table in "Step 1 result" below — required-overlay height range `[15, 26]`px
+>    fully contained inside junk height range `[13, 34]`px — was measured by rendering
+>    each string in isolation and taking its own pixel ink-bbox
+>    (`np.where(gray < 220)`); it has no dependency on `eval_ocr.py`, `ocr_segments`, or
+>    `geometry` pairing at all, and is therefore untouched by this bug. It already fully
+>    corroborates full containment on its own; the real-pipeline table was corroborating
+>    evidence, not the sole basis for the conclusion.
+>
+> **Materiality bar condition 3 still fails; no filter should have shipped, and none
+> did.** No pipeline/filter behaviour changed to produce this correction — only the
+> `eval_ocr.py` measurement code and the numbers it reported.
+
 ## Where phases 1-2.5 leave us
 
 - Junk is **correctly-read background prose** — not garbled, not hallucinated. Quality
