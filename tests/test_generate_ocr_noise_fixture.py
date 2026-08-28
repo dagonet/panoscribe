@@ -7,6 +7,7 @@ pipeline itself.
 
 from __future__ import annotations
 
+import itertools
 import sys
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from generate_ocr_noise_fixture import (  # noqa: E402
     _ALL_CAPS_BG_TEXT,
     _CHROME_HANDLE_TEXT,
     _CHROME_SUBSCRIBE_TEXT,
+    _FRAME_W,
     _LARGE_BG_TEXT,
     _LOWERCASE_OVERLAY_TEXT,
     _OVERLAY_SKIP_FRAME_INDICES,
@@ -34,7 +36,10 @@ from generate_ocr_noise_fixture import (  # noqa: E402
     _SHORT_LIVED_C_FRAME_INDICES,
     _SHORT_LIVED_C_TEXT,
     _STABLE_JUNK_TEXT,
+    _TICKER_SKIP_FRAME_INDICES,
+    _TICKER_TEXT,
     VIDEO_FILENAME,
+    _ticker_x,
     generate_frames,
     write_video_fixture,
 )
@@ -90,6 +95,7 @@ class TestGenerateFramesGroundTruth:
             _SHORT_LIVED_B_TEXT,
             _SHORT_LIVED_C_TEXT,
             _LOWERCASE_OVERLAY_TEXT,
+            _TICKER_TEXT,
         }
         assert all(e["required"] is True for e in expected_texts)
 
@@ -142,6 +148,58 @@ class TestGenerateFramesGroundTruth:
         # Overlay must be skipped in a strict minority of frames -- it must
         # stay the majority signal to be "stable" per the fixture design.
         assert len(_OVERLAY_SKIP_FRAME_INDICES) < len(fixture.frames) / 2
+
+
+class TestTickerPositionInstability:
+    """Phase 4's scrolling ticker -- the fixture's only required overlay with
+    a genuinely non-degenerate cross-frame position."""
+
+    def test_ticker_appears_in_all_but_the_skipped_frames(self) -> None:
+        fixture = generate_frames(num_frames=12, seed=42)
+        by_text = {e["text"]: e for e in fixture.ground_truth["expected_texts"]}
+        appearances = by_text[_TICKER_TEXT]["appearances"]
+        assert {tuple(w) for w in appearances} == {
+            (float(i), float(i)) for i in range(12) if i not in _TICKER_SKIP_FRAME_INDICES
+        }
+
+    def test_ticker_recurrence_ratio_stays_under_the_frequency_drop_threshold(self) -> None:
+        # Regression guard for the bug this phase caught: a ticker present
+        # in every sampled frame has recurrence ratio 1.0, which clears
+        # filter_by_frequency's default 0.95 drop threshold and gets
+        # silently deleted before position-stability is ever measured.
+        fixture = generate_frames(num_frames=12, seed=42)
+        assert len(_TICKER_SKIP_FRAME_INDICES) > 0
+        ratio = (12 - len(_TICKER_SKIP_FRAME_INDICES)) / 12
+        assert ratio < 0.95
+        assert len(fixture.frames) == 12  # sanity: matches the ratio's denominator
+
+    def test_ticker_x_advances_monotonically_then_clamps(self) -> None:
+        positions = [_ticker_x(i) for i in range(12)]
+        # Non-decreasing while below the clamp, non-decreasing after.
+        assert all(b >= a for a, b in itertools.pairwise(positions))
+        # At least two distinct positions -- the whole point of the overlay.
+        assert len(set(positions)) > 1
+
+    def test_ticker_never_clips_the_frame_edge(self) -> None:
+        """The ticker's ink bbox must stay fully inside the frame at every
+        step, or a clipped OCR read would fracture into multiple canonical
+        keys and silently understate the measured instability -- see
+        docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md."""
+        (text_w, _text_h), _baseline = cv2.getTextSize(
+            _TICKER_TEXT, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1
+        )
+        for i in range(20):  # covers every num_frames used across this suite
+            x = _ticker_x(i)
+            assert x >= 0
+            assert x + text_w < _FRAME_W
+
+    def test_ticker_frames_differ_at_the_ticker_row(self) -> None:
+        """Direct pixel evidence the ticker actually moves between frames --
+        not just that ``_ticker_x`` returns different numbers."""
+        fixture = generate_frames(num_frames=12, seed=42)
+        row_early = fixture.frames[0][395:415, :, :]
+        row_later = fixture.frames[5][395:415, :, :]
+        assert not np.array_equal(row_early, row_later)
 
 
 class TestWriteVideoFixtureDeterminism:

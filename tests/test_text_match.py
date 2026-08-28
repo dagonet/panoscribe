@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from panoscribe.ocr._text_match import _canonical_key, _fuzzy_match
+from panoscribe.ocr._text_match import _canonical_key, _fuzzy_match, cluster_canonical_keys
 
 
 class TestCanonicalKey:
@@ -83,6 +83,41 @@ class TestFuzzyMatch:
         # Helper applies str.lower so case variation does not depress the
         # ratio — matches the deduplicator's pre-existing behavior.
         assert _fuzzy_match("SUBSCRIBE", "subscribe", threshold=0.99) is True
+
+
+class TestClusterCanonicalKeys:
+    """Greedy single-link clustering shared by ``filter_by_frequency`` and
+    the phase-4 spatial-stability measurement."""
+
+    def test_identical_keys_join_one_cluster(self) -> None:
+        clusters = cluster_canonical_keys(["subscribe", "subscribe"], 0.9)
+        assert clusters == [["subscribe", "subscribe"]]
+
+    def test_distinct_keys_form_separate_clusters(self) -> None:
+        clusters = cluster_canonical_keys(["hello world", "random text"], 0.9)
+        assert clusters == [["hello world"], ["random text"]]
+
+    def test_near_duplicates_join_the_same_cluster(self) -> None:
+        clusters = cluster_canonical_keys(["subscribe!", "subscribe", "subscribe "], 0.9)
+        assert len(clusters) == 1
+        assert set(clusters[0]) == {"subscribe!", "subscribe", "subscribe "}
+
+    def test_third_key_joins_via_any_existing_member_not_just_the_first(self) -> None:
+        # "b" only clears threshold against "a2", not the cluster's first
+        # member "a1" -- single-link means matching ANY member suffices.
+        clusters = cluster_canonical_keys(["hello world", "hemlo world", "hell world"], 0.7)
+        assert len(clusters) == 1
+
+    def test_empty_input_returns_no_clusters(self) -> None:
+        assert cluster_canonical_keys([], 0.9) == []
+
+    def test_iteration_order_is_deterministic_and_preserved(self) -> None:
+        clusters = cluster_canonical_keys(["zeta", "alpha", "mid"], 0.99)
+        assert clusters == [["zeta"], ["alpha"], ["mid"]]
+
+    def test_threshold_zero_collapses_everything_into_one_cluster(self) -> None:
+        clusters = cluster_canonical_keys(["alpha", "omega", "gamma"], 0.0)
+        assert len(clusters) == 1
 
 
 if __name__ == "__main__":  # pragma: no cover

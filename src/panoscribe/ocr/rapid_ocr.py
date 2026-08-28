@@ -52,6 +52,15 @@ class SegmentGeometry(NamedTuple):
     ``normalized_height`` is ``mean_box_height / frame_height`` -- scale
     invariant because :func:`panoscribe.ocr.preprocessor.preprocess` never
     resizes the frame.
+
+    ``x_center`` / ``y_center`` are raw pixel coordinates in the same space
+    as :class:`panoscribe.ocr.bbox_aggregator.AggregatedLine` (see there for
+    the exact centroid definition). ``x_center_norm`` / ``y_center_norm``
+    are the same values divided by ``frame_width`` / ``frame_height``
+    respectively -- scale-invariant, added for phase-4 spatial-stability
+    measurement (``docs/plans/2026-08-28-ocr-phase4-crossmodal-spatial.md``)
+    so cross-frame position dispersion is comparable in the same units as
+    ``normalized_height``.
     """
 
     text: str
@@ -60,6 +69,8 @@ class SegmentGeometry(NamedTuple):
     normalized_height: float
     y_center: float
     x_center: float
+    y_center_norm: float
+    x_center_norm: float
 
 
 def _read_image(path: Path) -> np.ndarray | None:
@@ -307,10 +318,10 @@ class RapidOCREngine:
         language = self._config.ocr_language
 
         processed_frame = preprocess(frame)
-        # Frame height for scale-invariant geometry -- captured before
+        # Frame dimensions for scale-invariant geometry -- captured before
         # zone masking (masking never resizes) and matches
         # ``preprocess``'s no-resize contract.
-        frame_height = processed_frame.shape[0]
+        frame_height, frame_width = processed_frame.shape[:2]
         if mask_rects:
             processed_frame = mask_zones(processed_frame, mask_rects)
         result = self._engine(processed_frame)
@@ -356,6 +367,8 @@ class RapidOCREngine:
                         normalized_height=line.mean_box_height / frame_height,
                         y_center=line.y_center,
                         x_center=line.x_center,
+                        y_center_norm=line.y_center / frame_height,
+                        x_center_norm=line.x_center / frame_width,
                     )
                 )
         return frame_segments
