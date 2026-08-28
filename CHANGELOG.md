@@ -5,6 +5,74 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-28
+
+### Changed
+
+- **`panoscribe.ocr.rapid_ocr.SegmentGeometry` gains `y_center_norm` /
+  `x_center_norm`** (#118) — two new fields appended after `x_center`, the
+  same `frame_height` / `frame_width`-normalized values already computed
+  for `AggregatedLine`, added so cross-frame position dispersion is
+  comparable in the same units as `normalized_height` for the phase-4
+  spatial-stability measurement below. `SegmentGeometry` is a public,
+  importable `NamedTuple`, so this is additive but not compatible with
+  existing field order — positional attribute access and keyword
+  construction for the pre-existing fields are unaffected, but full-tuple
+  unpacking (e.g. `text, conf, h, y, x = geometry`) or length/equality
+  comparisons against the old 6-field shape break, hence a minor rather
+  than a patch bump (same standard applied in 0.7.0's `AggregatedLine`
+  bump). `TranscriptSegment` and the JSON output schema are untouched — no
+  user-facing transcription behavior changed.
+
+### Evaluated, not shipped
+
+- **OCR phase 4: cross-modal correspondence and spatial-position
+  consistency as junk discriminators** (#118) — two more hypotheses
+  closed by measurement; neither is shipped.
+  - **Cross-modal correspondence: rejected on design grounds, not
+    measured.** Filtering OCR text that has no matching spoken text would
+    delete exactly the overlays users want — chyrons, titles, CTAs,
+    lower-thirds are deliberately *not* spoken, since they exist to carry
+    what the audio does not — while promoting background prose that
+    speech happens to mention. It is also a no-op on silent video, i.e.
+    absent precisely where OCR is the only channel. Cross-modal matching
+    remains a *promotion* signal (already used correctly by
+    `merge_channels`, which emits `BOTH` on a fuzzy speech/OCR match), not
+    a junk discriminator.
+  - **Spatial-position consistency + size: measured, bar not met.** 5 of
+    6 required overlays in the fixture were indistinguishable from stable
+    junk on both position-stability and size. The `STUDIO NINE FEED`
+    watermark remains a direct counterexample: perfectly position-stable
+    and the smallest element in the fixture. The fixture gained a
+    position-*unstable* required overlay (a scrolling ticker) so "stable
+    implies real" is testable at all; new `src/panoscribe/eval/spatial.py`
+    carries the measurement. **No filtering behavior changed; the OCR
+    junk limitation remains open.** This is the fifth discriminator
+    closed by measurement, after detector-swap, low-recurrence filtering
+    (#110), frequency filtering, and typography.
+  - Two bugs found and fixed during this evaluation: a fixture bug where
+    the scrolling ticker appeared in every frame and was deleted by the
+    recurrence filter before spatial measurement could observe it; and a
+    pre-existing `scripts/eval_ocr.py --typography` bug that zipped
+    post-filter segments against raw-stage geometry, mispairing them (see
+    below). The single-link clustering used to decide "is this the same
+    overlay across frames" is now shared, extracted from
+    `ui_filter.filter_by_frequency`'s inline loop into
+    `panoscribe.ocr._text_match.cluster_canonical_keys` and reused by the
+    spatial measurement — an internal refactor with no behavior change;
+    `filter_by_frequency`'s signature and the pre-existing `_canonical_key`
+    / `_fuzzy_match` helpers are untouched.
+- **Phase-3 typography record amended (#119)** — the `--typography`
+  mispairing bug above was already present when phase 3's numbers were
+  produced, and did corrupt its recorded table (the recorded n=24+n=57=81
+  matches `post_frequency_filter`'s count, not `raw`'s 129 — only possible
+  via the mispairing). The conclusion still holds on corrected data:
+  matched n=34 [0.0354, 0.0542] sits fully inside unmatched n=105
+  [0.0312, 0.0667], and phase 3's isolated ink-height table was measured
+  independently of the buggy path. The plan doc carries an appended
+  amendment rather than a rewrite:
+  `docs/plans/2026-08-28-ocr-phase3-typography.md`.
+
 ## [0.7.0] - 2026-08-28
 
 ### Changed
@@ -509,6 +577,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.8.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.8.0
 [0.7.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.7.0
 [0.6.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.6.0
 [0.5.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.5.0
