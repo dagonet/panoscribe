@@ -91,3 +91,7 @@ Produce specs as GitHub Issue markdown, ready for the PO to post:
 **Report in your final message:** the PO reads your final message, nothing else — no progress channel exists. Put the whole result there. If `hooks/agent-budget-warn.sh` warns that you are near the tool-call budget, stop exploring, wrap up, and report what you have plus what is left.
 
 **Scope abort:** if the task grows past its stated scope — extra files, a second root cause, a redesign — stop, report what is done plus the blocker, and let the PO re-tier. Do not expand scope inside one spawn. A long run is not evidence of progress.
+
+<!-- PROJECT-CUSTOM:BEGIN — sync-template preserves everything between these markers -->
+<!-- Project-specific rules, routing blocks, and extensions go here. -->
+<!-- PROJECT-CUSTOM:END -->

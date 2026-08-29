@@ -18,7 +18,11 @@
 # No-op (exit 0) when PROJECT_CONTEXT.md has no Gate command or the field is
 # still a {{...}} placeholder — same graceful degradation as pre-commit-test.sh.
 
-. "$(dirname "$0")/lib/git-cmd.sh"
+# Fail CLOSED when the sourced lib is missing: without it every gc_* helper is
+# undefined, GC_TOOL stays empty, and this gate would exit 0 on every merge.
+lib="$(dirname "$0")/lib/git-cmd.sh"
+[ -f "$lib" ] || { echo "BLOCKED: $lib missing — run /sync-template step 6b (hooks/lib/git-cmd.sh)" >&2; exit 2; }
+. "$lib"
 
 gc_read_stdin
 gc_guard_off && exit 0
