@@ -506,11 +506,16 @@ After code review and testing pass, the developer executes the merge. MCP tools 
 
 3. Verify CI passes:
    a. Check CI workflow status via gh_workflow_list after push.
-   b. If CI fails, fix before merging.
+   b. CI fires on `pull_request` and on push-to-main; a bare branch push produces NO run.
+      Open the PR first, then look up the run id — an empty workflow list right after
+      `git push` is not a CI failure.
+   c. If CI fails, fix before merging.
 
 4. Run the gate on the rebased head:
    a. Execute `bash hooks/run-gate.sh` in the worktree. A green gate writes `.gate/last-pass.json`
       for the current HEAD — this artifact is the ONLY accepted green.
+   a2. The commit gate keys on the WORKING TREE at gate time — commit exactly what was gated.
+      A chained `git add … && git commit` is fine; a partial add after the gate mismatches.
    b. The merge tools are hard-blocked by `hooks/gate-before-merge.sh` without a fresh,
       SHA-matching artifact (< 60 min old). Do not attempt to merge around it.
    c. If the gate fails, fix the failures and re-run. Skip this step only when the

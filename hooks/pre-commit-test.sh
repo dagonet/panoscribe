@@ -137,10 +137,10 @@ if [ -z "$TEST_CMD" ]; then
   exit 0
 fi
 
-# No-op: placeholder not yet filled in
-case "$TEST_CMD" in
-  *\{\{*\}\}*) exit 0 ;;
-esac
+# v2.1.4: the placeholder-{{...}} guard formerly here is unreachable -- both
+# TEST_CMD's own extraction (line ~87) and GATE_CMD_RAW's (line ~104) already
+# strip a {{...}} placeholder to "", and an empty TEST_CMD exits at line 137
+# above before this point is ever reached.
 
 echo "PRE-COMMIT: Running '$TEST_CMD'..." >&2
 cd "$REPO_PATH" || exit 1
