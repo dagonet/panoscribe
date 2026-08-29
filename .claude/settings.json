@@ -1,14 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
+      "Bash(bash hooks/run-gate.sh*)",
       "Read",
       "Edit",
       "Write",
       "NotebookEdit",
       "WebSearch",
-      "WebFetch(*)",
-      "mcp__git-tools__*",
       "mcp__github-tools__*",
       "mcp__MCP_DOCKER__*",
       "mcp__dotnet-tools__*",
@@ -27,7 +25,7 @@
     "deny": [
       "Read(.env*)"
     ],
-    "defaultMode": "dontAsk"
+    "defaultMode": "auto"
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
@@ -36,29 +34,28 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash hooks/block-bash-vcs.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/block-bash-vcs.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__git-tools__git_commit",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
             "command": "bash hooks/pre-commit-test.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/pre-commit-test.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+          },
+          {
+            "type": "command",
+            "command": "bash hooks/no-push-main.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/no-push-main.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+          },
+          {
+            "type": "command",
+            "command": "bash hooks/gate-before-merge.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/gate-before-merge.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
           }
         ]
       },
       {
-        "matcher": "mcp__git-tools__git_push",
+        "matcher": "Read",
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/no-push-main.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/no-push-main.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+            "command": "bash hooks/read-size-gate.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/read-size-gate.sh missing -- Read size gate offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
           }
         ]
       },
@@ -74,10 +71,6 @@
       {
         "matcher": "Agent",
         "hooks": [
-          {
-            "type": "command",
-            "command": "bash hooks/tier-before-coder.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/tier-before-coder.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
-          },
           {
             "type": "command",
             "command": "bash hooks/require-skills-block.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/require-skills-block.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
@@ -111,12 +104,13 @@
         ]
       }
     ],
-    "TeammateIdle": [
+    "PostToolUse": [
       {
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/require-teammate-report.sh"
+            "command": "bash hooks/bash-output-guard.sh"
           }
         ]
       }
@@ -137,6 +131,24 @@
           {
             "type": "command",
             "command": "bash hooks/enforce-agent-contract.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/retro-ledger.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/retro-brief.sh"
           }
         ]
       }

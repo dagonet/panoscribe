@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook: require passing tests before git commit
-# Matcher: mcp__git-tools__git_commit
+# Matcher: Bash|PowerShell
 #
 # Runs the project's test command before allowing a commit.
 # Blocks the commit if tests fail.
@@ -10,14 +10,41 @@
 #
 # Buggy code was the #1 friction category (10 occurrences) in Insights report.
 # This hook prevents shipping code that breaks existing tests.
+#
+# v2.0: the native git CLI is allowed again, so this gate parses
+# tool_input.command instead of keying on the retired mcp__git-tools__git_commit
+# tool name. Escape hatch: <cwd>/.claude/git-guard-off.
 
-TOOL_INPUT=$(cat)
-# Hook stdin nests tool args under .tool_input; keep top-level fallback for older harnesses.
-REPO_PATH=$(node -e "const j=JSON.parse(process.argv[1]); console.log((j.tool_input&&j.tool_input.repo_path)||j.repo_path||'')" "$TOOL_INPUT" 2>/dev/null)
+. "$(dirname "$0")/lib/git-cmd.sh"
 
-if [ -z "$REPO_PATH" ]; then
-  REPO_PATH=$(pwd)
-fi
+gc_read_stdin
+gc_guard_off && exit 0
+[ -n "$GC_CMD" ] || exit 0
+
+# Find the repo of the first `git commit` in the command line (if any).
+base="$GC_CWD"
+REPO_PATH=""
+segments=$(gc_segments)
+
+while IFS= read -r seg; do
+  [ -n "$seg" ] || continue
+
+  cdt=$(gc_cd_target "$seg")
+  if [ -n "$cdt" ]; then
+    base=$(gc_resolve "$base" "$cdt")
+    continue
+  fi
+
+  if gc_matches_subcommand "$seg" "commit"; then
+    REPO_PATH=$(gc_repo_for "$seg" "$base")
+    break
+  fi
+done <<GC_SEGMENTS
+$segments
+GC_SEGMENTS
+
+# Not a commit -- nothing to gate.
+[ -n "$REPO_PATH" ] || exit 0
 
 # Read test command from PROJECT_CONTEXT.md. Tolerates: leading "- " / "* " list
 # markers, the "**Test Command**:" label style (java/python variants), and
