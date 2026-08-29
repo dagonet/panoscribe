@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # PreToolUse hook: block PR merge/auto-merge without a fresh gate artifact
-# Matcher: mcp__MCP_DOCKER__merge_pull_request|mcp__github-tools__github_pr_auto_merge
+# Matcher: Bash|PowerShell|mcp__MCP_DOCKER__merge_pull_request|mcp__github-tools__github_pr_auto_merge
+#
+# v2.0: `gh pr merge`, a `git merge` while on main/master, and a push that
+# targets main/master (fast-forward merge by push) are gated too, because the
+# native git/gh CLI is allowed again. The MCP branch is unchanged -- those are
+# GitHub tools, not the retired git-tools server. Escape hatch:
+# <cwd>/.claude/git-guard-off.
 #
 # Requires .gate/last-pass.json (written by hooks/run-gate.sh) at the repo
 # toplevel of the merging session's cwd — worktree-aware, since developer
@@ -12,12 +18,76 @@
 # No-op (exit 0) when PROJECT_CONTEXT.md has no Gate command or the field is
 # still a {{...}} placeholder — same graceful degradation as pre-commit-test.sh.
 
-TOOL_INPUT=$(cat)
+. "$(dirname "$0")/lib/git-cmd.sh"
 
-# Hook stdin JSON carries the session cwd at top level; fall back to $(pwd).
-CWD=$(node -e "const j=JSON.parse(process.argv[1]); console.log(j.cwd||'')" "$TOOL_INPUT" 2>/dev/null)
-if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
-  CWD=$(pwd)
+gc_read_stdin
+gc_guard_off && exit 0
+
+CWD="$GC_CWD"
+
+# Branch on the TOOL, never on the parsed string. This hook is registered on
+# Bash|PowerShell, so if node is missing, the JSON does not parse, or the payload
+# carries no tool_input.command, GC_CMD is empty -- and treating that as "not a
+# Bash call" would fall through to the artifact check and block every Bash call
+# in the session. A Bash payload we cannot read is a Bash payload with no merge
+# in it; only the GitHub merge tools are gated unconditionally.
+case "$GC_TOOL" in
+  Bash|PowerShell) ;;   # gate only merge-shaped commands (scanned below)
+  mcp__*)          ;;   # the GitHub merge tools: always gated
+  *) exit 0 ;;          # unknown or unparseable tool: fail open
+esac
+
+if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
+  is_merge=0
+  base="$CWD"
+  segments=$(gc_segments)
+
+  while IFS= read -r seg; do
+    [ -n "$seg" ] || continue
+
+    cdt=$(gc_cd_target "$seg")
+    if [ -n "$cdt" ]; then
+      base=$(gc_resolve "$base" "$cdt")
+      continue
+    fi
+
+    # 1. gh pr merge (any flags)
+    if printf '%s\n' "$seg" | grep -qE '\bgh[[:space:]]+pr[[:space:]]+merge\b'; then
+      is_merge=1
+      CWD=$(gc_repo_for "$seg" "$base")
+      break
+    fi
+
+    # 2. git merge while the checkout is on main/master
+    if gc_matches_subcommand "$seg" "merge"; then
+      repo=$(gc_repo_for "$seg" "$base")
+      if gc_on_main "$repo"; then
+        is_merge=1
+        CWD="$repo"
+        break
+      fi
+    fi
+
+    # 3. a push that targets main/master -- fast-forward merge by push
+    if gc_matches_subcommand "$seg" "push"; then
+      repo=$(gc_repo_for "$seg" "$base")
+      args=$(gc_push_args "$seg")
+      if gc_targets_main_ref "$args"; then
+        is_merge=1
+        CWD="$repo"
+        break
+      fi
+      if ! gc_has_refspec "$args" && ! gc_push_skips_branch_check "$args" && gc_on_main "$repo"; then
+        is_merge=1
+        CWD="$repo"
+        break
+      fi
+    fi
+  done <<GC_SEGMENTS
+$segments
+GC_SEGMENTS
+
+  [ "$is_merge" = "1" ] || exit 0
 fi
 
 REPO_TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)

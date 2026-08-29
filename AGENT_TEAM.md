@@ -36,19 +36,19 @@ When a session starts on a project that has this AGENT_TEAM.md:
 
 ## CRITICAL: Sub-Agent Tool Limitations
 
-**Sub-agents do NOT have automatic access to MCP tools.** Whether a sub-agent has git/GitHub MCP tools depends on its `tools:` frontmatter in the agent definition file. This is a Claude Code platform limitation — not a configuration error.
+**A sub-agent only has the tools its `tools:` frontmatter lists.** Git runs through the `git`/`gh` CLI, so an agent can do its own git work exactly when `Bash` is in its `tools:`; GitHub writes (PRs, comments, reviews) still need the matching `mcp__MCP_DOCKER__*` tools. This is a Claude Code platform limitation — not a configuration error.
 
-### Agents WITH MCP git/GitHub tools:
-- `coder`, `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder` — can commit, push, create PRs, merge
+### Agents that can do their own git + GitHub I/O:
+- `coder`, `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder` — `Bash` plus PR tools: can commit, push, create PRs, merge
 - `code-reviewer` — can post PR reviews via `mcp__MCP_DOCKER__pull_request_review_write`
-- `tester` — can post findings via `mcp__MCP_DOCKER__add_issue_comment`
+- `tester`, `test-writer` — have `Bash` (so they can commit) but no PR tools; `tester` can post findings via `mcp__MCP_DOCKER__add_issue_comment`
 
-### Agents WITHOUT MCP git/GitHub tools:
-- `architect`, `requirements-engineer`, `doc-generator`, `test-writer` — CANNOT commit, push, create PRs, merge, or post comments
+### Agents without `Bash`:
+- `architect`, `requirements-engineer`, `doc-generator` — CANNOT commit, push, create PRs, merge, or post comments
 
-**PO responsibility:** When spawning agents without MCP tools, do NOT include git/GitHub operations in their spawn prompts. They will bail, stall, or silently skip those steps. Instead:
+**PO responsibility:** When spawning an agent that lacks `Bash` (or lacks the PR tool an instruction needs), do NOT put that operation in its spawn prompt. It will bail, stall, or silently skip the step. Instead:
 1. Have them return their work product (plan, spec, review findings, tests)
-2. The PO performs all git/GitHub I/O on their behalf
+2. The PO performs the git I/O with the git CLI and the GitHub I/O with the MCP tools
 
 **History:** Sub-agents bailing/stalling due to missing tools was a recurring friction point (sessions 22, 23, 26). Pre-verifying tool availability in spawn prompts prevents wasted agent cycles.
 
@@ -67,9 +67,9 @@ When a session starts on a project that has this AGENT_TEAM.md:
 - Plans sprints: selects tasks, creates the team, spawns the Architect (T4), then spawns workstreams.
 - Monitors workstream progress and handles escalations.
 - Writes a brief **session summary** after each completed sprint.
-- **T1 delegated fixes**: For trivial changes (< 10 lines, style/config only, no logic), the PO spawns ONE coder with a minimal plan file containing `Tier: T1` (3 lines suffice — the spawn gate reads it). **The PO NEVER edits code, at any tier.** PO write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
+- **T1 delegated fixes**: For trivial changes (< 10 lines, style/config only, no logic), the PO spawns ONE coder with the task brief in the prompt — no plan file needed. **The PO NEVER edits code, at any tier.** PO write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
 - **Never reviews code inline** — a `code-reviewer` is spawned for every tier from T2 up; T1 relies on the coder's gate run.
-- **Read discipline**: PO Read/Grep is for targeted verification of specific claims (1–2 files) and orchestration files only. Any exploration beyond that — open-ended codebase analysis, pattern discovery, multi-file tracing — is delegated to an **Explore** agent (pass `model: "haiku"` or `"sonnet"` in the Agent call; it otherwise inherits the expensive session model).
+- **Read discipline**: PO Read/Grep is for targeted verification of specific claims (1–2 files) and orchestration files only. Any exploration beyond that — open-ended codebase analysis, pattern discovery, multi-file tracing — is delegated to an **Explore** agent (`.claude/agents/Explore.md` pins it to haiku at `effort: low` — do not pass a `model` in the Agent call).
 - **Never runs builds or tests** — coders run the gate, the tester verifies, `ops` handles env/tool work. The PO verifies via the `.gate/last-pass.json` artifact (also enforced by `hooks/enforce-delegation.sh`).
 - Closes tasks after merge (see Mode Behavior Table).
 - Does **NOT** block the merge pipeline — review + test approval is sufficient for merge.
@@ -91,8 +91,8 @@ When a session starts on a project that has this AGENT_TEAM.md:
 
 - Maintains all architecture documentation.
 - Provides implementation guidance on all sprint tasks (see Mode Behavior Table for where guidance is posted).
-- **Challenges ALL plans (T3+)**: Spawned by PO before implementation to perform two challenge passes on every plan. Validates scope, necessity, correctness, tier assignment, and team configuration. This is the plan-challenge phase — distinct from implementation guidance.
-- **Plan-challenge phase**: Shuts down after plan challenges are complete. Re-spawned for implementation guidance only if the sprint is T4.
+- **Challenges an approach on demand**: The PO may spawn the architect before implementation to critique a draft — scope, necessity, correctness, sizing. This is a judgement call, not a gate; nothing blocks a spawn on it.
+- **Shuts down after returning the critique.** Re-spawned for implementation guidance only if the sprint is T4.
 - Reviews all sprint tasks **BEFORE** development starts (T4), covering:
   - Affected components and files
   - Recommended approach
@@ -106,13 +106,10 @@ When a session starts on a project that has this AGENT_TEAM.md:
 #### Architect Lifecycle
 
 ```
-Spawn (PO drafts plan, needs challenge)
+Spawn (PO wants a critique of an approach)
   |
   v
-Challenge 1: Scope & Necessity
-  |
-  v
-Challenge 2: Correctness & Completeness
+Architect returns the critique (scope, necessity, correctness, sizing)
   |
   +--> T2-T3: Architect shuts down. Not needed during implementation.
   |
@@ -131,7 +128,7 @@ Challenge 2: Correctness & Completeness
 **Transition rules:**
 - PO controls all architect spawn/shutdown transitions.
 - "Standby" means the architect agent remains alive but idle. PO messages it when guidance is needed.
-- If the architect is shut down (T2-T3) and a Rule 8 escalation requires re-design, PO spawns a **new** architect instance with the failure context.
+- If the architect is shut down and a Rule 8 escalation requires re-design, PO spawns a **new** architect instance with the failure context.
 - **SubagentStop fires per-invocation, not per-shutdown.** At T4, the architect stays in STANDBY after replying to a guidance request — do NOT interpret a SubagentStop event as a shutdown signal. The architect shuts down explicitly only after the last T4 task is guided and merged.
 
 ### Developer (1 per workstream)
@@ -153,13 +150,22 @@ When spawning a developer agent, the PO MUST choose the correct `subagent_type` 
 |---|---|---|
 | **All code tasks** | `coder` | Default for all development work |
 | **Env setup / downloads / tooling / diagnostics** | `ops` | Non-code execution: installs, binary/file ops, one-off tool runs, log collection, gate re-runs |
-| **Exploration / analysis** | `Explore` | Codebase exploration, pattern discovery, "how does X work" — pass `model: "haiku"` or `"sonnet"` (inherits the expensive session model otherwise) |
+| **Exploration / analysis** | `Explore` | Codebase exploration, pattern discovery, "how does X work" — the shipped `Explore` agent overrides the built-in one and runs on haiku, `effort: low` |
+
+## Model & Effort Policy
+
+- Orchestrator = the session model, picked by the user with `/model` at session start: **`fable` for T3/T4** sessions (multi-file or architectural — Fable 5 needs fewer prompts and steers, sustains longer sessions, and earns higher trust and autonomy; it also costs ~2× Opus), **`opus` for T1/T2**. Workers run `sonnet`; `architect` and `code-reviewer` run `opus` with `effort: xhigh`; `Explore` and `doc-generator` run `haiku` with `effort: low`.
+- Session effort is deliberately **unset** — the model's own default. Raise it per role via the agent file's `effort:` (`low` / `medium` / `high` / `xhigh`), or `/effort` for one session.
+- Each agent file carries its own `model:` / `effort:` — do not pass a `model` in the Agent call; that overrides the routing decision silently.
+- **Aliases only** (`sonnet` / `opus` / `haiku` / `fable` / `inherit`), never a full `claude-*` id: a model proxy reroutes the aliases, and a pinned id bypasses it.
+- Diagnostic rule: wrong answer despite full context → bigger model. Skipped files, tests not run, steps dropped → raise `effort`. They are different failures; raising the wrong dial costs money and fixes nothing.
+- If you run a model proxy, never route the auto-mode classifier or `advisorModel` through it — both need the real model to behave.
 
 ### Ops (on demand, any tier)
 
 - Executes non-code-authoring work so the PO never runs it inline: environment setup, downloads/installs, binary/file operations, one-off tools, diagnostics, log collection, gate re-runs.
 - Does **NOT** author application code (coder work) and does **NOT** commit/merge (no git/GitHub tools — hands results back).
-- Deliverable contract: `## Commands Run` + `## Result`; ends with a SendMessage report in team mode.
+- Deliverable contract: `## Commands Run` + `## Result`, both in the final message.
 
 ### Code Reviewer (1 per workstream, T2+)
 
@@ -246,34 +252,26 @@ Developer --> Code Reviewer --> Tester --> Developer merges PR
 
 Each workstream operates autonomously. No shared reviewer or tester bottleneck.
 
-### Agent Naming Convention
-
-Workstream agents are named by their workstream number:
-
-| Workstream | Developer | Code Reviewer | Tester |
-|------------|-----------|---------------|--------|
-| 1 | `dev-1` | `reviewer-1` | `tester-1` |
-| 2 | `dev-2` | `reviewer-2` | `tester-2` |
-| 3 | `dev-3` | `reviewer-3` | `tester-3` |
-| N | `dev-N` | `reviewer-N` | `tester-N` |
-
-**Enforcement:** Always use numeric naming (`dev-1`, `reviewer-2`). Task identification goes in the agent's spawn prompt, never in the agent name. This applies to both `github-issues` and `plan-files` modes. Do not use `dev-calendar-fix` — use `dev-1`.
-
 ### Workstream Lifecycle
+
+Parallelism comes from the **Agent tool**: one Agent call per workstream, several
+in flight at once. Workstream N is a position in the plan, not an agent name —
+the PO tracks which spawn belongs to which workstream and puts the task
+identification in the spawn prompt.
 
 ```
 1. PO assigns task to workstream N
-2. dev-N creates worktree, implements feature (per tier testing discipline)
-3. dev-N creates PR, signals ready
-4. PO spawns reviewer-N -> reviews PR -> reviewer-N shuts down
-   |-- CRITICAL findings -> dev-N fixes -> PO spawns new reviewer-N -> re-review
+2. PO spawns a coder -> implements the feature (per tier testing discipline)
+3. Coder creates the PR and reports it in its final message
+4. PO spawns a code-reviewer -> reviews the PR -> returns findings
+   |-- CRITICAL findings -> PO spawns a coder to fix -> new reviewer -> re-review
    \-- NO CRITICAL FINDINGS -> proceed to step 5
    (Max 3 fix cycles — then PO pauses workstream per Rule 8)
-5. PO spawns tester-N -> verifies on branch or post-merge
-   |-- FAIL -> dev-N fixes, back to step 4
-   \-- PASS -> tester-N shuts down
-6. dev-N executes Merge Protocol (see below)
-7. dev-N cleans up worktree + branch, shuts down
+5. PO spawns a tester -> verifies on branch or post-merge
+   |-- FAIL -> PO spawns a coder to fix, back to step 4
+   \-- PASS -> tester returns its verdict
+6. The merging coder executes the Merge Protocol (see below)
+7. The merging coder cleans up the worktree + branch and reports
 ```
 
 ---
@@ -308,7 +306,7 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 | **T1 Trivial** | < 10 lines, style/config, no logic | 1 coder (solo — no reviewer/tester) | No new tests. Coder runs the gate (build + existing suite) before merging. |
 | **T2 Simple** | 1-2 files, < 50 lines, clear root cause | coder + code-reviewer | Tests recommended if logic changes. Coder runs the gate; reviewer approves. |
 | **T3 Standard** | Multi-file, < 200 lines, needs tests | Dev + reviewer + tester | **TDD required.** Failing tests first, then implement. Coverage >= 80% for changed files. |
-| **T4 Complex** | Architectural, > 200 lines, new entities | Architect + dev + reviewer + tester | **Full BDD/TDD.** BDD scenarios from acceptance criteria. Failing tests first. Coverage >= 80%. Architect reviews test strategy. |
+| **T4 Complex** | Architectural, > 200 lines, new entities | Architect + dev + reviewer + tester — or say **"use a workflow"** (below) when it is too big for one pass | **Full BDD/TDD.** BDD scenarios from acceptance criteria. Failing tests first. Coverage >= 80%. Architect reviews test strategy. |
 
 ### Tier Selection Guidelines
 
@@ -325,6 +323,24 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 - **Tester at T4**: Full verification including writing targeted verification test cases.
 - **Skip tester** for T1-T2 — the coder's gate run covers build+test there.
 - **Visual verification: capture by agent, judgment by PO**: the coder (T1/T2) or tester (T3+) captures screenshots; the PO reviews layout, alignment, colors, spacing. The PO never launches the app or runs capture tooling — that is agent work.
+
+### When to say "use a workflow"
+
+When a T4 task is too big for one pass — a multi-module migration, a sweep across many
+files, competing hypotheses to test in parallel — the PO says the trigger phrase **"use a
+workflow"**. Claude then builds a *dynamic workflow*: a script that orchestrates waves of
+subagents (implementers → two verifiers → a fixer per task, then summarizers), runs it in
+the background, and verifies the result before reporting. Run it in **auto mode**, so it
+does not stop for permissions mid-wave. The merge gate still applies to whatever branch
+comes out: `bash hooks/run-gate.sh`, then the usual `gate-before-merge` path. The
+orchestration script lives under `.claude/` or outside the repo, and the gate runs inside
+the worker waves — never from the PO thread (`enforce-delegation.sh` denies main-thread
+test/gate commands).
+
+Do **not** use a workflow for sequential work (each task needs the previous one's output)
+or for several tasks touching the same file — waves assume independence, and the same-file
+rule still sends those to one dev. The Workflow tool's "is this big enough" guideline is
+configurable, so size it to the repo rather than to the default.
 
 ### T1 Examples
 
@@ -365,34 +381,62 @@ Within the agreed tier: do the complete thing, not the demo path — a working e
 
 ### Lean Dev Prompt Templates
 
+Both templates carry the five *Task Brief Upfront* headings — an issue link or a plan path
+is a reference, never a substitute for the brief.
+
 **github-issues mode (T2-T3):**
 
 ```
-You are {name} on team {team}. Task #{n}: issue #{issue}.
-Worktree: {path}, branch: feature/issue-{issue}.
-Read the GitHub issue for full context.
-Workflow: read issue -> implement -> build -> test -> format -> commit (MCP git) -> push (MCP git) -> create PR (MCP github) -> mark task done -> message lead with PR URL.
+Task #{n}: issue #{issue}. Worktree: {path}, branch: feature/issue-{issue}.
+
+## Goal
+{1-2 sentences}
+
+## Constraints
+{what must not change; platform/style rules}
+
+## Acceptance Criteria
+- [ ] {criterion 1}
+
+## Files in scope
+- {file} — {what to change}   (out of scope: {paths})
+
+## Definition of done
+{tests to pass} + `bash hooks/run-gate.sh` green, then PR.
+
+## Required Skills
+- {skill} — {why}
+
+Context: the GitHub issue (reference only — the brief above is authoritative).
+Workflow: implement -> gate -> commit -> push -> create PR (MCP github) -> report the PR URL in your final message.
 ```
 
 **plan-files mode (T2-T3):**
 
 ```
-You are {name} on team {team}. Task #{n}: {title}.
-Worktree: {path}, branch: {branch}.
+Task #{n}: {title}. Worktree: {path}, branch: {branch}.
+
+## Goal
+{1-2 sentences}
+
+## Constraints
+{what must not change; platform/style rules}
 
 ## Acceptance Criteria
 - [ ] {criterion 1}
-- [ ] {criterion 2}
 
-## Files
-- {file 1} — {what to change}
-- {file 2} — {what to change}
+## Files in scope
+- {file} — {what to change}   (out of scope: {paths})
 
-## Context
-Full plan: {plan_file_path} (reference only — task details above are authoritative).
+## Definition of done
+{tests to pass} + `bash hooks/run-gate.sh` green, then PR.
+
+## Required Skills
+- {skill} — {why}
+
+Context: {plan_file_path} if one exists (reference only — the brief above is authoritative).
 Architect guidance: {summary or "none — T2/T3 task"}.
-
-Workflow: implement -> build -> test -> format -> commit (MCP git) -> push (MCP git) -> create PR (MCP github) -> mark task done -> message lead with PR URL.
+Workflow: implement -> gate -> commit -> push -> create PR (MCP github) -> report the PR URL in your final message.
 ```
 
 **PO responsibility (plan-files mode):** The PO MUST inline the acceptance criteria and file list directly in the dev spawn prompt. The dev agent should NOT need to read the plan file to understand its task. The plan file path is provided only for additional context.
@@ -407,12 +451,18 @@ Each developer agent gets its own working directory with its own branch, all bac
 
 ### Setup
 
-```
-# github-issues mode
-git worktree add {worktree_base}/{project}-issue-{number} -b feature/issue-{number} main
+Prefer `isolation: worktree` — set it in the agent's frontmatter, or pass it on
+the Agent call — and let Claude Code create and attach the worktree. The PO does
+not run `git worktree add` by hand; that is hands-on work, and a worktree the PO
+made is one the harness does not know it owns.
 
-# plan-files mode
-git worktree add {worktree_base}/{project}-{branch-name} -b {branch-name} main
+```
+# on the Agent call (per spawn)
+isolation: worktree
+
+# fallback only — a developer agent creating its own worktree
+git worktree add {worktree_base}/{project}-issue-{number} -b feature/issue-{number} main   # github-issues mode
+git worktree add {worktree_base}/{project}-{branch-name} -b {branch-name} main             # plan-files mode
 ```
 
 See `PROJECT_CONTEXT.md` for worktree base path. See Mode Behavior Table for naming convention.
@@ -436,12 +486,12 @@ After code review and testing pass, the developer executes the merge. MCP tools 
 | `coder`, `python-coder`, `dotnet-coder`, `rust-coder`, `java-coder` | Developer (MCP tools listed explicitly) |
 | `general-purpose` (declared with `tools: *`) | Developer (full MCP catalog via ToolSearch) |
 
-**Agents without git/GitHub MCP tools** (`architect`, `requirements-engineer`, `doc-generator`, `test-writer`): return work to the PO; PO performs git/GitHub I/O on their behalf.
+**Agents without `Bash`** (`architect`, `requirements-engineer`, `doc-generator`): return work to the PO; the PO does the git I/O with the git CLI and the GitHub I/O with the MCP tools.
 
 ### Steps (Developer-executed)
 
 ```
-1. Pull latest main into the worktree (git_pull or equivalent MCP tools).
+1. Pull latest main into the worktree (`git pull --rebase origin main`).
 
 2. If conflicts exist:
    a. Resolve conflicts (prefer preserving both changes when possible).
@@ -489,29 +539,25 @@ The PO coordinates merge ordering by sending merge-go-ahead messages. Developers
 ### Sprint Planning Flow
 
 ```
-1. PO enters plan mode (EnterPlanMode) for task analysis
+1. PO analyses the task and sizes it against the tier table
        |
 2. PO spawns Requirements Engineer for M/L/XL features (if needed)
    - RE produces specs; PO publishes per Mode Behavior Table
    - PO writes specs directly for S features / bugs
        |
-3. PO drafts implementation plan with tier assignment (T1-T4)
+3. PO writes the task brief: goal, constraints, acceptance criteria,
+   files in scope, definition of done (see Task Brief Upfront)
+   - optionally records it as a plan file in docs/plans/
        |
-4. PO spawns Architect for plan challenge (MANDATORY for T3+)
-   - Architect Challenge 1: Scope & Necessity
-   - Architect Challenge 2: Correctness & Completeness
-   - Architect validates tier assignment and team configuration
+4. PO may spawn the Architect for a critique (optional, architectural work)
        |
-5. PO incorporates feedback into final plan
-   - Final plan MUST include: tier, team config, acceptance criteria
+5. PO confirms the approach with the user for anything non-obvious
        |
-6. PO presents final plan to user for confirmation
-       |
-7. PO creates team, spawns workstreams per tier:
+6. PO creates team, spawns workstreams per tier, brief in each prompt:
    - T1: 1 coder, uniform PR pipeline (no reviewer/tester)
    - T2: coder + code-reviewer
    - T3: coder + reviewer + tester
-   - T4: coder(s) + reviewer + tester (architect already consulted in step 4)
+   - T4: coder(s) + reviewer + tester (architect consulted in step 4)
 ```
 
 ### Per-Workstream Flow
@@ -534,7 +580,7 @@ The PO coordinates merge ordering by sending merge-go-ahead messages. Developers
        |
 5. PO sends merge-go-ahead. Developer executes the merge.
    Note: For T4 sprints where a tester wrote verification tests, PO includes in the go-ahead:
-   "Tester wrote verification tests — check git_status and commit them before merging."
+   "Tester wrote verification tests — check `git status` and commit them before merging."
        |
 6. Merge Protocol runs (per merge-owner table in Merge Protocol section).
    - rebase onto latest main
@@ -552,47 +598,40 @@ The PO coordinates merge ordering by sending merge-go-ahead messages. Developers
 ```
 Architect reviews all tasks -> scope-conflict check -> shuts down
        |
-|-- WS1: dev-1 --> reviewer-1 --> tester-1 --> dev-1 merges PR --> cleanup
-|-- WS2: dev-2 --> reviewer-2 --> tester-2 --> dev-2 merges PR --> cleanup
-|-- WS3: dev-3 --> reviewer-3 --> tester-3 --> dev-3 merges PR --> cleanup
-|-- WS4: dev-4 --> reviewer-4 --> tester-4 --> dev-4 merges PR --> cleanup
-\-- WS5: dev-5 --> reviewer-5 --> tester-5 --> dev-5 merges PR --> cleanup
+|-- WS1: coder --> code-reviewer --> tester --> coder merges PR --> cleanup
+|-- WS2: coder --> code-reviewer --> tester --> coder merges PR --> cleanup
+|-- WS3: coder --> code-reviewer --> tester --> coder merges PR --> cleanup
+|-- WS4: coder --> code-reviewer --> tester --> coder merges PR --> cleanup
+\-- WS5: coder --> code-reviewer --> tester --> coder merges PR --> cleanup
+
+(one Agent call per box; workstreams run in parallel, the PO tracks which spawn
+ belongs to which workstream — the agents are not named)
 
 Merges are sequenced by PO (first-ready, first-merge)
 ```
 
-### Plan Challenge Protocol
+### Task Brief Upfront
 
-Every design doc and implementation plan must be challenged **twice** before execution begins. This catches over-engineering, missing requirements, YAGNI violations, and implementation flaws early — when they're cheap to fix.
+Current models do not need a staged planning ritual — they need the whole task in the
+prompt. Every spawn prompt therefore states, in the prompt itself:
 
-**Challenge 1 — Scope & Necessity (after design doc is written):**
-- Is every feature/component actually needed? (YAGNI check)
-- Are there simpler approaches that were dismissed too quickly?
-- Are edge cases identified but deferred appropriately?
-- Does the design solve the stated problem without gold-plating?
+- **Goal** — what the change must achieve, in one or two sentences.
+- **Constraints** — what must not change, what to leave alone, platform/style rules.
+- **Acceptance criteria** — the observable conditions that make the work correct.
+- **Files in scope** — the paths to touch, and the paths explicitly out of scope.
+- **Definition of done** — the tests to pass and the gate to run (`bash hooks/run-gate.sh`).
 
-**Challenge 2 — Correctness & Completeness (after implementation plan is written):**
-- Does the plan match the design doc faithfully?
-- Are there missing steps, untested paths, or incorrect assumptions?
-- Are error handling and validation covered at every layer?
-- Will the proposed changes pass CI (formatting, linting, type checks)?
-- Are there batches or tasks that should be cut?
+An agent that has to go looking for any of the five is being under-briefed; that is a
+prompt defect, not an agent failure. The `## Required Skills` block stays part of every
+bound spawn and is enforced by `hooks/require-skills-block.sh`.
 
-**Who challenges:**
-- **T3+ tasks**: The **Architect agent** performs BOTH challenges. PO spawns the Architect with the draft plan. Architect returns two challenge passes. PO incorporates feedback. If the Architect recommends a tier change, PO updates the plan accordingly.
-- **T1 and T2 tasks**: Exempt from plan challenges (plan mode still required for T2).
+**Plan files are optional.** Write one in `docs/plans/` when the work spans sessions, when
+several workstreams need a shared reference, or when a decision deserves a record. Nothing
+blocks a spawn on a plan file, and no literal in one is parsed by any hook.
 
-**Process:**
-1. PO drafts plan in plan mode, including tier assignment
-2. PO spawns Architect with the draft plan
-3. Architect performs Challenge 1 (Scope & Necessity) — returns changes
-4. PO incorporates Challenge 1 feedback
-5. Architect performs Challenge 2 (Correctness & Completeness) — returns changes
-6. PO incorporates Challenge 2 feedback
-7. Final plan includes: **tier assignment** + **team configuration**
-8. PO presents final plan to user for approval
-
-**Output:** Each challenge produces a brief list of changes made (cuts, additions, corrections). If no changes result, explicitly state "Challenged — no changes needed" to confirm the review happened.
+**Challenging a plan is optional and on demand.** For architectural work, invoke the
+`challenge` skill or spawn the architect with the draft — it is a judgement call the PO
+makes, not a gate the workflow enforces.
 
 ---
 
@@ -600,20 +639,34 @@ Every design doc and implementation plan must be challenged **twice** before exe
 
 ### Handoff mechanism
 
-Within a workstream, handoffs happen via **team messages** (SendMessage tool):
+A subagent has one channel: **its final message**. Everything the PO acts on —
+status, files changed, commands run plus an output summary, open concerns — is in
+there. There is no progress channel and no partial delivery.
 
-- Developer -> PO: "PR created, ready for review" (PO spawns reviewer)
-- Reviewer -> PO: "Review complete, findings: ..." (PO decides next step)
-- Tester -> PO: "Verification complete, verdict: PASS/FAIL" (PO sends merge-go-ahead or fix request)
-- Developer -> PO: "Merge complete, cleanup done" (PO closes task).
+- Coder final message: "PR created, ready for review" + the PR URL (PO spawns a reviewer)
+- Reviewer final message: "Review complete, findings: ..." (PO decides the next step)
+- Tester final message: "Verification complete, verdict: PASS/FAIL" (PO issues the merge-go-ahead or a fix brief)
+- Merging coder final message: "Merge complete, cleanup done" (PO closes the task)
 
-### PO orchestration messages
+**Long tasks:** pass `background: true` on the Agent call. The spawn returns
+immediately, the subagent keeps running, and the PO acts on the task-completion
+notification — it does not poll.
 
-The PO sends targeted messages to coordinate:
+**Follow-ups:** a *completed* subagent can be resumed by name with SendMessage to
+ask one follow-up question against the context it already has. That is the only
+remaining use of SendMessage: it is a cheaper re-read, never a coordination
+channel and never a way to hand over new work. This is the one exception to the
+"no side channel" rule in the agent mandate, and it is not a contradiction of it:
+a follow-up question may arrive after you finish — answer it in a new final
+message. Nothing arrives *during* a run.
 
-- **To dev**: "Merge-go-ahead — you are clear to merge. Main is at commit {sha}."
-- **To dev**: "Hold merge — workstream N is merging first. Wait for confirmation."
-- **To dev**: "Review findings attached — address CRITICAL items, then signal ready for re-review."
+### PO orchestration
+
+Orchestration happens in the *next* spawn prompt, not in a message stream:
+
+- Merge-go-ahead: spawn (or resume) the merging coder with "you are clear to merge; main is at commit {sha}".
+- Hold: simply do not spawn the merge yet — workstream N merges first.
+- Review findings: spawn a coder with the CRITICAL items inlined, then spawn a fresh reviewer for the re-review.
 
 ### State tracking
 
@@ -645,7 +698,7 @@ The PO presents these as a single confirmation at sprint start. All agents are s
 2. **One task per developer** — no multitasking within an agent.
 3. **Max parallel workstreams** as specified in `PROJECT_CONTEXT.md`.
 4. **Architect reviews BEFORE development** — guidance before dev starts (T4).
-5. **Developers own the merge** — all developer agents have MCP git/GitHub tools and execute their own merges after PO sends merge-go-ahead. Agents without git/GitHub tools (`architect`, `requirements-engineer`, `doc-generator`, `test-writer`) return work to the PO.
+5. **Developers own the merge** — all developer agents have `Bash` plus the PR tools and execute their own merges after PO sends merge-go-ahead. Agents without `Bash` (`architect`, `requirements-engineer`, `doc-generator`) return work to the PO.
 6. **PO sequences merges** — developers wait for merge-go-ahead from the PO before merging.
 7. **Post-rebase verification required** — rebuild + retest before merge.
 8. **Max 3 fix cycles per task** — then PO pauses the workstream and selects one of: (a) scope reduction, (b) architect re-design, or (c) human escalation. See Escalation Protocol.
@@ -653,7 +706,7 @@ The PO presents these as a single confirmation at sprint start. All agents are s
 10. **Agents must not modify files outside their assigned worktree.**
 11. **Permission propagation** — all permissions requested once at sprint start. Agents spawned with `mode: bypassPermissions`.
 12. **Mode consistency** — the sprint's primary task source determines the mode. T1/T2 hotfixes may bypass mode formalities if urgent — but a hotfix is still a coder spawn and still runs the gate; only the reviewer may be skipped.
-13. **Plan discipline** — T2+ requires plan mode and tier declaration. T3+ additionally requires two Architect challenges and tier-correct team configuration before execution (e.g., skipping an architect for T4 is a violation). See Plan Challenge Protocol. T1 exempt.
+13. **Brief discipline** — every spawn prompt carries the full task brief (goal, constraints, acceptance criteria, files in scope, definition of done). See Task Brief Upfront. Team composition still follows the tier caps; a plan file is optional at every tier.
 
 ---
 
@@ -663,18 +716,18 @@ The PO presents these as a single confirmation at sprint start. All agents are s
   - **(a) Scope reduction**: Simplify the task (remove edge cases, split into smaller pieces) and restart with reduced scope.
   - **(b) Architect re-design**: Re-spawn architect with the failure context. Architect produces a new approach. Dev restarts from the new plan.
   - **(c) Human escalation**: Notify the user with: task description, what was tried (3 cycles), failure details, and recommended next steps.
-- **Merge conflicts too complex**: Developer messages PO with details. PO decides per the Merge Protocol fallback (defer, re-spawn architect, etc.).
-- **Tester can't verify**: Message PO with details, PO routes to developer.
+- **Merge conflicts too complex**: the developer reports the details in its final message. PO decides per the Merge Protocol fallback (defer, re-spawn architect, etc.).
+- **Tester can't verify**: it reports why; the PO routes the work to a developer.
 - **Scope conflict discovered mid-sprint**: PO pauses affected workstreams, re-spawns architect for conflict resolution.
 - **Any agent stuck after escalation**: PO notifies the human (via issue comment in github-issues mode, or direct message in plan-files mode).
-- **Agent stall / idle without report** (runbook — judgment removed on purpose):
-  1. First idle without a completion report: send exactly one prod message requesting status.
-  2. Second idle: retire the agent via `TaskStop`. Do not send further prods.
-  2b. Before retiring or taking over: run `git_status` in the agent's worktree — a DIRTY tree means the agent is mid-edit; wait one more cycle instead of clobbering in-flight work.
-  3. Verify the actual work state via `git_log` / `git_status` / `list_pull_requests` — **never trust the agent's last claim**; committed work frequently exists despite a silent agent (and vice versa).
-  4. Count the stall as one strike toward the 3-cycle escalation above, then re-dispatch the remaining work with the verified state in the spawn prompt. **Never self-perform the stalled agent's work as fallback** — the PO does not code, review, or test inline.
-  5. **Dead-coder merge handoff**: if the stalled/retired coder left a pushed branch with an open PR, spawn a FRESH coder with the PR URL, branch name, and worktree path in the spawn prompt to rebase, re-run the gate, and complete the merge. The PO never finishes merges by hand.
-  6. **Report agents (reviewer/architect/tester/ops/etc.)**: a bare idle notification without a delivered report is a NON-report — their report IS the deliverable. One prod citing the reporting mandate, then treat as failed and re-dispatch. (The SubagentStop contract enforcer does NOT fire on teammate idle — idling is not stopping — which is why the reporting mandate lives in the agent definitions and spawn prompts.)
+- **Missing or empty report** (runbook — judgment removed on purpose):
+  1. A **foreground** Agent call cannot stall: it either returns a final message or it errors. An error is a failed dispatch — read it and re-dispatch; do not "wait".
+  2. A **background** agent reports through the task-completion notification. Check it (or `ListAgents`) ONCE. Past the agent's tool-call budget with no completion, treat the run as failed — do not poll in a loop.
+  3. Verify the actual work state via `git log` / `git status` / `list_pull_requests` — **never trust the agent's last claim**; committed work frequently exists despite a truncated report (and vice versa).
+  4. Count the failure as one strike toward the 3-cycle escalation above, then re-dispatch with a TIGHTER brief: the verified state, the remaining work, and nothing else. **Never self-perform the failed agent's work as fallback** — the PO does not code, review, or test inline.
+  5. **Dead-coder merge handoff**: if the failed coder left a pushed branch with an open PR, spawn a FRESH coder with the PR URL, branch name, and worktree path in the spawn prompt to rebase, re-run the gate, and complete the merge. The PO never finishes merges by hand.
+  6. **Report agents (reviewer/architect/tester/ops/etc.)**: their report IS the deliverable. A final message without one is a failed run — re-dispatch, citing the reporting mandate. `hooks/enforce-agent-contract.sh` (SubagentStop) catches the coder/reviewer cases mechanically; for the rest the mandate lives in the agent definitions and spawn prompts.
+  7. Repeated failures of the same shape are recorded by `hooks/retro-ledger.sh` and replayed at the next session start — fix the cause (the agent's `tools:` allowlist, the prompt, the hook) instead of re-dispatching into the same wall.
 
 ---
 
@@ -702,21 +755,20 @@ When spawning an agent, include in the spawn prompt a `## Required Skills` block
 | `requirements-engineer` | `brainstorming` |
 | `doc-generator` | *(none)* |
 | `ops` | *(none — pass-through)* |
-| `Explore` | *(none — pass-through; pass `model: "haiku"` or `"sonnet"` in the Agent call)* |
+| `Explore` | *(none — pass-through; custom Explore agent, haiku, effort low)* |
 
 **Reference-only skills** (handled by existing AGENT_TEAM.md constructs, not injected via spawn prompt): `using-git-worktrees` (Worktree Naming), `finishing-a-development-branch` (Merge Protocol), `dispatching-parallel-agents` (Tier Model workstreams), `subagent-driven-development` (plan-files mode execution).
 
-**Chain note:** `writing-plans` produces a plan. The Plan Challenge Protocol (below) validates any plan before execution — independent gate, not a side-effect of `writing-plans`.
+**Chain note:** `writing-plans` produces a plan, which is an optional artifact (see *Task Brief Upfront*). Nothing validates it before execution; the spawn prompt's brief and the review/tester pipeline carry that weight.
 
 ### Copy-paste snippets
 
 Use these snippets verbatim when constructing spawn prompts. Append to the body of the prompt, then add the task-specific instructions below.
 
-**Report agents (code-reviewer, architect, tester, test-writer, requirements-engineer, doc-generator, ops) — ALWAYS add this line to their spawn prompts** (their definitions carry the same mandate; repeating it in the prompt is what reliably prevents silent idles):
+**Report agents (code-reviewer, architect, tester, test-writer, requirements-engineer, doc-generator, ops) — ALWAYS add these lines to their spawn prompts** (their definitions carry the same mandate; repeating it in the prompt is what reliably prevents an empty return):
 
 ```markdown
-CRITICAL: end your run with a SendMessage to main containing your full report/findings — never go idle without reporting.
-Send a one-line progress ping via SendMessage roughly every 20 tool calls, and whenever you change approach — silence is read as a stall.
+CRITICAL: your final message IS the deliverable. It must contain: status, files changed, commands run + output summary, open concerns.
 If the task grows past its stated scope (extra files, a second root cause, a redesign), stop and report what is done plus the blocker instead of expanding scope.
 ```
 
@@ -730,8 +782,7 @@ Invoke these via the Skill tool before beginning task work:
 - superpowers:verification-before-completion
 - superpowers:receiving-code-review
 
-CRITICAL: end your run with a SendMessage to main containing your full report — never go idle without reporting.
-Send a one-line progress ping via SendMessage roughly every 20 tool calls, and whenever you change approach — silence is read as a stall.
+CRITICAL: your final message IS the deliverable. It must contain: status, files changed, commands run + output summary, open concerns.
 If the task grows past its stated scope (extra files, a second root cause, a redesign), stop and report what is done plus the blocker instead of expanding scope. A long run is not evidence of progress.
 ```
 
@@ -869,8 +920,8 @@ When using `plan-files` mode, implementation plans follow this structure:
 **Goal:** {1-2 sentences}
 **Architecture:** {Key decisions}
 **Tech Stack:** {Relevant technologies}
-**Tier:** T{N}
-**Team:** {agent list per tier — e.g., "dev-1 (coder), reviewer-1, tester-1"}
+**Tier:** T{N}  (optional — no hook reads this)
+**Team:** {subagent types per tier — e.g., "coder, code-reviewer, tester"}  (optional — no hook reads this)
 
 ---
 
