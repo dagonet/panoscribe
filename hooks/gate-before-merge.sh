@@ -123,9 +123,17 @@ if [ ! -f "$ARTIFACT" ]; then
 fi
 
 ARTIFACT_SHA=$(grep -o '"sha":"[^"]*"' "$ARTIFACT" | head -1 | sed 's/"sha":"//;s/"$//')
+ARTIFACT_TREE=$(grep -o '"tree":"[^"]*"' "$ARTIFACT" | head -1 | sed 's/"tree":"//;s/"$//')
 HEAD_SHA=$(git -C "$CWD" rev-parse HEAD 2>/dev/null)
+HEAD_TREE=$(git -C "$CWD" rev-parse 'HEAD^{tree}' 2>/dev/null)
 
-if [ -z "$ARTIFACT_SHA" ] || [ "$ARTIFACT_SHA" != "$HEAD_SHA" ]; then
+# v2.1.3 fix round 1 (Critical 2 / penumbra #2c): accept either a sha match
+# (the classic case: gate ran on this exact commit) or a tree match (the
+# pre-commit-test.sh -> run-gate.sh chain: the gate ran against the INDEX
+# just before `git commit`, so its "sha" is the PARENT commit but its "tree"
+# is the tree the new commit just got). Both still gated by the freshness
+# window below.
+if [ -z "$ARTIFACT_SHA" ] || { [ "$ARTIFACT_SHA" != "$HEAD_SHA" ] && { [ -z "$ARTIFACT_TREE" ] || [ "$ARTIFACT_TREE" != "$HEAD_TREE" ]; }; }; then
   echo "BLOCKED: Gate artifact is stale (artifact sha: ${ARTIFACT_SHA:-none}, HEAD: $HEAD_SHA). Re-run 'bash hooks/run-gate.sh' on the current head, then merge." >&2
   exit 2
 fi
