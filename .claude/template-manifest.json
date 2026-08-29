@@ -2,7 +2,7 @@
   "version": 2,
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSynced": "cf15dcc",
+  "lastSynced": "4dfd894",
   "placeholders": {
     "PROJECT_NAME": "panoscribe",
     "PROJECT_NAME_LOWER": "panoscribe",
@@ -22,9 +22,9 @@
       "locallyModified": false
     },
     ".claude/agents/architect.md": {
-      "templateHash": "816a0f9f0e89a6c29689d9f5c97734e9ad536e5968781a81e0d449012e1b65ea",
-      "templateRawHash": "816a0f9f0e89a6c29689d9f5c97734e9ad536e5968781a81e0d449012e1b65ea",
-      "localHash": "816a0f9f0e89a6c29689d9f5c97734e9ad536e5968781a81e0d449012e1b65ea",
+      "templateHash": "13bcaffdbcfe3ac32bcbad00787f2aef9d2da6a98125c17731d4ba5807b69fb5",
+      "templateRawHash": "13bcaffdbcfe3ac32bcbad00787f2aef9d2da6a98125c17731d4ba5807b69fb5",
+      "localHash": "13bcaffdbcfe3ac32bcbad00787f2aef9d2da6a98125c17731d4ba5807b69fb5",
       "locallyModified": false
     },
     ".claude/agents/code-reviewer.md": {
@@ -112,9 +112,9 @@
       "locallyModified": false
     },
     "CLAUDE.md": {
-      "templateHash": "cf567f5eb66965a9e006f59a84818a196ce8819bc5ceb01ef6adce04a0005458",
-      "templateRawHash": "2942577597ec4da680408001c5fe4da97a9eeb3ac1a866ace37e45db54ce635d",
-      "localHash": "6f38dd79f0e34adeddc9e0c6de1412c7887382fadb68093fbdea939b2f44a701",
+      "templateHash": "1d5ab1a8ac5f804c986bb385a2ac3682b5beefc8dc63869c79589c4f09b811c5",
+      "templateRawHash": "aeed6c0e435754615155b5e1915cd83a4bcfc40d2949d81f1b338b96d0baf250",
+      "localHash": "9bcc778129ec760295aa997cd4dc282da12e41295b0e6e3c7f5a32403e1baad1",
       "locallyModified": true
     },
     "PROJECT_CONTEXT.md": {
@@ -161,9 +161,9 @@
       "locallyModified": false
     },
     "hooks/gate-before-merge.sh": {
-      "templateHash": "0772ab2be8bce731ec0dfc6d2a8c7d4db6fa6ea91252b9b94629a3e10311e54d",
-      "templateRawHash": "0772ab2be8bce731ec0dfc6d2a8c7d4db6fa6ea91252b9b94629a3e10311e54d",
-      "localHash": "0772ab2be8bce731ec0dfc6d2a8c7d4db6fa6ea91252b9b94629a3e10311e54d",
+      "templateHash": "920db3ac5c849227443088b87ffbe32e0383f97325dd139f5a6f80a5c1f9ee67",
+      "templateRawHash": "920db3ac5c849227443088b87ffbe32e0383f97325dd139f5a6f80a5c1f9ee67",
+      "localHash": "920db3ac5c849227443088b87ffbe32e0383f97325dd139f5a6f80a5c1f9ee67",
       "locallyModified": false
     },
     "hooks/lib/git-cmd.sh": {
@@ -179,9 +179,9 @@
       "locallyModified": false
     },
     "hooks/pre-commit-test.sh": {
-      "templateHash": "0c063ecd5c4a05ee65ca97903990ce6e90b135ab9a60d983620b747d37e18bb7",
-      "templateRawHash": "0c063ecd5c4a05ee65ca97903990ce6e90b135ab9a60d983620b747d37e18bb7",
-      "localHash": "0c063ecd5c4a05ee65ca97903990ce6e90b135ab9a60d983620b747d37e18bb7",
+      "templateHash": "8cf055bf14f938c2dc921ebc503dde9c8b900bd1de4917ac16382d0f10331453",
+      "templateRawHash": "59d946ed1a88b5c7d8dddb8c530e7546377d6821766bf60935fc3032805ea153",
+      "localHash": "8cf055bf14f938c2dc921ebc503dde9c8b900bd1de4917ac16382d0f10331453",
       "locallyModified": false
     },
     "hooks/read-size-gate.sh": {
@@ -209,10 +209,10 @@
       "locallyModified": false
     },
     "hooks/run-gate.sh": {
-      "templateHash": "4b710bb006cc242a8a4465b205f7c696dd7c66da656156930077657c174ba4f5",
-      "templateRawHash": "4b710bb006cc242a8a4465b205f7c696dd7c66da656156930077657c174ba4f5",
-      "localHash": "4b710bb006cc242a8a4465b205f7c696dd7c66da656156930077657c174ba4f5",
-      "locallyModified": false
+      "templateHash": "9dfde381952ffea05786a116aa37c80659d10ca9180ee1a7a2e5146372744413",
+      "templateRawHash": "9dfde381952ffea05786a116aa37c80659d10ca9180ee1a7a2e5146372744413",
+      "localHash": "a82cb83232999fae2f0345bd1ecbfe0b6d3cf21280bc64a606079a7305a7f955",
+      "locallyModified": true
     }
   }
 }

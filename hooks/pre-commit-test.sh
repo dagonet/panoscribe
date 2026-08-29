@@ -21,6 +21,16 @@ lib="$(dirname "$0")/lib/git-cmd.sh"
 [ -f "$lib" ] || { echo "BLOCKED: $lib missing — run /sync-template step 6b (hooks/lib/git-cmd.sh)" >&2; exit 2; }
 . "$lib"
 
+# v2.1.3 fix round 2: absolutize RUN_GATE HERE, before any `cd`. $0 is a
+# relative path when the harness invokes `bash hooks/pre-commit-test.sh`, and
+# a relative "$(dirname "$0")/run-gate.sh" is not re-resolved until it is
+# actually used below -- by then the script has `cd`'d into REPO_PATH (which
+# `git -C <other-repo> commit` can point anywhere), so the stale relative path
+# would resolve against the WRONG repo: silently missing there (masking an
+# intended run-gate.sh as the legacy eval path), or worse, hitting that other
+# repo's own hooks/run-gate.sh instead of this toolkit's.
+RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
+
 gc_read_stdin
 gc_guard_off && exit 0
 
@@ -63,12 +73,62 @@ GC_SEGMENTS
 # Read test command from PROJECT_CONTEXT.md. Tolerates: leading "- " / "* " list
 # markers, the "**Test Command**:" label style (java/python variants), and
 # surrounding backticks — several variants write commands as `cmd`.
+# v2.1.3 fix round 1: **Test** always wins when present -- cheap, unchanged
+# behaviour for repos that declare a lightweight Test command. run-gate.sh is
+# only consulted below when there is NO Test field.
 TEST_CMD=$(grep -E '^[-*[:space:]]*\*\*Test( Command)?\*\*:' "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Test\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+
+# v2.1.3 fix round 2: a still-unfilled {{...}} Test placeholder must not win
+# precedence over a real Gate command -- dotnet/dotnet-maui ship exactly this
+# shape (Test: uv run pytest, a real Gate). Strip it to "" here, right after
+# extraction, so it is treated as absent below and precedence correctly falls
+# through to the Gate/run-gate.sh path instead of silently exiting 0.
+case "$TEST_CMD" in
+  *\{\{*\}\}*) TEST_CMD="" ;;
+esac
 
 # v2.1.1: projects that declare only a **Gate** command (the gate runs the tests
 # plus format/lint) used to make this hook a silent no-op. Fall back to Gate.
+#
+# v2.1.3 (consumer feedback, Yutraffic; fix round 1): when the fallback fires
+# AND hooks/run-gate.sh sits next to this script, run run-gate.sh instead of
+# eval'ing the Gate command ourselves. A green run-gate.sh writes
+# .gate/last-pass.json as a side effect, so gate-before-merge.sh is satisfied
+# without a second gate run at merge time. A still-unfilled {{...}} placeholder
+# is treated as absent here (never routed into run-gate.sh, and never eval'd
+# directly) -- it falls through to the "nothing to run" WARN below, same as no
+# Gate field at all, so a mid-setup repo cannot get a false green.
 if [ -z "$TEST_CMD" ]; then
-  TEST_CMD=$(grep -E '^[-*[:space:]]*\*\*Gate( Command)?\*\*:' "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+  GATE_CMD_RAW=$(grep -E '^[-*[:space:]]*\*\*Gate( Command)?\*\*:' "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+  case "$GATE_CMD_RAW" in
+    *\{\{*\}\}*) GATE_CMD_RAW="" ;;
+  esac
+
+  if [ -n "$GATE_CMD_RAW" ]; then
+    if [ -f "$RUN_GATE" ]; then
+      echo "PRE-COMMIT: Running 'run-gate.sh'..." >&2
+      cd "$REPO_PATH" || exit 1
+      OUT=$(mktemp 2>/dev/null || echo "$REPO_PATH/.pre-commit-test.out")
+      if bash "$RUN_GATE" > "$OUT" 2>&1; then
+        rm -f "$OUT"
+        echo "PRE-COMMIT: 'run-gate.sh' passed." >&2
+        exit 0
+      else
+        echo "BLOCKED: 'run-gate.sh' failed — re-run it and fix the failures before committing." >&2
+        echo "--- last 20 lines ---" >&2
+        tail -20 "$OUT" >&2
+        rm -f "$OUT"
+        exit 2
+      fi
+    else
+      # v2.1.3 fix round 2: a mirror (e.g. ~/.claude/hooks/) whose run-gate.sh
+      # copy was never migrated must not 127 -- fall back to eval'ing the Gate
+      # command directly, same as the pre-run-gate.sh behaviour, but say so:
+      # a silent fallback here reads exactly like the full-gate path ran.
+      echo "WARN: pre-commit-test: run-gate.sh not found next to this hook — evaluating the Gate command directly instead" >&2
+      TEST_CMD="$GATE_CMD_RAW"
+    fi
+  fi
 fi
 
 # Nothing to run. Say so — a silent pass reads exactly like a green test run.
