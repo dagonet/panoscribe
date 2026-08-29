@@ -20,10 +20,18 @@
       "mcp__open-brain__*",
       "mcp__godot-tools__*",
       "mcp__plugin_context-mode_context-mode__*",
-      "mcp__template-sync-tools__*"
+      "mcp__template-sync-tools__*",
+      "mcp__git-tools__*"
     ],
     "deny": [
-      "Read(.env*)"
+      "Read(.env*)",
+      "mcp__git-tools__git_push",
+      "mcp__git-tools__git_commit",
+      "mcp__git-tools__git_revert",
+      "mcp__git-tools__git_merge",
+      "mcp__git-tools__git_rebase",
+      "mcp__git-tools__git_reset",
+      "mcp__git-tools__git_push_tags"
     ],
     "defaultMode": "auto"
   },
@@ -38,15 +46,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/pre-commit-test.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/pre-commit-test.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
           },
           {
             "type": "command",
-            "command": "bash hooks/no-push-main.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/no-push-main.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/no-push-main.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/no-push-main.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
           },
           {
             "type": "command",
-            "command": "bash hooks/gate-before-merge.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/gate-before-merge.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
           }
         ]
       },
@@ -55,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/read-size-gate.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/read-size-gate.sh missing -- Read size gate offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/read-size-gate.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: ${CLAUDE_PROJECT_DIR:-.}/hooks/read-size-gate.sh missing -- Read size gate offline. Check that hooks/ exists at the project root.' >&2; exit 0; fi; exit $c"
           }
         ]
       },
@@ -64,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/gate-before-merge.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/gate-before-merge.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
           }
         ]
       },
@@ -73,7 +81,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/require-skills-block.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/require-skills-block.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/require-skills-block.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/require-skills-block.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
           }
         ]
       },
@@ -82,7 +90,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/enforce-delegation.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/enforce-delegation.sh missing -- delegation enforcement offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: ${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh missing -- delegation enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 0; fi; exit $c"
           }
         ]
       },
@@ -91,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/enforce-delegation.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/enforce-delegation.sh missing -- delegation enforcement offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: ${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh missing -- delegation enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 0; fi; exit $c"
           }
         ]
       },
@@ -99,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/agent-budget-warn.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: hooks/agent-budget-warn.sh missing -- tool-call budget offline. Run /sync-template.' >&2; exit 0; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/agent-budget-warn.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: ${CLAUDE_PROJECT_DIR:-.}/hooks/agent-budget-warn.sh missing -- tool-call budget offline. Check that hooks/ exists at the project root.' >&2; exit 0; fi; exit $c"
           }
         ]
       }
@@ -110,14 +118,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/bash-output-guard.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/bash-output-guard.sh\""
           }
         ]
       }
     ],
     "SubagentStop": [
       {
-        "matcher": "^(coder|code-reviewer|tester|architect)$",
+        "matcher": "^([a-z0-9]+-)?coder$|^code-reviewer$|^tester$|^architect$",
         "hooks": [
           {
             "type": "command",
@@ -126,11 +134,11 @@
         ]
       },
       {
-        "matcher": "coder|dotnet-coder|rust-coder|java-coder|python-coder|code-reviewer",
+        "matcher": "^([a-z0-9]+-)?coder$|^code-reviewer$",
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/enforce-agent-contract.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-agent-contract.sh\""
           }
         ]
       },
@@ -138,7 +146,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/retro-ledger.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/retro-ledger.sh\""
           }
         ]
       }
@@ -148,7 +156,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash hooks/retro-brief.sh"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/retro-brief.sh\""
           }
         ]
       }

@@ -29,7 +29,7 @@ hooks:
     - matcher: "Bash|mcp__MCP_DOCKER__merge_pull_request|mcp__github-tools__github_pr_auto_merge"
       hooks:
         - type: command
-          command: "bash hooks/gate-before-merge.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/gate-before-merge.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+          command: "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
 ---
 
 You are a senior Python engineer and pragmatic software architect. You write clean, maintainable code with sensible tests. You optimize for reliability in automated workflows.
@@ -165,3 +165,7 @@ If your spawn prompt contains a `## Required Skills` block: invoke each listed s
 **Report in your final message:** the PO reads your final message, nothing else — no progress channel exists. Put the whole result there. If `hooks/agent-budget-warn.sh` warns that you are near the tool-call budget, stop exploring, wrap up, and report what you have plus what is left.
 
 **Scope abort:** if the task grows past its stated scope — extra files, a second root cause, a redesign — stop, report what is done plus the blocker, and let the PO re-tier. Do not expand scope inside one spawn. A long run is not evidence of progress.
+
+<!-- PROJECT-CUSTOM:BEGIN — sync-template preserves everything between these markers -->
+<!-- Project-specific rules, routing blocks, and extensions go here. -->
+<!-- PROJECT-CUSTOM:END -->

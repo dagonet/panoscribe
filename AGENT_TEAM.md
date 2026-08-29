@@ -747,7 +747,7 @@ When spawning an agent, include in the spawn prompt a `## Required Skills` block
 
 | subagent_type | Required Skills |
 |---|---|
-| `coder` (and all variant coders: `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`) | `karpathy-guidelines`, `test-driven-development`, `verification-before-completion`, `receiving-code-review` |
+| `coder` and any `<lang>-coder` — the template's own (`dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`) **and any your project adds** (`cpp-coder`, `go-coder`, …); the hook matches the shape, not a list | `karpathy-guidelines`, `test-driven-development`, `verification-before-completion`, `receiving-code-review` |
 | `code-reviewer` | *(none — review is the agent's core job)* |
 | `tester` | `systematic-debugging`, `verification-before-completion` |
 | `test-writer` | `test-driven-development` |
@@ -1013,3 +1013,7 @@ Capture durable insights — not routine results:
 Skip capture for routine outcomes ("no issues found", "all tests pass").
 
 ---
+
+<!-- PROJECT-CUSTOM:BEGIN — sync-template preserves everything between these markers -->
+<!-- Project-specific rules, routing blocks, and extensions go here. -->
+<!-- PROJECT-CUSTOM:END -->

@@ -24,7 +24,9 @@ SUBAGENT_TYPE=$(node -e "console.log(JSON.parse(process.argv[1]).subagent_type||
 PROMPT=$(node -e "console.log(JSON.parse(process.argv[1]).prompt||'')" "$TOOL_INPUT" 2>/dev/null || echo '')
 
 case "$SUBAGENT_TYPE" in
-  coder|dotnet-coder|rust-coder|java-coder|python-coder)
+  # Any language coder, including ones a project adds itself (cpp-coder, …).
+  # An enumeration the template owns silently unbinds project coders on sync.
+  coder|*-coder)
     REQUIRED="karpathy-guidelines superpowers:test-driven-development superpowers:verification-before-completion superpowers:receiving-code-review"
     ;;
   tester)
