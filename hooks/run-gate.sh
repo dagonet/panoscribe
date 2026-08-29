@@ -8,8 +8,8 @@
 # a PR merge:
 #
 #   .gate/last-pass.json  (at the repo toplevel of the current checkout/worktree)
-#   {"sha":"<HEAD sha>","tree":"<index tree, or \"\" if the working tree had
-#    unstaged changes>","branch":"<branch>","ts":"<UTC ISO-8601>","status":"pass"}
+#   {"sha":"<HEAD sha>","tree":"<working-tree hash>","branch":"<branch>",
+#    "ts":"<UTC ISO-8601>","status":"pass"}
 #
 # On failure, any existing artifact is deleted and the script exits nonzero.
 # No-op (exit 0) when the Gate field is missing or still a {{...}} placeholder,
@@ -94,16 +94,42 @@ echo "GATE: running: $GATE_CMD"
 # -- that produces a tree mismatch too, and the merge gate falls back to
 # requiring a fresh run, exactly as before this fix.
 #
-# v2.1.3 fix round 2: only record the tree when the working tree matches the
-# index (`git diff --quiet`). write-tree hashes the INDEX; if there are
-# unstaged changes beyond it, a `git commit -a` (or a manual `git add` after
-# this ran) would fold those in too, producing a DIFFERENT tree than the one
-# we are about to hash -- recording it would let a mismatched commit slip
-# through gate-before-merge.sh's tree check. sha-only in that case.
-TREE_HASH=""
-if git -C "$REPO_TOP" diff --quiet 2>/dev/null; then
-  TREE_HASH=$(git -C "$REPO_TOP" write-tree 2>/dev/null)
-fi
+# v2.1.5 (consumer feedback: Yutraffic PR #223 e59e6fd vs 567f0d1, panoscribe
+# PR #123): key the artifact on the WORKING TREE, not the index. The PreToolUse
+# hook fires before a chained `git add ... && git commit` stages anything, so
+# the v2.1.3 index tree was the PARENT tree and the v2.1.3-round-2 `git diff
+# --quiet` guard recorded no tree at all -- the artifact matched nothing and the
+# single-run merge path never fired for agents, who chain add+commit habitually.
+#
+# A temp index (a copy of the real one, so unchanged paths need no re-stat) is
+# `add -A`'d and hashed. The REAL index is never touched, and .gitignore is
+# respected, so .gate/ and build output stay out of the hash.
+#
+# Consequently `git add -A && git commit`, `git commit -a`, and separate
+# add/commit calls all yield `HEAD^{tree} == tree`. A PARTIAL-add commit
+# mismatches by design: the committed tree is not what was gated, so
+# gate-before-merge.sh correctly demands a fresh run.
+#
+# CAVEAT -- the hash is taken BEFORE the gate command runs (deliberately: a
+# gate that fails must not have its own mutations blessed). So a gate that
+# MUTATES the tree makes the following commit mismatch anyway:
+#   * a formatter in the gate rewriting tracked files;
+#   * gate-generated output that is untracked and NOT gitignored (coverage
+#     reports, `pytest-of-*`, build logs) -- `add -A` on the temp index writes
+#     blobs for every unignored untracked file on every run, so such output
+#     lands in the NEXT run's hash and never in this one's.
+# The fix is on the project side: gitignore everything the gate produces (and
+# run the formatter before the gate, not inside it).
+#
+# `rev-parse --git-path index` (not a hardcoded .git/index) is what makes this
+# work in a LINKED WORKTREE, where the index lives at
+# .git/worktrees/<name>/index -- coder/tester run under `isolation: worktree`.
+TMPD=$(mktemp -d)
+trap 'rm -rf "$TMPD"' EXIT
+TMPIDX="$TMPD/index"   # must not pre-exist: git rejects a 0-byte index
+cp "$(git -C "$REPO_TOP" rev-parse --git-path index)" "$TMPIDX" 2>/dev/null || true
+GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" add -A >/dev/null 2>&1
+TREE_HASH=$(GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" write-tree 2>/dev/null)
 
 RUN_GATE_ACTIVE=1
 export RUN_GATE_ACTIVE

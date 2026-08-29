@@ -50,6 +50,7 @@ If your spawn prompt contains a `## Required Skills` block: invoke each listed s
 ### `## Gate Results`
 - If the **Gate** field in `PROJECT_CONTEXT.md` is configured: run `bash hooks/run-gate.sh` and include the verbatim tail of its output (the `GATE PASS <sha>` line, or the failure output).
 - Run the gate immediately before the merge tool call — the artifact must match the rebased HEAD and expires after 60 minutes.
+- The gate keys its artifact on the WORKING TREE at gate time — commit exactly what was gated. A chained `git add ... && git commit` is fine; a partial add after the gate mismatches by design.
 - If Gate is unset or still a `{{...}}` placeholder: include the verbatim tail output of the Build, Test, Format, and Lint commands from `PROJECT_CONTEXT.md`.
 - Never summarize or paraphrase gate output — paste it.
 

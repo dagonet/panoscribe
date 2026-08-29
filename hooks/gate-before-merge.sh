@@ -12,7 +12,11 @@
 # toplevel of the merging session's cwd — worktree-aware, since developer
 # agents self-merge from their worktrees. Blocks (exit 2) unless:
 #   - the artifact exists,
-#   - its "sha" equals the current HEAD of that checkout, and
+#   - its "sha" equals the current HEAD of that checkout OR its "tree" equals
+#     that checkout's HEAD^{tree} — as of v2.1.5 "tree" is the WORKING tree at
+#     gate time, so a commit of exactly what was gated (chained
+#     `git add … && git commit`, or `git commit -a`) matches by tree even
+#     though the artifact's sha is the parent commit's, and
 #   - the artifact file is younger than 60 minutes (mtime).
 #
 # No-op (exit 0) when PROJECT_CONTEXT.md has no Gate command or the field is

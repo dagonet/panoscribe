@@ -17,7 +17,14 @@
 #
 # Output (only when at least one failure was found), appended as ONE line to
 #   $HOME/.claude/projects/<project-slug>/memory/retro.md
-#   YYYY-MM-DD HH:MM | <agent_type> | <agent_id> | dead=[a,b] | blocks=[x.sh] | errors=<n>
+#   YYYY-MM-DD HH:MM | <agent_type> | <agent_id> | dead=[a,b] | blocks=[x.sh] | budget=<n> | errors=<n>
+#
+# v2.1.4: a block from hooks/agent-budget-warn.sh (its literal "BUDGET: this
+# spawn has made N tool calls" text) is a liveness control tripping as
+# designed, not a failure needing investigation -- it is tallied separately as
+# budget=<n> instead of landing in blocks=[...]. Note a resumed subagent keeps
+# its prior tool-call counter, so a budget block soon after a resume may just
+# reflect the PO's own choice to let it keep going, not a runaway.
 #
 # <project-slug> replicates Claude Code's auto-memory directory rule, measured
 # against the real dirs under ~/.claude/projects: EVERY one of  :  \  /  .  _
@@ -60,6 +67,9 @@ process.stdin.on("end", () => {
   // Without that second condition, reading hooks/*.sh or grepping for "BLOCKED:"
   // would log a failure for a tool call that succeeded.
   const HOOKBLOCK = /hook error|^BLOCKED:/m;
+  // agent-budget-warn.sh block text -- matched to pull its blocks out of
+  // blocks=[...] and into the separate budget=<n> tally (see header).
+  const BUDGET = /BUDGET: this spawn has made \d+ tool calls/;
   const DEAD = /No such tool available:\s*([A-Za-z0-9_\-]+)/g;
   // Hook script names are read from the bracketed hook command only
   // (`PreToolUse:Bash hook error: [bash 'hooks/x.sh'; …]: BLOCKED: …`), never from
@@ -70,6 +80,7 @@ process.stdin.on("end", () => {
   const dead = new Set();
   const blocks = new Set();
   let errors = 0;
+  let budget = 0;
 
   for (const line of txt.split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -87,11 +98,15 @@ process.stdin.on("end", () => {
       DEAD.lastIndex = 0;
       while ((m = DEAD.exec(text)) !== null) dead.add(m[1]);
       if (isBlock) {
-        HOOKCMD.lastIndex = 0;
-        let cmd;
-        while ((cmd = HOOKCMD.exec(text)) !== null) {
-          SCRIPT.lastIndex = 0;
-          while ((m = SCRIPT.exec(cmd[0])) !== null) blocks.add(path.basename(m[1]));
+        if (BUDGET.test(text)) {
+          budget++;
+        } else {
+          HOOKCMD.lastIndex = 0;
+          let cmd;
+          while ((cmd = HOOKCMD.exec(text)) !== null) {
+            SCRIPT.lastIndex = 0;
+            while ((m = SCRIPT.exec(cmd[0])) !== null) blocks.add(path.basename(m[1]));
+          }
         }
       }
     }
@@ -132,6 +147,7 @@ process.stdin.on("end", () => {
     p.agent_id || "unknown",
     "dead=" + render(dead),
     "blocks=" + render(blocks),
+    "budget=" + budget,
     "errors=" + errors
   ].join(" | ") + "\n";
 
