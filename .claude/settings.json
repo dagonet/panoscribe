@@ -24,7 +24,12 @@
       "mcp__git-tools__*"
     ],
     "deny": [
-      "Read(.env*)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.*.local)",
+      "Read(.env.production)",
+      "Read(.env.staging)",
+      "Read(.env.development)",
       "mcp__git-tools__git_push",
       "mcp__git-tools__git_commit",
       "mcp__git-tools__git_revert",

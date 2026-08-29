@@ -1,5 +1,7 @@
 # Claude Code -- General Behavior
 
+> Project-specific hard rules live in the PROJECT-CUSTOM region at the end of this file — read it first.
+
 ---
 
 # Session Bootstrap
@@ -158,6 +160,7 @@ bash hooks/run-gate.sh      # Green-CI gate (format-check + lint + coverage) -> 
 ---
 
 <!-- Project-specific rules and plugin routing blocks (context-mode, …) belong inside the PROJECT-CUSTOM region below -->
+
 <!-- PROJECT-CUSTOM:BEGIN — sync-template preserves everything between these markers -->
 
 # Project Notes (panoscribe)

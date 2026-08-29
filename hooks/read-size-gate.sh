@@ -37,6 +37,16 @@ LOG_FILE="$HOME/.claude/state/read-size-gate.log"
 
 TOOL_INPUT=$(cat)
 
+# v2.2.0: the decision engine below is an embedded node program (statSync, line
+# count, updatedInput rewrite), so this hook needs node specifically. Without it
+# it stays fail-open, but says so once instead of disappearing silently.
+jlib="$(dirname "$0")/lib/json.sh"
+if [ -f "$jlib" ]; then
+  . "$jlib"
+  json_require_node read-size-gate "$(json_session "$TOOL_INPUT")" || exit 0
+fi
+command -v node >/dev/null 2>&1 || exit 0
+
 # ONE node process per Read call. The first version spawned five (four JSON
 # parses plus the emitter) on a hook that fires on every Read; process startup
 # dominated the hook's cost. The payload arrives on STDIN, never in argv, so a

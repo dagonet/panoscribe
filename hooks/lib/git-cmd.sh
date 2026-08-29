@@ -13,8 +13,19 @@
 #     wrapper payloads (bash -c "...", pwsh -Command "...") are covered. A false
 #     positive (echo "git push origin main") is accepted: these gates fail closed.
 #   - `<cwd>/.claude/git-guard-off` is the escape hatch for all three gates.
+#   - v2.2.0: the payload is read through hooks/lib/json.sh (node, python3 or
+#     jq). With NO parser on PATH the gates fail CLOSED — see gc_read_stdin.
 #
 # Source it from a hook:  . "$(dirname "$0")/lib/git-cmd.sh"
+
+# Fail CLOSED when the JSON reader is missing: without it GC_CMD would be empty
+# and every gate would allow every command.
+gc_json_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/json.sh"
+if [ ! -f "$gc_json_lib" ]; then
+  echo "BLOCKED: $gc_json_lib missing — run /sync-template step 6b (hooks/lib/json.sh)" >&2
+  exit 2
+fi
+. "$gc_json_lib"
 
 GC_JSON=""
 GC_TOOL=""
@@ -26,16 +37,30 @@ GC_CMD=""
 GC_GIT_PRE='\bgit\b([[:space:]]+-C[[:space:]]+[^[:space:]]+)?([[:space:]]+-c[[:space:]]+[^[:space:]]+)*'
 
 # Reads the hook payload from stdin and populates GC_TOOL / GC_CWD / GC_CMD.
+#
+# With no JSON parser on PATH the gates cannot see the command at all, so they
+# fail CLOSED (exit 2) rather than wave every push and merge through. The
+# documented escape hatch still wins — but the payload cwd is unreadable then,
+# so it is looked for under the process cwd, which is the project directory
+# Claude Code runs hooks in.
 gc_read_stdin() {
   GC_JSON=$(cat)
-  GC_TOOL=$(node -e "const j=JSON.parse(process.argv[1]);console.log(j.tool_name||'')" "$GC_JSON" 2>/dev/null)
-  GC_CWD=$(node -e "const j=JSON.parse(process.argv[1]);console.log(j.cwd||'')" "$GC_JSON" 2>/dev/null)
+  if ! json_have; then
+    GC_CWD=$(pwd)
+    GC_TOOL=""
+    GC_CMD=""
+    gc_guard_off && return 0
+    echo "BLOCKED: no JSON parser (node, python3 or jq) on PATH — the git gates cannot inspect the command. Install one, or create <cwd>/.claude/git-guard-off to opt out." >&2
+    exit 2
+  fi
+  GC_TOOL=$(json_get "$GC_JSON" tool_name)
+  GC_CWD=$(json_get "$GC_JSON" cwd)
   if [ -z "$GC_CWD" ] || [ ! -d "$GC_CWD" ]; then
     GC_CWD=$(pwd)
   fi
   case "$GC_TOOL" in
     Bash|PowerShell)
-      GC_CMD=$(node -e "const j=JSON.parse(process.argv[1]);console.log((j.tool_input&&j.tool_input.command)||'')" "$GC_JSON" 2>/dev/null)
+      GC_CMD=$(json_get "$GC_JSON" tool_input.command)
       ;;
     *)
       GC_CMD=""
@@ -52,10 +77,22 @@ gc_read_stdin() {
 # falling back to the payload cwd -- so the implicit branch check would then
 # evaluate the WRONG repo. Spaces inside a quoted -C argument are replaced with
 # \001 here (before any stripping) and decoded again in gc_git_c.
+#
+# v2.2.0: pure sed, so it no longer needs node. Each pass replaces one blank
+# inside a quoted `-C` argument; the loop runs until the string stops changing.
+# The quotes themselves are left in place — gc_segments strips them anyway.
+GC_SOH=$(printf '\001')
 gc_protect_c_paths() {
   [ -n "$1" ] || { printf '%s' ""; return 0; }
-  node -e 'const s=process.argv[1];process.stdout.write(s.replace(/-C[ \t]+("([^"]*)"|\x27([^\x27]*)\x27)/g,(m,q,dq,sq)=>"-C "+(dq===undefined?sq:dq).replace(/[ \t]/g,"\u0001")))' "$1" 2>/dev/null \
-    || printf '%s' "$1"
+  gcs=$1
+  while :; do
+    gcn=$(printf '%s' "$gcs" | sed \
+      -e "s/\(-C[[:space:]]\{1,\}\"[^\"]*\)[[:space:]]\([^\"]*\"\)/\1${GC_SOH}\2/" \
+      -e "s/\(-C[[:space:]]\{1,\}'[^']*\)[[:space:]]\([^']*'\)/\1${GC_SOH}\2/")
+    [ "$gcn" = "$gcs" ] && break
+    gcs=$gcn
+  done
+  printf '%s' "$gcs"
 }
 
 # True when the repo has opted out of the git gates.
@@ -103,10 +140,41 @@ gc_current_branch() {
   git -C "$1" branch --show-current 2>/dev/null
 }
 
-# gc_on_main <repo>
+# gc_protected_branches <repo> -- the branch names the git gates protect.
+#
+# Optional `**Protected branches**:` line in the repo's PROJECT_CONTEXT.md,
+# read with the same tolerant grep as `**Gate**:` (leading list marker,
+# surrounding backticks). Names are space- or comma-separated.
+#   absent            -> "main master" (the pre-v2.2.0 hardcoded default)
+#   `none` or empty   -> "" (no protected branch; pushes are never branch-blocked)
+gc_protected_branches() {
+  gcpb_top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)
+  [ -n "$gcpb_top" ] || { printf '%s' "main master"; return 0; }
+  gcpb_line=$(grep -E '^[-*[:space:]]*\*\*Protected [Bb]ranches\*\*:' "$gcpb_top/PROJECT_CONTEXT.md" 2>/dev/null | head -1)
+  [ -n "$gcpb_line" ] || { printf '%s' "main master"; return 0; }
+  gcpb=$(printf '%s' "$gcpb_line" \
+    | sed 's/.*\*\*Protected [Bb]ranches\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' \
+    | tr ',' ' ' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
+  case "$(printf '%s' "$gcpb" | tr 'A-Z' 'a-z')" in
+    ""|none) printf '%s' "" ;;
+    *)       printf '%s' "$gcpb" ;;
+  esac
+}
+
+# gc_protected_alt <repo> -- the protected branches as a grep -E alternation,
+# or "" when nothing is protected.
+gc_protected_alt() {
+  printf '%s' "$(gc_protected_branches "$1")" | tr ' ' '|'
+}
+
+# gc_on_main <repo> -- the checkout sits on a protected branch.
 gc_on_main() {
   b=$(gc_current_branch "$1")
-  [ "$b" = "main" ] || [ "$b" = "master" ]
+  [ -n "$b" ] || return 1
+  for gcpbb in $(gc_protected_branches "$1"); do
+    [ "$b" = "$gcpbb" ] && return 0
+  done
+  return 1
 }
 
 # gc_matches_subcommand <segment> <subcommand>
@@ -132,13 +200,17 @@ gc_push_args() {
   printf '%s\n' "$gcpa"
 }
 
-# gc_targets_main_ref <push-args> -- a destination that includes main/master.
-# `--mirror` and `--all` push every local branch, so they carry main even when
-# the checkout is on a feature branch and no ref is named.
+# gc_targets_main_ref <push-args> <repo> -- a destination that includes a
+# protected branch. `--mirror` and `--all` push every local branch, so they
+# carry the protected ones even when the checkout is on a feature branch and no
+# ref is named. With nothing protected (`**Protected branches**: none`) every
+# destination is fine.
 gc_targets_main_ref() {
+  gcta=$(gc_protected_alt "$2")
+  [ -n "$gcta" ] || return 1
   printf '%s\n' "$1" | grep -qE '(^|[[:space:]])--(mirror|all)([[:space:]]|=|$)' && return 0
-  printf '%s\n' "$1" | grep -qE '(^|[[:space:]])(refs/heads/)?(main|master)([[:space:]]|$)' && return 0
-  printf '%s\n' "$1" | grep -qE ':[[:space:]]*(refs/heads/)?(main|master)([[:space:]]|$)'
+  printf '%s\n' "$1" | grep -qE "(^|[[:space:]])(refs/heads/)?($gcta)([[:space:]]|\$)" && return 0
+  printf '%s\n' "$1" | grep -qE ":[[:space:]]*(refs/heads/)?($gcta)([[:space:]]|\$)"
 }
 
 # gc_has_refspec <push-args> -- true when a destination ref is named explicitly

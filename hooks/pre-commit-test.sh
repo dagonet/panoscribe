@@ -14,6 +14,11 @@
 # v2.0: the native git CLI is allowed again, so this gate parses
 # tool_input.command instead of keying on the retired mcp__git-tools__git_commit
 # tool name. Escape hatch: <cwd>/.claude/git-guard-off.
+#
+# v2.2.0: the payload is parsed through hooks/lib/json.sh (node, python3 or jq).
+# With none of the three on PATH this gate fails CLOSED (exit 2) like the other
+# two git gates — a commit whose command cannot be read is not a commit that can
+# be shown to have passed its tests. `git-guard-off` still opts out.
 
 # Fail CLOSED when the sourced lib is missing: without it every gc_* helper is
 # undefined, GC_CMD stays empty, and this gate would exit 0 on every commit.

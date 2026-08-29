@@ -16,12 +16,23 @@
 # CI if they diverge — keep them in sync.
 #
 # Reference: docs/plans/2026-04-12-wire-superpowers-skills.md (Chunk B,
-# §Architecture). Mirrors the JSON-via-`node -e` parsing pattern used by
-# no-push-main.sh.
+# §Architecture). Reads its payload through hooks/lib/json.sh, the shared
+# node/python3/jq reader the git gates use.
 
 TOOL_INPUT=$(cat)
-SUBAGENT_TYPE=$(node -e "console.log(JSON.parse(process.argv[1]).subagent_type||'')" "$TOOL_INPUT" 2>/dev/null || echo '')
-PROMPT=$(node -e "console.log(JSON.parse(process.argv[1]).prompt||'')" "$TOOL_INPUT" 2>/dev/null || echo '')
+
+# v2.2.0: fields are read through hooks/lib/json.sh (node, python3 or jq).
+# Fail-open with one WARN when none of the three is on PATH.
+jlib="$(dirname "$0")/lib/json.sh"
+[ -f "$jlib" ] || {
+  echo "WARN: require-skills-block: hooks/lib/json.sh missing — enforcement inactive" >&2
+  exit 0
+}
+. "$jlib"
+json_have || { json_warn_no_parser require-skills-block "$(json_session "$TOOL_INPUT")"; exit 0; }
+
+SUBAGENT_TYPE=$(json_get "$TOOL_INPUT" subagent_type)
+PROMPT=$(json_get "$TOOL_INPUT" prompt)
 
 case "$SUBAGENT_TYPE" in
   # Any language coder, including ones a project adds itself (cpp-coder, …).
