@@ -19,6 +19,15 @@ set -u
 
 INPUT=$(cat 2>/dev/null || true)
 
+# v2.2.0: the ledger lookup below is an embedded node program, so this hook
+# needs node specifically. Without it it stays fail-open, but says so once.
+jlib="$(dirname "$0")/lib/json.sh"
+if [ -f "$jlib" ]; then
+  . "$jlib"
+  json_require_node retro-brief "$(json_session "$INPUT")" || exit 0
+fi
+command -v node >/dev/null 2>&1 || exit 0
+
 LEDGER=$(printf '%s' "$INPUT" | node -e '
 const os = require("os");
 const path = require("path");

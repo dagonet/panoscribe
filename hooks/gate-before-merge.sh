@@ -21,6 +21,16 @@
 #
 # No-op (exit 0) when PROJECT_CONTEXT.md has no Gate command or the field is
 # still a {{...}} placeholder — same graceful degradation as pre-commit-test.sh.
+#
+# v2.2.0: "main/master" above means the protected set, which an optional
+# PROJECT_CONTEXT.md line configures:
+#
+#   - **Protected branches**: develop release
+#
+# Default (field absent) is `main master`; `none` protects nothing — a
+# `gh pr merge` is still gated, since that is a merge whatever the branch is.
+# The payload is parsed through hooks/lib/json.sh (node, python3 or jq); with
+# none of the three on PATH this gate fails CLOSED.
 
 # Fail CLOSED when the sourced lib is missing: without it every gc_* helper is
 # undefined, GC_TOOL stays empty, and this gate would exit 0 on every merge.
@@ -66,7 +76,7 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
       break
     fi
 
-    # 2. git merge while the checkout is on main/master
+    # 2. git merge while the checkout is on a protected branch
     if gc_matches_subcommand "$seg" "merge"; then
       repo=$(gc_repo_for "$seg" "$base")
       if gc_on_main "$repo"; then
@@ -76,11 +86,11 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
       fi
     fi
 
-    # 3. a push that targets main/master -- fast-forward merge by push
+    # 3. a push that targets a protected branch -- fast-forward merge by push
     if gc_matches_subcommand "$seg" "push"; then
       repo=$(gc_repo_for "$seg" "$base")
       args=$(gc_push_args "$seg")
-      if gc_targets_main_ref "$args"; then
+      if gc_targets_main_ref "$args" "$repo"; then
         is_merge=1
         CWD="$repo"
         break

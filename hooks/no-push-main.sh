@@ -7,6 +7,14 @@
 # v2.0: the native git CLI is allowed again, so this gate parses
 # tool_input.command instead of keying on the retired mcp__git-tools__git_push
 # tool name. Escape hatch: <cwd>/.claude/git-guard-off.
+#
+# v2.2.0: the protected set is configurable. An optional PROJECT_CONTEXT.md line
+#
+#   - **Protected branches**: develop release
+#
+# replaces the default `main master`; `none` (or an empty value) protects
+# nothing. The payload is parsed through hooks/lib/json.sh (node, python3 or
+# jq) — with none of the three on PATH this gate fails CLOSED.
 
 # Fail CLOSED when the sourced lib is missing: without it every gc_* helper is
 # undefined, GC_CMD stays empty, and this gate would exit 0 on every push.
@@ -46,16 +54,16 @@ while IFS= read -r seg; do
   repo=$(gc_repo_for "$seg" "$base")
   args=$(gc_push_args "$seg")
 
-  # 1. An explicit main/master destination is always a block.
-  if gc_targets_main_ref "$args"; then
-    echo "BLOCKED: pushing to main/master is not allowed. Use a feature branch and open a PR." >&2
+  # 1. An explicit protected destination is always a block.
+  if gc_targets_main_ref "$args" "$repo"; then
+    echo "BLOCKED: pushing to a protected branch ($(gc_protected_branches "$repo")) is not allowed. Use a feature branch and open a PR." >&2
     exit 2
   fi
 
   # 2. No explicit refspec -> the push follows the current branch.
   if ! gc_has_refspec "$args" && ! gc_push_skips_branch_check "$args"; then
     if gc_on_main "$repo"; then
-      echo "BLOCKED: pushing to main/master is not allowed (current branch of $repo is $(gc_current_branch "$repo")). Use a feature branch and open a PR." >&2
+      echo "BLOCKED: pushing to a protected branch is not allowed (current branch of $repo is $(gc_current_branch "$repo")). Use a feature branch and open a PR." >&2
       exit 2
     fi
   fi
