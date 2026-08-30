@@ -197,16 +197,89 @@ gc_is_placeholder() {
   esac
 }
 
+# gc_resolve_trunk <repo> -- the remote's default branch, or "" when unknowable.
+#
+# A LOCAL ref read (`refs/remotes/origin/HEAD`): no network, so it cannot hang
+# and needs no timeout wrapper -- this runs inside a PreToolUse hook.
+# Deliberately NOT gc_current_branch: at push time HEAD is almost always the
+# feature branch being pushed, and protecting that would block the developer's
+# own push. setup-project.sh keeps a current-branch fallback because at
+# BOOTSTRAP time the checkout IS the trunk; a gate firing at push time is a
+# different question with a different safe answer.
+# Anything unexpected -- no remote, a detached or missing origin/HEAD, a value
+# that is not a plain ref name, a value that is itself a placeholder -- returns
+# "" so the caller keeps its own default. Never empty output used as a set,
+# never the literal.
+gc_resolve_trunk() {
+  gcrt=$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
+  gcrt=${gcrt#origin/}
+  case "$gcrt" in
+    ''|-*|*..*|*[!A-Za-z0-9._/-]*) printf '%s' "" ;;
+    *)                             printf '%s' "$gcrt" ;;
+  esac
+}
+
+# gc_fallback_protected <repo-toplevel> -- the set to protect when the repo
+# has not given a usable answer: no `**Protected branches**:` line, an
+# unreplaced `{{...}}` one, or an empty one.
+#
+# `main master` (the historical default) UNION the remote's real trunk. The
+# union, not a replacement: narrowing to the resolved trunk alone would REMOVE
+# protection from `main` in a repo that has both, so a fix for one exposure
+# would open another. Bounded, and every member is individually justified --
+# this is NOT "protect every local branch", which is the mirror of the bug it
+# fixes.
+# Why resolve at all: `main master` does not contain `develop`, so a repo whose
+# trunk is neither was unprotected -- SILENTLY when the line was simply absent,
+# which is the larger population and predates v2.2.0 entirely. v2.2.1's
+# placeholder warn did not protect anything; warning is not protecting.
+#
+# NOTE THE ASYMMETRY, deliberately: this file fails CLOSED when it cannot read
+# the COMMAND (an integrity failure -- something is trying to run and we cannot
+# see what) and fails OPEN when it cannot read the REPO'S CONFIGURATION (an
+# unconfigured environment -- an unknown is not a violation). Blocking pushes
+# because a local ref is missing would be a worse bug than the one being fixed.
+gc_fallback_protected() {
+  gcpf=$(gc_resolve_trunk "$1")
+  if [ -z "$gcpf" ]; then
+    # The trunk is unknowable -- `origin/HEAD` is unset on any clone that never
+    # ran `git remote set-head`, which is common. We do NOT block on that. But
+    # a repo with no local `main` AND no local `master` is certainly not a
+    # main-trunk repo, so the fallback set provably covers NO branch it has:
+    # that is the one case worth saying out loud, and it cannot false-positive
+    # on a main-trunk repo or on a feature branch.
+    if ! git -C "$1" show-ref --verify --quiet refs/heads/main 2>/dev/null &&
+       ! git -C "$1" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+      json_warn_once "protected-trunk-unknown" "$(json_session "$GC_JSON")" \
+        "WARN: $1 has no readable origin/HEAD and no local main or master, so the fallback protected set ('main master') covers no branch in this repo — nothing is protected. Fix with 'git remote set-head origin -a', or name your trunk on the '- **Protected branches**:' line in PROJECT_CONTEXT.md."
+    fi
+    printf '%s' "main master"
+    return 0
+  fi
+  case " main master " in
+    *" $gcpf "*) printf '%s' "main master"; return 0 ;;
+  esac
+  printf '%s' "main master $gcpf"
+}
+
 # gc_protected_branches <repo> -- the branch names the git gates protect.
 #
 # Optional `**Protected branches**:` line in the repo's PROJECT_CONTEXT.md,
 # read with the same tolerant grep as `**Gate**:` (leading list marker,
 # surrounding backticks). Names are space- or comma-separated.
-#   absent              -> "main master" (the pre-v2.2.0 hardcoded default)
-#   `{{DEFAULT_BRANCH}}` -> "main master" — as if absent (v2.2.1, see above)
-#   empty value         -> "main master", with one WARN: an empty value is a
-#                          typo or a truncated sync, not a decision. v2.2.0
-#                          treated it as an opt-out, which is a silent unprotect.
+# Every arm below that is NOT a configured answer resolves the same way
+# (v2.2.3): "main master" PLUS the remote's real trunk. The absent arm is the
+# one that matters most -- it is the pre-v2.2.0 hardcode's own blind spot, it
+# affects every repo that never configured the field rather than only those
+# that took the v2.2.0 template, and unlike the placeholder arm it was SILENT.
+#   absent              -> the resolved fallback set, no warning: nothing is
+#                          misconfigured here, the repo just never said.
+#   `{{DEFAULT_BRANCH}}` -> the resolved fallback set, with one WARN: a
+#                          placeholder READS as configured, so this is the case
+#                          a consumer does not know they are in.
+#   empty value         -> the resolved fallback set, with one WARN: an empty
+#                          value is a typo or a truncated sync, not a decision.
+#                          v2.2.0 treated it as an opt-out — a silent unprotect.
 #   `none`              -> "" — the ONE deliberate way to protect nothing.
 #                          Branch rules only: `gh pr merge` stays gated, because
 #                          a PR merge is a merge whatever branch it runs on.
@@ -214,7 +287,7 @@ gc_protected_branches() {
   gcpb_top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)
   [ -n "$gcpb_top" ] || { printf '%s' "main master"; return 0; }
   gcpb_line=$(grep -E '^[-*[:space:]]*\*\*Protected [Bb]ranches\*\*:' "$gcpb_top/PROJECT_CONTEXT.md" 2>/dev/null | head -1)
-  [ -n "$gcpb_line" ] || { printf '%s' "main master"; return 0; }
+  [ -n "$gcpb_line" ] || { gc_fallback_protected "$gcpb_top"; return 0; }
   gcpb=$(printf '%s' "$gcpb_line" \
     | sed 's/.*\*\*Protected [Bb]ranches\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' \
     | tr ',' ' ' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
@@ -223,9 +296,13 @@ gc_protected_branches() {
     # visibly empty; an unreplaced placeholder READS as configured, so this is
     # precisely the case a consumer does not know they are in. Silence here was
     # backwards.
+    # ...and WARN is not enough on its own: the fallback now also covers the
+    # trunk git actually reports, so a develop-trunk repo is protected while it
+    # is being told to configure itself, not merely told.
+    gcpb_fb=$(gc_fallback_protected "$gcpb_top")
     json_warn_once "protected-branches" "$(json_session "$GC_JSON")" \
-      "WARN: **Protected branches**: in $gcpb_top/PROJECT_CONTEXT.md is still an unfilled placeholder ($gcpb) — falling back to 'main master'. If your trunk is not main/master, it is NOT protected until you set a real name."
-    printf '%s' "main master"
+      "WARN: **Protected branches**: in $gcpb_top/PROJECT_CONTEXT.md is still an unfilled placeholder ($gcpb) — falling back to '$gcpb_fb'. That fallback is a guess; set a real name."
+    printf '%s' "$gcpb_fb"
     return 0
   fi
   case "$(printf '%s' "$gcpb" | tr 'A-Z' 'a-z')" in
@@ -234,9 +311,10 @@ gc_protected_branches() {
       # Warn ONCE: this function is called several times per gate run (the
       # block message, gc_on_main, gc_protected_alt), so a bare echo would
       # print the same line four times for one push.
+      gcpb_efb=$(gc_fallback_protected "$gcpb_top")
       json_warn_once "protected-branches" "$(json_session "$GC_JSON")" \
-        "WARN: **Protected branches**: is empty in $gcpb_top/PROJECT_CONTEXT.md — falling back to 'main master'. Use 'none' to protect nothing deliberately."
-      printf '%s' "main master"
+        "WARN: **Protected branches**: is empty in $gcpb_top/PROJECT_CONTEXT.md — falling back to '$gcpb_efb'. Use 'none' to protect nothing deliberately."
+      printf '%s' "$gcpb_efb"
       ;;
     *) printf '%s' "$gcpb" ;;
   esac

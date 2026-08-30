@@ -2,7 +2,7 @@
   "version": 2,
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSynced": "47341e7",
+  "lastSynced": "707052c",
   "placeholders": {
     "PROJECT_NAME": "panoscribe",
     "PROJECT_NAME_LOWER": "panoscribe",
@@ -127,12 +127,12 @@
       "resolution": "keep-mine"
     },
     "PROJECT_CONTEXT.md": {
-      "templateHash": "1ecb9c66f65090f6bfb9811a01f7017454ae2ab467a4bde84a9c7e9c28fda51a",
-      "templateRawHash": "111980541767670b3651a6347f0954a1585aeab63b9b91f63f3aaf3ddd6abc58",
+      "templateHash": "d97825fc7c23284094dcf5e20b6c663cd37259718b9ab0221fbfc4354e8d77e5",
+      "templateRawHash": "cc166d707fcdfe1048d1c1499a20b34b64a9998d03074002692bb0254a052497",
       "localHash": "45989fba4149efdee427f2313fc8b6d34a69a8cf5c48d6011a2b22a30d82ed58",
       "locallyModified": true,
       "localPartHash": "45989fba4149efdee427f2313fc8b6d34a69a8cf5c48d6011a2b22a30d82ed58",
-      "templatePartHashAtSync": "1ecb9c66f65090f6bfb9811a01f7017454ae2ab467a4bde84a9c7e9c28fda51a",
+      "templatePartHashAtSync": "d97825fc7c23284094dcf5e20b6c663cd37259718b9ab0221fbfc4354e8d77e5",
       "resolution": "keep-mine",
       "reason": "Project-specific config"
     },
@@ -192,12 +192,12 @@
       "templatePartHashAtSync": "835f1c6c49ae1b77ec55696c20cca9775bac260b974dc5a5a9db9b163cc3f86d"
     },
     "hooks/lib/git-cmd.sh": {
-      "templateHash": "e051c331a1b2f55c480647526cbf5c837e4c2047ce7a8abea053c90b920f64c5",
-      "templateRawHash": "e051c331a1b2f55c480647526cbf5c837e4c2047ce7a8abea053c90b920f64c5",
-      "localHash": "e051c331a1b2f55c480647526cbf5c837e4c2047ce7a8abea053c90b920f64c5",
+      "templateHash": "d93ab5fcad0a47d2ff646d753680fbb558abebd4e7e493e4f7d3a754a26c1612",
+      "templateRawHash": "d93ab5fcad0a47d2ff646d753680fbb558abebd4e7e493e4f7d3a754a26c1612",
+      "localHash": "d93ab5fcad0a47d2ff646d753680fbb558abebd4e7e493e4f7d3a754a26c1612",
       "locallyModified": false,
-      "localPartHash": "e051c331a1b2f55c480647526cbf5c837e4c2047ce7a8abea053c90b920f64c5",
-      "templatePartHashAtSync": "e051c331a1b2f55c480647526cbf5c837e4c2047ce7a8abea053c90b920f64c5"
+      "localPartHash": "d93ab5fcad0a47d2ff646d753680fbb558abebd4e7e493e4f7d3a754a26c1612",
+      "templatePartHashAtSync": "d93ab5fcad0a47d2ff646d753680fbb558abebd4e7e493e4f7d3a754a26c1612"
     },
     "hooks/lib/json.sh": {
       "templateHash": "f4d62c200131574e3a577a59bf48cae11f80cef3eac6846f8ea3a81c2c59e6ed",
