@@ -19,6 +19,17 @@
 # With none of the three on PATH this gate fails CLOSED (exit 2) like the other
 # two git gates — a commit whose command cannot be read is not a commit that can
 # be shown to have passed its tests. `git-guard-off` still opts out.
+#
+# READING THE OUTPUT (v2.2.1, from a consumer report):
+#   - A green run prints `passed. (<n>s)` and NOTHING else. The captured output
+#     is deleted on success by design, so "I saw no test output" is not evidence
+#     the tests did not run — the ELAPSED SECONDS are. A real suite takes
+#     minutes (616 s measured on a three-project repo); a hook that fell through
+#     its own guards returns in about a second.
+#   - A `**Test**` value chaining projects with `&&` SHORT-CIRCUITS. When the
+#     first project fails, the later ones are UNRUN — not passing. The block
+#     message names the whole command, so do not read a failure as "everything
+#     after the first project was fine"; nothing after it was executed at all.
 
 # Fail CLOSED when the sourced lib is missing: without it every gc_* helper is
 # undefined, GC_CMD stays empty, and this gate would exit 0 on every commit.
@@ -154,9 +165,17 @@ cd "$REPO_PATH" || exit 1
 # gate, and "it failed" with no output leaves nothing to act on. Bounded to the
 # last 20 lines so a chatty gate cannot flood the transcript.
 OUT=$(mktemp 2>/dev/null || echo "$REPO_PATH/.pre-commit-test.out")
+PCT_T0=$(date +%s 2>/dev/null || echo 0)
 if eval "$TEST_CMD" > "$OUT" 2>&1; then
   rm -f "$OUT"
-  echo "PRE-COMMIT: '$TEST_CMD' passed." >&2
+  # The elapsed seconds are the ONLY external evidence the suite actually ran.
+  # On success the captured output is deleted (right above) — correct, it is
+  # noise on a green run — so "I saw no test output" is not evidence of a no-op.
+  # A real suite takes minutes (616 s measured on a three-project repo); a hook
+  # that fell through its own guards returns in about a second. One number
+  # tells the two apart without reintroducing the noise.
+  PCT_T1=$(date +%s 2>/dev/null || echo 0)
+  echo "PRE-COMMIT: '$TEST_CMD' passed. ($((PCT_T1 - PCT_T0))s)" >&2
   exit 0
 else
   echo "BLOCKED: '$TEST_CMD' failed — re-run it and fix the failures before committing." >&2

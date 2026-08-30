@@ -9,10 +9,27 @@
 # The stderr is fed back to the agent, which continues and produces the report.
 #
 # Loop guard: a marker file bounds enforcement to EXACTLY ONE forced continuation
-# per session+agent (SubagentStop has no documented stop_hook_active field, so we
-# keep our own state). On the second non-compliant stop the agent is let through
-# and a non-blocking CONTRACT-ENFORCER stderr line tells the PO to treat the
-# report as incomplete.
+# per session+agent (SubagentStop carries no stop_hook_active field — see below —
+# so we keep our own state). The marker is STICKY: once written it is never
+# removed by this hook, on any path. Every later stop for that same session+agent
+# passes through with a non-blocking CONTRACT-ENFORCER stderr line telling the PO
+# to treat the report as incomplete.
+#
+# v2.2.2: it used to be deleted on BOTH the compliant path and the let-through
+# path, which made it bound nothing — the next stop started fresh and prodded
+# again, so a coder that kept yielding was prodded on every odd-numbered stop
+# forever. Markers are left to TMPDIR lifetime rather than given a
+# json_warn_once-style TTL on purpose: an expiring marker re-arms mid-run, which
+# is the same unbounded loop with a slower clock.
+#
+# SubagentStop terminal detection: investigated in v2.2.2, not available. The
+# measured payload (user-level-reference/settings-reference.md, "Measured stdin
+# fields") carries agent_id, agent_type, agent_transcript_path and
+# last_assistant_message — no stop_hook_active and no "this agent will resume"
+# flag. A trailing tool_use block is NOT a substitute discriminator: that is the
+# same fact this hook already encodes as "empty text => no report". So the hook
+# cannot tell a terminal stop from an intermediate yield, and the sticky marker
+# is what bounds the cost of not knowing. Do not add a heuristic here.
 #
 # Deliberately FAIL-OPEN when broken (transcript missing, node absent, fields
 # absent, marker dir unwritable): a broken enforcer must never trap an agent.
@@ -33,7 +50,12 @@ jlib="$(dirname "$0")/lib/json.sh"
 json_require_node enforce-agent-contract "$(json_session "$INPUT")" || exit 0
 
 AGENT_TYPE=$(json_get "$INPUT" agent_type)
-TRANSCRIPT=$(json_get "$INPUT" transcript_path)
+# v2.2.2: the measured SubagentStop payload lists agent_transcript_path -- this
+# subagent's own JSONL, not the session's -- and retro-ledger.sh, the other
+# consumer of this event, reads it. This hook read transcript_path. Prefer the
+# documented field; keep transcript_path as a fallback for a payload lacking it.
+TRANSCRIPT=$(json_get "$INPUT" agent_transcript_path)
+[ -n "$TRANSCRIPT" ] || TRANSCRIPT=$(json_get "$INPUT" transcript_path)
 AGENT_ID=$(json_get "$INPUT" agent_id)
 SESSION_ID=$(json_get "$INPUT" session_id)
 
@@ -52,9 +74,16 @@ process.stdin.on("end",()=>{
   let txt="";
   for (const l of lines){
     let j; try { j=JSON.parse(l); } catch(e) { continue; } // first line may be cut by tail
-    if (j.type==="assistant" && j.message && Array.isArray(j.message.content)){
-      txt=j.message.content.filter(b=>b&&b.type==="text").map(b=>b.text||"").join("\n");
-    }
+    if (j.type!=="assistant" || !j.message) continue;
+    // v2.2.2: message.content is an ARRAY only for turns that mix text with
+    // tool calls. A plain text-only assistant turn -- which is exactly what a
+    // compliant final report is -- serializes content as a STRING. Reading
+    // only the array shape skipped every compliant report and left txt holding
+    // an earlier, non-compliant, mid-run turn, so the agent could never satisfy
+    // the contract. Both shapes now, string first.
+    const c=j.message.content;
+    if (typeof c==="string") txt=c;
+    else if (Array.isArray(c)) txt=c.filter(b=>b&&b.type==="text").map(b=>b.text||"").join("\n");
   }
   process.stdout.write(txt);
 });' 2>/dev/null)
@@ -87,13 +116,12 @@ TMPBASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
 MARKER="$TMPBASE/.contract-prod-${SESSION_ID}-${AGENT_ID}"
 
 if [ "$ok" = "1" ]; then
-  rm -f "$MARKER" 2>/dev/null
   exit 0
 fi
 
-# Second non-compliant stop: let it through, but signal the PO.
+# Already prodded once this session for this agent: let every later stop through,
+# but signal the PO. The marker is NOT removed here -- see the loop-guard note.
 if [ -f "$MARKER" ]; then
-  rm -f "$MARKER" 2>/dev/null
   echo "CONTRACT-ENFORCER: $AGENT_TYPE/$AGENT_ID ended without $missing after one prod — treat the report as incomplete and re-dispatch per the stall runbook." >&2
   exit 0
 fi

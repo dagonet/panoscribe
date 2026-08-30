@@ -13,40 +13,28 @@
 # (never argv, which has platform length caps) and print the value with no
 # trailing newline.
 #
+# v2.2.1: a backend is PROBED before it is trusted (json_probe_ok). Being on
+# PATH is not evidence that a thing works — Windows ships a non-functional
+# `python3` stub on PATH by default — and a broken parser was indistinguishable
+# from an absent field, which put the git gates back on the fail-OPEN path the
+# whole of v2.2.0 exists to close.
+#
 # Source it from a hook:  . "$(dirname "$0")/lib/json.sh"
 
 JSON_PARSER=""
-
-# json_parser -- prints node | python3 | jq | none (memoised).
-json_parser() {
-  if [ -z "$JSON_PARSER" ]; then
-    if   command -v node    >/dev/null 2>&1; then JSON_PARSER=node
-    elif command -v python3 >/dev/null 2>&1; then JSON_PARSER=python3
-    elif command -v jq      >/dev/null 2>&1; then JSON_PARSER=jq
-    else                                          JSON_PARSER=none
-    fi
-  fi
-  printf '%s' "$JSON_PARSER"
-}
-
-# json_have -- true when any backend is available.
-json_have() { [ "$(json_parser)" != "none" ]; }
 
 # A UTF-8 BOM. Claude Code does not emit one, but a payload that has been
 # round-tripped through a Windows tool can carry it, and it makes every backend
 # fail to parse — stripped once here rather than three times below.
 JSON_BOM=$(printf '\357\273\277')
 
-# json_get <json> <dotted.path> -- prints the scalar at that path, or "".
-#
-# Objects, arrays, null and missing keys all print "" — the hooks treat an
-# unreadable field as absent, which is the same contract the old `node -e ||
-# echo ''` calls had.
-json_get() {
-  case "$1" in "$JSON_BOM"*) set -- "${1#"$JSON_BOM"}" "$2" ;; esac
-  case "$(json_parser)" in
+# json_read <backend> <json> <dotted.path> -- the per-backend field read.
+# Not called directly by hooks; json_get picks the backend. Split out of
+# json_get in v2.2.1 so json_parser can PROBE a backend before trusting it.
+json_read() {
+  case "$1" in
     node)
-      printf '%s' "$1" | node -e '
+      printf '%s' "$2" | node -e '
         var v; try { v = JSON.parse(require("fs").readFileSync(0, "utf8")); }
         catch (e) { process.exit(0); }
         var p = process.argv[1].split(".");
@@ -56,7 +44,7 @@ json_get() {
         }
         if (v === undefined || v === null || typeof v === "object") process.exit(0);
         process.stdout.write(String(v));
-      ' "$2" 2>/dev/null
+      ' "$3" 2>/dev/null
       ;;
     python3)
       # Bytes in, bytes out, UTF-8 both ways. `json.load(sys.stdin)` decodes in
@@ -64,7 +52,7 @@ json_get() {
       # LC_ALL=C an em dash in the payload raises UnicodeDecodeError, the field
       # comes back empty, and a gate that keys on it exits 0 silently. The
       # matching sys.stdout.write would raise UnicodeEncodeError on the way out.
-      printf '%s' "$1" | python3 -c '
+      printf '%s' "$2" | python3 -c '
 import json, sys
 try:
     v = json.loads(sys.stdin.buffer.read().decode("utf-8-sig", "replace"))
@@ -78,10 +66,10 @@ for k in sys.argv[1].split("."):
 if v is None or isinstance(v, (dict, list)):
     sys.exit(0)
 sys.stdout.buffer.write((v if isinstance(v, str) else json.dumps(v)).encode("utf-8"))
-' "$2" 2>/dev/null
+' "$3" 2>/dev/null
       ;;
     jq)
-      printf '%s' "$1" | jq -j --arg p "$2" '
+      printf '%s' "$2" | jq -j --arg p "$3" '
         getpath($p | split("."))
         | if . == null or type == "object" or type == "array" then ""
           elif type == "string" then .
@@ -90,6 +78,100 @@ sys.stdout.buffer.write((v if isinstance(v, str) else json.dumps(v)).encode("utf
       ;;
     *) printf '' ;;
   esac
+}
+
+# json_probe_ok <backend> -- v2.2.1: does this backend actually WORK?
+#
+# `command -v` is not enough. Windows ships an App-Installer STUB at
+# %LOCALAPPDATA%/Microsoft/WindowsApps/python3 that is on PATH by default and
+# is not an interpreter; conda/pyenv shims, a half-installed node and a jq
+# built without a working locale fail the same way. json_get then returns ""
+# for every field, the git gates read an empty command, and they exit 0 — the
+# fail-OPEN outcome PR15's fail-closed design exists to prevent, on the exact
+# platform most of this toolkit's users are on. A missing parser is detected; a
+# broken one was not.
+#
+# The probe is a nested read, not just "did it run": a backend that executes
+# but extracts the wrong thing is no more usable than one that crashes.
+JSON_PROBE='{"jp":{"k":"ok"}}'
+json_probe_ok() {
+  [ "$(json_read "$1" "$JSON_PROBE" jp.k)" = "ok" ]
+}
+
+# json_parser_init -- resolve the backend ONCE, into the CURRENT shell.
+#
+# Memoisation only works if the assignment survives, and it does not survive a
+# command substitution. `json_parser()` is almost always called as
+# `$(json_parser)`, so the probe ran in a throwaway subshell and `JSON_PARSER`
+# was empty again on the next call — roughly five probe forks per git-gate run
+# on a Bash|PowerShell matcher, not the "one, on first use" the comment claimed.
+# Cheap while the probe was a `command -v` builtin; not cheap now that it execs
+# an interpreter. So the callers below call THIS in their own shell and read
+# $JSON_PARSER, and `json_parser` stays as the printing wrapper for the few
+# places that want the name. gc_read_stdin's json_have call runs in the hook's
+# top-level shell, so the later `$(json_get …)` subshells inherit the resolved
+# value and the whole gate costs one probe.
+json_parser_init() {
+  [ -n "$JSON_PARSER" ] && return 0
+  JSON_PARSER=none
+  for jsb in node python3 jq; do
+    command -v "$jsb" >/dev/null 2>&1 || continue
+    json_probe_ok "$jsb" || continue
+    JSON_PARSER=$jsb
+    break
+  done
+  return 0
+}
+
+# json_parser -- prints node | python3 | jq | none.
+json_parser() { json_parser_init; printf '%s' "$JSON_PARSER"; }
+
+# json_have -- true when a WORKING backend is available.
+json_have() { json_parser_init; [ "$JSON_PARSER" != "none" ]; }
+
+# json_valid <json> -- true when the payload parses as JSON.
+#
+# v2.2.1: json_get returns "" both for "field absent" and for "the payload is
+# not JSON", and the git gates read that as "no command here, allow". A gate
+# that cannot determine the answer must refuse, so the callers need to tell the
+# two apart. Empty stdin is deliberately INVALID here, not an empty document.
+json_valid() {
+  case "$1" in "$JSON_BOM"*) set -- "${1#"$JSON_BOM"}" ;; esac
+  [ -n "$1" ] || return 1
+  json_parser_init
+  case "$JSON_PARSER" in
+    node)
+      printf '%s' "$1" | node -e '
+        try { JSON.parse(require("fs").readFileSync(0, "utf8")); }
+        catch (e) { process.exit(1); }
+      ' 2>/dev/null
+      ;;
+    python3)
+      printf '%s' "$1" | python3 -c '
+import json, sys
+try:
+    json.loads(sys.stdin.buffer.read().decode("utf-8-sig", "replace"))
+except Exception:
+    sys.exit(1)
+' 2>/dev/null
+      ;;
+    jq)
+      printf '%s' "$1" | jq -e . >/dev/null 2>&1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# json_get <json> <dotted.path> -- prints the scalar at that path, or "".
+#
+# Objects, arrays, null and missing keys all print "" — the hooks treat an
+# unreadable field as absent, which is the same contract the old `node -e ||
+# echo ''` calls had. Callers that must not conflate "absent" with "unparseable"
+# check json_valid first.
+json_get() {
+  case "$1" in "$JSON_BOM"*) set -- "${1#"$JSON_BOM"}" "$2" ;; esac
+  json_parser_init
+  json_read "$JSON_PARSER" "$1" "$2"
 }
 
 # json_session <json> -- the payload's session_id, by grep. Deliberately NOT
@@ -134,10 +216,18 @@ json_warn_no_parser() {
 # engine is an embedded node program (a JSONL transcript scan, a JSON rewrite)
 # rather than a field read. Returns non-zero — and warns once per session — when
 # node is missing, so the caller can `|| exit 0`.
+#
+# v2.2.1: this is the SECOND entry point a broken interpreter reaches, so it
+# runs the same probe as json_parser rather than a bare `command -v node`. A
+# node that is on PATH but does not execute would otherwise pass here, the
+# embedded program would produce nothing, and the hook would fail open in
+# silence — exactly the case json_probe_ok exists for.
 json_require_node() {
-  command -v node >/dev/null 2>&1 && return 0
+  if command -v node >/dev/null 2>&1 && json_probe_ok node; then
+    return 0
+  fi
   if json_have; then
-    json_warn_once "$1" "${2:-}" "WARN: $1: node not on PATH (found $(json_parser)) — enforcement inactive"
+    json_warn_once "$1" "${2:-}" "WARN: $1: node not usable (found $(json_parser)) — enforcement inactive"
   else
     json_warn_no_parser "$1" "${2:-}"
   fi

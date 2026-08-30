@@ -32,8 +32,12 @@
 ## Workflow Configuration
 
 - **Task source**: `plan-files`
-- **Branch strategy**: `main` is protected; feature branches per task (see AGENT_TEAM.md Mode Behavior Table for naming convention)
-<!-- Branch names the protection hooks read; comma-separated. Empty or `none` = no protected branch. -->
+- **Branch strategy**: feature branches per task, PR into `main` (see AGENT_TEAM.md Mode Behavior Table for naming convention). Prose for humans — **no hook reads this line**; the enforced set is `**Protected branches**:` directly below.
+<!-- THE line the protection hooks read; space- or comma-separated names.
+     EDIT THIS if your trunk is not main/master — nothing fills it in for you,
+     and a trunk that is not named here is NOT protected.
+     Absent, empty, or an unfilled {{...}} all fall back to `main master`;
+     `none` protects nothing (branch rules only; a PR merge stays gated). -->
 - **Protected branches**: main
 - **Max parallel workstreams**: 5
 - **Commit convention**: `feat:`, `fix:`, `chore:`, `test:`, `docs:` prefixes

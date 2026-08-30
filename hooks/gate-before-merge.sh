@@ -19,6 +19,19 @@
 #     though the artifact's sha is the parent commit's, and
 #   - the artifact file is younger than 60 minutes (mtime).
 #
+# CONSEQUENCE, by construction, on a repo that commits straight to trunk: the
+# artifact is STALE most of the time. Any commit moves HEAD and changes the
+# tree — a docs-only commit included, because docs are tracked content — so both
+# keys miss. That is correct. The artifact blesses one specific tree, that tree
+# genuinely changed, and the gate cannot know which changes are harmless. The
+# tree key was added in v2.1.5 to fix a different problem (the artifact's `sha`
+# being the PARENT commit when an agent chains `git add … && git commit`), not
+# to make an artifact outlive later commits. It costs nothing in practice: this
+# gate only fires on merge-shaped commands, so staleness is invisible until an
+# actual merge — at which point re-running the gate is exactly the requirement.
+# Do NOT add a path-filtered or docs-excluding tree key to "fix" it: deciding
+# which file changes are safe to skip is the judgement a gate must not make.
+#
 # No-op (exit 0) when PROJECT_CONTEXT.md has no Gate command or the field is
 # still a {{...}} placeholder — same graceful degradation as pre-commit-test.sh.
 #
