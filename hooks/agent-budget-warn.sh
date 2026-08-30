@@ -18,6 +18,14 @@
 # Cost discipline: this fires on EVERY agent tool call, so the hot path is pure
 # shell — one grep, no node, and an immediate exit on the main thread.
 #
+# PARSER-FREE BY CONSTRUCTION, and therefore silent about parsers (v2.2.1).
+# The one field it needs is agent_id, and it reads it with a grep over the raw
+# payload — it never sources hooks/lib/json.sh, so it does not need node,
+# python3 or jq and never prints the `WARN: <hook>: no JSON parser on PATH`
+# line the six fail-open hooks print. The v2.2.0 notes read as though every
+# fail-open hook warns; this one has nothing to warn about. Do NOT add a warn
+# call here: it would fire on every agent tool call for no enforcement gap.
+#
 # Posture: WARN once, then block on each threshold crossing. A hard wall would
 # break legitimate large tasks; the goal is to force a deliberate reconsideration
 # at each escalation. Wrap with the WARN-on-127 form in settings.json (exit 0) —

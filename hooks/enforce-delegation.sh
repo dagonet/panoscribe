@@ -110,7 +110,21 @@ process.stdin.on("end", () => {
         /^mvn\s/.test(s) ||
         /^(\.\/)?gradlew?\b/.test(s) ||
         /^go\s+test\b/.test(s) ||
-        /hooks\/run-gate\.sh/.test(s)
+        // v2.2.1: anchored like every sibling above. Unanchored, this matched
+        // the STRING "hooks/run-gate.sh" anywhere in the command -- including
+        // inside the applied_files JSON that /sync-template step 7 assembles,
+        // which necessarily names that very file. The more faithfully the skill
+        // was followed, the more certainly the sync command itself was denied.
+        // (No apostrophes in this block: the whole program is a single-quoted
+        // shell argument, so one would end the string and disable the hook.)
+        // This hook is fail-OPEN workflow policy: a false DENY costs real work,
+        // so patterns match command position only. The three git gates are
+        // fail-CLOSED and deliberately do the opposite -- see hooks/lib/git-cmd.sh.
+        // The leading class is PATH characters only, not \S*: with \S* a
+        // pretty-printed JSON line whose first token merely ENDS in the path
+        // (a quote, a brace, a colon before it) still matched, which is the
+        // hole this anchor was closing.
+        /^(bash\s+|sh\s+)?[\w./\\-]*hooks\/run-gate\.sh\b/.test(s)
       );
     };
 

@@ -957,7 +957,9 @@ When `PROJECT_CONTEXT.md` doesn't exist, the PO creates it from this template:
 - **Name**: {project name}
 - **Tech stack**: {languages, frameworks, databases}
 - **Repository**: {repo URL}
-- **Branch strategy**: `main` is protected; feature branches per task (see AGENT_TEAM.md Mode Behavior Table for naming convention)
+- **Branch strategy**: feature branches per task, PR into `main` (see AGENT_TEAM.md Mode Behavior Table for naming convention). Prose for humans — no hook reads this line.
+<!-- THE line the protection hooks read; space- or comma-separated names. Absent or empty -> `main master`. `none` protects nothing (branch rules only; a PR merge stays gated). Write a REAL branch name here, never a placeholder. -->
+- **Protected branches**: main
 
 ## Commands
 
