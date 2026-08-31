@@ -127,10 +127,13 @@ if [ -z "$REPO_TOP" ]; then
   exit 0
 fi
 
-# Read Gate command from PROJECT_CONTEXT.md. Tolerates: leading "- " / "* " list
+# Read Gate command from PROJECT_CONTEXT.md through GC_KEY_PRE (see the header
+# note on that constant in hooks/lib/git-cmd.sh: a leading UTF-8 BOM otherwise
+# hides a key that sits on line 1).
+# Tolerates: leading "- " / "* " list
 # markers, the "**Gate Command**:" label style (java/python variants), and
 # surrounding backticks — several variants write commands as `cmd`.
-GATE_CMD=$(grep -E '^[-*[:space:]]*\*\*Gate( Command)?\*\*:' "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+GATE_CMD=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
 
 # No-op: no PROJECT_CONTEXT.md or no Gate command configured
 if [ -z "$GATE_CMD" ]; then

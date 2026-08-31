@@ -86,13 +86,16 @@ GC_SEGMENTS
 # Not a commit -- nothing to gate.
 [ -n "$REPO_PATH" ] || exit 0
 
-# Read test command from PROJECT_CONTEXT.md. Tolerates: leading "- " / "* " list
+# Read test command from PROJECT_CONTEXT.md through GC_KEY_PRE (see the header
+# note on that constant in hooks/lib/git-cmd.sh: a leading UTF-8 BOM otherwise
+# hides a key that sits on line 1, and THIS hook's no-field arm is warn+allow).
+# Tolerates: leading "- " / "* " list
 # markers, the "**Test Command**:" label style (java/python variants), and
 # surrounding backticks — several variants write commands as `cmd`.
 # v2.1.3 fix round 1: **Test** always wins when present -- cheap, unchanged
 # behaviour for repos that declare a lightweight Test command. run-gate.sh is
 # only consulted below when there is NO Test field.
-TEST_CMD=$(grep -E '^[-*[:space:]]*\*\*Test( Command)?\*\*:' "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Test\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+TEST_CMD=$(grep -E "${GC_KEY_PRE}\*\*Test( Command)?\*\*:" "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Test\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
 
 # v2.1.3 fix round 2: a still-unfilled {{...}} Test placeholder must not win
 # precedence over a real Gate command -- dotnet/dotnet-maui ship exactly this
@@ -115,7 +118,7 @@ esac
 # directly) -- it falls through to the "nothing to run" WARN below, same as no
 # Gate field at all, so a mid-setup repo cannot get a false green.
 if [ -z "$TEST_CMD" ]; then
-  GATE_CMD_RAW=$(grep -E '^[-*[:space:]]*\*\*Gate( Command)?\*\*:' "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+  GATE_CMD_RAW=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
   case "$GATE_CMD_RAW" in
     *\{\{*\}\}*) GATE_CMD_RAW="" ;;
   esac

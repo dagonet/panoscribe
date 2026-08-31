@@ -43,10 +43,19 @@ if [ -z "$REPO_TOP" ]; then
   exit 1
 fi
 
-# Read Gate command from PROJECT_CONTEXT.md. Tolerates: leading "- " / "* " list
+# GC_KEY_PRE, defined locally: this script is deliberately standalone (it must
+# run with no JSON parser on PATH, which sourcing hooks/lib/git-cmd.sh would
+# forbid), so it repeats the constant rather than importing it. The definition
+# and the reason live in the header note on GC_KEY_PRE in hooks/lib/git-cmd.sh;
+# scripts/verify-template-consistency.sh asserts the two stay in step.
+GC_BOM=$(printf '\357\273\277')
+GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
+
+# Read Gate command from PROJECT_CONTEXT.md. Tolerates: an optional leading
+# UTF-8 BOM, leading "- " / "* " list
 # markers, the "**Gate Command**:" label style (java/python variants), and
 # surrounding backticks — several variants write commands as `cmd`.
-GATE_CMD=$(grep -E '^[-*[:space:]]*\*\*Gate( Command)?\*\*:' "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+GATE_CMD=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
 
 # No-op: no PROJECT_CONTEXT.md or no Gate command configured
 if [ -z "$GATE_CMD" ]; then
