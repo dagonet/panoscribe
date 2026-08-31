@@ -49,6 +49,26 @@ GC_CMD=""
 # number of `-c <key>=<value>` options between `git` and the subcommand.
 GC_GIT_PRE='\bgit\b([[:space:]]+-C[[:space:]]+[^[:space:]]+)?([[:space:]]+-c[[:space:]]+[^[:space:]]+)*'
 
+# v2.2.4 -- the tolerant prefix EVERY `**Key**:` anchor over PROJECT_CONTEXT.md
+# must start with. Read this before writing a new field extractor:
+#
+#   the server strips the BOM for hashing and the hooks do not for grepping, so
+#   the same file is two different files depending on which subsystem is looking
+#
+# A UTF-8 BOM (ef bb bf) sits at byte 0, i.e. INSIDE line 1, so `^` no longer
+# abuts the key and the grep returns nothing -- and "no field found" is the
+# fail-OPEN arm in pre-commit-test.sh (warn and allow), not a parse error. This
+# is routine on Windows: PowerShell 5.1's `>` and `Out-File` write UTF-8 WITH a
+# BOM, so one redirect gives a config file a permanent, invisible one. The
+# exposure is only ever line 1, which is why the bug hides until someone moves
+# a key to the top of the file.
+#
+# GC_KEY_PRE also carries the leading list-marker tolerance ("- " / "* "), so
+# an anchor is `grep -E "${GC_KEY_PRE}\*\*Gate\*\*:"`. The paired `sed` needs no
+# change: its leading `.*` consumes the BOM along with the marker.
+GC_BOM=$(printf '\357\273\277')
+GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
+
 # Reads the hook payload from stdin and populates GC_TOOL / GC_CWD / GC_CMD.
 #
 # With no JSON parser on PATH the gates cannot see the command at all, so they
@@ -286,7 +306,7 @@ gc_fallback_protected() {
 gc_protected_branches() {
   gcpb_top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)
   [ -n "$gcpb_top" ] || { printf '%s' "main master"; return 0; }
-  gcpb_line=$(grep -E '^[-*[:space:]]*\*\*Protected [Bb]ranches\*\*:' "$gcpb_top/PROJECT_CONTEXT.md" 2>/dev/null | head -1)
+  gcpb_line=$(grep -E "${GC_KEY_PRE}\*\*Protected [Bb]ranches\*\*:" "$gcpb_top/PROJECT_CONTEXT.md" 2>/dev/null | head -1)
   [ -n "$gcpb_line" ] || { gc_fallback_protected "$gcpb_top"; return 0; }
   gcpb=$(printf '%s' "$gcpb_line" \
     | sed 's/.*\*\*Protected [Bb]ranches\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' \
