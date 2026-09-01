@@ -29,7 +29,100 @@
 # argument justifies it, so ITS patterns are anchored to command position. Do
 # not "fix" these three the same way; the polarity is the whole difference.
 #
+# EXIT-CODE CONVENTIONS for the gates and the gate runner (v2.2.5). All four
+# meanings in one place, because the fourth only makes sense against the others:
+#
+#     0    pass / not applicable — the tool call proceeds. NOTE it is OVERLOADED
+#          at the success end and deliberately so: run-gate.sh also exits 0 when
+#          the gate DID NOT RUN (no Gate field, no Gate command matched, or the
+#          value is still a {{...}} placeholder), and pre-commit-test.sh cannot
+#          tell those from "ran and passed". Documented as intentional, but know
+#          the shape: v2.2.4's BOM bug is exactly the mechanism that makes it
+#          live — a `**Gate**:` key that stops matching falls to the no-command
+#          arm, exits 0, and every commit sails through looking clean. Not in
+#          scope for v2.2.5; stated here so the next person adding a code sees
+#          the whole picture rather than half of it.
+#     2    BLOCK. Retrying after fixing the reported failure can succeed.
+#    78    BLOCK, TERMINAL — retrying cannot change the outcome. `GC_TERMINAL_RC`
+#          below.
+#
+#          78 MEANS TERMINAL. THE sysexits NAME IS A COINCIDENCE, NOT A REASON.
+#          An earlier draft justified the number as EX_CONFIG ("configuration
+#          error"). That argument is withdrawn twice over. First, the class is
+#          wider than configuration: the self-reference guard IS a config error,
+#          but "not inside a git repository" and a consumer's missing-dependency
+#          preflight are ENVIRONMENT errors. All three are terminal — retrying
+#          changes none of them — and only one is a config error, so anyone
+#          checking the number against sysexits.h and concluding two codes are
+#          needed would re-fragment the class this exists to unify. Second, a
+#          DOCUMENTED code is MORE likely to collide, not less, because other
+#          sysexits-aware programs emit 78 for its documented meaning. Which is
+#          the point below.
+#
+#          THE CLAMP IS WHAT MAKES 78 SAFE, AND THE NUMBER NEVER WAS. A hook
+#          NEVER forwards a child's exit code. run-gate.sh runs an arbitrary
+#          consumer gate command; if that command exits 78 for its own reasons,
+#          forwarding it would hand a plain test failure the terminal remedy
+#          text ("edit your **Gate** value") — INVERTED advice, strictly worse
+#          than the generic retry line it replaced. So run-gate.sh clamps a
+#          gate command's 78 to 1. Anything that starts capturing `$?` and
+#          exiting it verbatim opens that channel; do not.
+#   127    the HOOK script did not run — its file is missing or its interpreter
+#          is unreadable, so the harness never got a verdict out of it. This is
+#          why every hook registration is 127-wrapped: an un-run gate must not
+#          read as a pass.
+#
+# THAT LAST LINE IS ABOUT HOOKS, AND ONLY ABOUT HOOKS (v2.2.5). Do not carry it
+# across to a CHECKER you invoke yourself. `bash -n <file>` returning 127 is
+# bash's own verdict *about the file it was handed* — "No such file or
+# directory" — so there it is a hard ERROR naming a missing script, never a
+# shrug. Reading it as "did not run" would wave through `bash -n
+# hooks/deleted-thing.sh`, which is precisely the condition the wrapper above
+# exists to catch. The distinction is the direction of the call: 127 arriving
+# FROM the harness means our script was not launched; 127 arriving from a child
+# we launched ourselves is that child's answer. See the verdict table in
+# user-level-reference/skills/sync-template/SKILL.md step 4.
+#
+# WHY 78 EXISTS (v2.2.5, consumer report). `run-gate.sh`'s RUN_GATE_ACTIVE guard
+# fires correctly when a project's **Gate** value is `bash hooks/run-gate.sh`,
+# and then the outer layers buried its accurate one-line diagnosis under two
+# generic failures that BOTH said "fix the failures and re-run" — advice to
+# retry the one thing that cannot succeed. The defect was not the wording: the
+# caller had no way to tell a terminal failure from a retryable one. So the
+# distinction is carried in the exit code, and every outer handler suppresses
+# its retry advice on GC_TERMINAL_RC *structurally* — it never matches on a
+# message or names a particular guard, so the next terminal guard inherits the
+# behaviour by exiting 78 and nothing else has to change.
+#
+# A guard that fires correctly and then prints misleading remediation is not
+# much better than one that does not fire. Whatever prints a terminal failure
+# ends with the SPECIFIC remedy, and prints no generic "re-run" line at all.
+#
+# THE BRANCH IS THE FIX; THE NUMBER IS ONLY A NAME. run-gate.sh's
+# self-reference guard has exited a distinct, non-generic code (2) since v2.1.3
+# and NO outer handler ever read it — before v2.2.5 no script in hooks/ captured
+# `$?` into a variable or compared an exit code against anything at all. The
+# advice was circular not because the code was indistinguishable but because
+# nothing looked at it. So the load-bearing half of this change is
+# pre-commit-test.sh and gate-before-merge.sh LEARNING TO BRANCH; renaming 2 to
+# 78 while the callers still test truthiness would have been the most expensive
+# possible no-op. The rename is still right, for the correct reason: 2 is
+# already the hooks' own BLOCK code, so the moment anything does branch, an
+# ordinary block and a terminal gate would be indistinguishable.
+#
+# 78 IS AN INTERNAL SIGNAL AND NEVER A HOOK'S OWN EXIT STATUS. The harness
+# treats every non-zero, non-2 PreToolUse exit as a NON-BLOCKING error and lets
+# the tool call proceed — so a hook that *exits* 78 warns and ALLOWS. run-gate.sh
+# may return 78 to its caller because it is a runner, not a hook;
+# pre-commit-test.sh and gate-before-merge.sh must still exit 2 when they block
+# and use the 78 only to choose which remediation text to print.
+#
 # Source it from a hook:  . "$(dirname "$0")/lib/git-cmd.sh"
+
+# The standalone hooks/run-gate.sh repeats this literal (it must run with no
+# JSON parser on PATH, which sourcing this file forbids);
+# scripts/verify-template-consistency.sh asserts the two copies agree.
+GC_TERMINAL_RC=78
 
 # Fail CLOSED when the JSON reader is missing: without it GC_CMD would be empty
 # and every gate would allow every command.
