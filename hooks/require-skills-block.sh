@@ -2,13 +2,15 @@
 # PreToolUse hook: require '## Required Skills' block in spawn prompts for
 # bound subagent_types.
 #
-# Matcher: Task
+# Matcher: Agent   (was `Task`. The header said Task until v3.0.0 while
+#                   settings.json registered Agent, and that drift is the trail
+#                   to a hook that had never fired — see the field-path note.)
 #
-# Enforces the AGENT_TEAM.md Spawn-Prompt Binding Table. When the PO spawns
+# Enforces `AGENT_TEAM.md` §Spawn-Prompt Binding Table. When the PO spawns
 # a Task whose subagent_type is in the binding table, the prompt body MUST
 # contain a literal '## Required Skills' line. Subagent types not in the
-# table pass through. The 'code-reviewer' and 'doc-generator' types have
-# no required skills and also pass through.
+# table pass through. The 'code-reviewer' type has no required skills and
+# also passes through.
 #
 # DRIFT WARNING: the case statement below duplicates the binding table in
 # templates/general/AGENT_TEAM.md §Superpowers Skills Integration. The
@@ -19,7 +21,14 @@
 # §Architecture). Reads its payload through hooks/lib/json.sh, the shared
 # node/python3/jq reader the git gates use.
 
-TOOL_INPUT=$(cat)
+# ⚠ NAMED `HOOK_PAYLOAD`, NOT `TOOL_INPUT`, AND THE RENAME IS THE POINT.
+# Until v3.0.0 this held the WHOLE stdin document while being called
+# `TOOL_INPUT`, and the string `tool_input` appeared nowhere in the file. That
+# is why the dead-hook defect below survived review: `json_get "$TOOL_INPUT"
+# subagent_type` reads perfectly as "get subagent_type from the tool input", so
+# an auditor confirms the intent and moves on. The variable was named for an
+# extraction that was never performed.
+HOOK_PAYLOAD=$(cat)
 
 # v2.2.0: fields are read through hooks/lib/json.sh (node, python3 or jq).
 # Fail-open with one WARN when none of the three is on PATH.
@@ -29,10 +38,63 @@ jlib="$(dirname "$0")/lib/json.sh"
   exit 0
 }
 . "$jlib"
-json_have || { json_warn_no_parser require-skills-block "$(json_session "$TOOL_INPUT")"; exit 0; }
+json_have || { json_warn_no_parser require-skills-block "$(json_session "$HOOK_PAYLOAD")"; exit 0; }
 
-SUBAGENT_TYPE=$(json_get "$TOOL_INPUT" subagent_type)
-PROMPT=$(json_get "$TOOL_INPUT" prompt)
+# ⚠ THE FIELDS ARE NESTED UNDER `tool_input`, AND READING THEM AT THE TOP LEVEL
+# MEANT THIS HOOK HAD NEVER FIRED (v3.0.0).
+#
+# Measured two ways. A payload in the harness's real shape exited 0 for a BOUND
+# subagent_type with no `## Required Skills` block; the same payload with the
+# fields flattened exited 2. And on the real harness, a bound `architect` spawn
+# with no skills block LAUNCHED. So `SUBAGENT_TYPE` was always empty, every
+# spawn fell to the `*)` default arm, and the hook exited 0 on every spawn ever
+# made.
+#
+# Every other hook in this repo already reads nested — `hooks/lib/git-cmd.sh`
+# takes `tool_input.command`, `hooks/enforce-delegation.sh` takes
+# `j.tool_input`. This one was the only top-level reader, and the trail is the
+# stale `# Matcher: Task` header above: the field paths were written against the
+# old tool's payload and the matcher was renamed to `Agent` without them.
+#
+# WHY THE SUITE DID NOT CATCH IT: `mkspawn()` in scripts/test-hooks.sh builds a
+# FLAT payload, so every existing fixture exercised a shape the harness does not
+# send. The nested-shape fixtures added in v3.0.0 are the control that would
+# have.
+#
+# ⚠ WHY THIS IS A v3.0.0 BLOCKER AND NOT A FAST FOLLOW: in the five-binding-form
+# taxonomy this hook's `case` arms are form 1 — FAIL OPEN, SILENT. v3.0.0
+# consolidates 13 agent names to 10. The mechanism meant to catch a mis-bound
+# name after that consolidation is the mechanism that has never run, so the
+# rename would ship and the detector would stay silent for the same reason it
+# has always been silent.
+#
+# WHY THE DESCENT IS HERE AND NOT AT THE `$(cat)` ABOVE. Extracting the whole
+# `tool_input` OBJECT once, then reading scalars out of it, would be the tidier
+# shape — but `hooks/lib/json.sh` cannot do it. MEASURED against the shipped
+# reader (node parser):
+#
+#   json_get "$P" tool_input                 -> []            <- empty
+#   json_get "$P" tool_input.subagent_type   -> [architect]
+#
+# `json_get` returns SCALARS; a sub-object comes back as the empty string, which
+# would make the fallback below fire on every payload and restore the exact
+# defect. So the descent is expressed as a dotted PATH at the point of use,
+# which the reader does support, and the variable above is renamed so it no
+# longer claims a descent that never happened.
+#
+# The top-level read is KEPT as a fallback, deliberately: the live Agent payload
+# cannot be observed from inside the suite, so reading both shapes is correct
+# under either and cannot regress. Nested wins when both are present.
+#
+# ⚠ DO NOT "FIX" hooks/enforce-agent-contract.sh BY ANALOGY. It reads
+# `agent_type`, `agent_id` and `agent_transcript_path` off the top level with no
+# `tool_input` descent, which looks like the same defect and is not: it is a
+# SubagentStop hook, and those fields ARE top-level in that event. Changing it
+# would break a working hook while fixing a dead one.
+SUBAGENT_TYPE=$(json_get "$HOOK_PAYLOAD" tool_input.subagent_type)
+[ -n "$SUBAGENT_TYPE" ] || SUBAGENT_TYPE=$(json_get "$HOOK_PAYLOAD" subagent_type)
+PROMPT=$(json_get "$HOOK_PAYLOAD" tool_input.prompt)
+[ -n "$PROMPT" ] || PROMPT=$(json_get "$HOOK_PAYLOAD" prompt)
 
 case "$SUBAGENT_TYPE" in
   # Any language coder, including ones a project adds itself (cpp-coder, …).
@@ -40,17 +102,22 @@ case "$SUBAGENT_TYPE" in
   coder|*-coder)
     REQUIRED="karpathy-guidelines superpowers:test-driven-development superpowers:verification-before-completion superpowers:receiving-code-review"
     ;;
+  # v3.0.0 (item B2): `tester` ABSORBED `test-writer` and gained its skill.
+  # ABSORB, NEVER RENAME — the survivor keeps the existing name, so a stale
+  # `tester` reference in a consumer's keep-mine prose still resolves. Had the
+  # merged agent taken a new name, every consumer's prose would have gone stale
+  # at once and silently.
   tester)
-    REQUIRED="superpowers:systematic-debugging superpowers:verification-before-completion"
+    REQUIRED="superpowers:systematic-debugging superpowers:verification-before-completion superpowers:test-driven-development"
     ;;
-  test-writer)
-    REQUIRED="superpowers:test-driven-development"
-    ;;
+  # v3.0.0 (item B2): `architect` ABSORBED `requirements-engineer` and gained
+  # `brainstorming` with it. This deliberately REVERSES the earlier R3 decision
+  # that dropped `brainstorming` from the architect row — R3 was correct while a
+  # separate agent owned requirements exploration, and is wrong now that the
+  # same agent does both. Check 9 asserts the new intent and records the
+  # reversal, rather than the old absence quietly outliving its reason.
   architect)
-    REQUIRED="superpowers:writing-plans"
-    ;;
-  requirements-engineer)
-    REQUIRED="superpowers:brainstorming"
+    REQUIRED="superpowers:writing-plans superpowers:brainstorming"
     ;;
   # DELIBERATELY EXEMPT — v2.4.0 (item A5) MADE THIS SET EXPLICIT, and the
   # names are the whole point of the change. Until now `ops` and `Explore`
@@ -73,7 +140,14 @@ case "$SUBAGENT_TYPE" in
   # ADDING A NAME HERE IS A DECISION, NOT A TIDY-UP: it says this agent needs
   # no skills block. Do not add a name here to silence check 29 — the check
   # exists to make that decision visible.
-  ops|Explore|code-reviewer|doc-generator)
+  #
+  # v3.0.0 (item B2): `doc-generator` LEFT THIS ARM BY BEING ABSORBED INTO
+  # `coder`, not by falling out of it — and the difference is the whole reason
+  # this list exists. Docs are now a `coder` spawn, which IS bound, so doc work
+  # now carries the coder skills. Check 29 arm A is what makes the distinction
+  # mechanical: had the agent files been deleted without editing this arm, the
+  # gate would be red before the release shipped.
+  ops|Explore|code-reviewer)
     exit 0
     ;;
   # The genuinely UNKNOWN type: a project's own agent (a consumer's
@@ -94,7 +168,12 @@ fi
 {
   echo "BLOCKED: Task spawn for subagent_type '$SUBAGENT_TYPE' is missing a '## Required Skills' block in the prompt body."
   echo
-  echo "Per AGENT_TEAM.md Spawn-Prompt Binding Table, this subagent_type must invoke:"
+  # This message names a HEADING AT RUNTIME. A shrink of AGENT_TEAM.md can
+  # otherwise leave a live error pointing a blocked user at a section that no
+  # longer exists — inside the very hook that blocked them. Written in the
+  # `§Heading` form so check 30 resolves it against the live headings and goes
+  # red if the section is ever renamed or cut.
+  echo "Per \`AGENT_TEAM.md\` §Spawn-Prompt Binding Table, this subagent_type must invoke:"
   for skill in $REQUIRED; do
     echo "  - $skill"
   done
