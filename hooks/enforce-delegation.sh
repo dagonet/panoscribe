@@ -35,6 +35,18 @@
 #     so they pass. Errs OPEN, matching this hook's failure polarity: a
 #     determined bypass is not the threat model, an accidental main-thread
 #     `pytest` is.
+#   * HEREDOC BODIES ARE STRIPPED before the split (v2.3.0), because a body is
+#     data with an explicit terminator — `cat > plan.md <<EOF … npm test … EOF`
+#     is authoring, not running. Quoted literals are NOT stripped: `bash -c
+#     "npm test"` and `echo "npm test"` are the same syntactic shape, and
+#     separating them needs a maintained wrapper allowlist whose every gap is a
+#     new evasion channel. So `echo "npm test"` stays judged as written.
+#
+# THIS HOOK DOES NOT SOURCE hooks/lib/git-cmd.sh, AND THAT IS THE DESIGN. The
+# three git gates there are fail-CLOSED and scan the whole command string on
+# purpose, so `bash -c "git push origin main"` cannot evade them and a false
+# positive on `echo "git push origin main"` costs one retry. Opposite polarity,
+# opposite trade — do not "unify" the two by giving git-cmd.sh this stripping.
 #
 # Escape hatch: create `.claude/delegation-off` at the repo root to disable
 # (also the fix if a pre-agent_id CLI ever denies subagent calls).
@@ -89,7 +101,28 @@ process.stdin.on("end", () => {
   const cwd = (j.cwd || process.cwd()).replace(/\\/g, "/");
 
   if (tool === "Bash" || tool === "PowerShell") {
-    const cmd = (input.command || "");
+    // v2.3.0: strip HEREDOC BODIES before anything else looks at the string.
+    // A heredoc body is DATA being written to a file, not a command list, and
+    // it is the only quoting form with an EXPLICIT TERMINATOR -- so it can be
+    // removed without guessing where it ends. Measured: the whole of this
+    // false-deny traffic here in the sampled window was authoring a document
+    // that happens to CONTAIN "pytest -q" or "npm test" on a line of its own.
+    // The opening line is KEPT (the redirection and anything after it on that
+    // line are real command text); only the body and its terminator go.
+    // Deliberately NOT extended to quoted literals -- see the header: telling
+    // bash -c "..." from echo "..." needs a maintained wrapper allowlist, and
+    // every wrapper missing from it becomes an evasion channel that is closed
+    // today. An UNTERMINATED heredoc matches nothing and is judged as before.
+    // (No apostrophes in this block: the program is a single-quoted shell
+    // argument. \x27 is the quote character where a regex needs one.)
+    // The leading (^|[^<]) is NOT decoration: without it `cat f <<<EOF` matches
+    // starting at the SECOND `<`, so a here-STRING reads as a heredoc opener and
+    // the real commands after it are swallowed. Caught by the fixture arm that
+    // puts a runner after a here-string, not by reading the regex.
+    const stripHeredocs = (c) => c.replace(
+      /(^|[^<])(<<-?[ \t]*(["\x27]?)([A-Za-z_][A-Za-z0-9_]*)\3[^\n]*\n)[\s\S]*?\n[ \t]*\4[ \t]*(?=\n|$)/g,
+      "$1$2");
+    const cmd = stripHeredocs(input.command || "");
 
     // v2.1.5: evaluate per SEGMENT, not against the whole command string.
     // A segment whose first token is git or gh is exempt (see header).

@@ -218,6 +218,66 @@ gc_read_stdin() {
   GC_CMD=$(gc_protect_c_paths "$GC_CMD")
 }
 
+# gc_cmd_unreadable -- true when this invocation is one the git gates were
+# registered for AND the command string could not be read out of the payload.
+#
+# THE 14th FAIL-OPEN (v2.2.6 round 2). All three gates carried a bare
+# `[ -n "$GC_CMD" ] || exit 0`: a fail-OPEN guard on a fail-CLOSED gate. NO
+# DEFECT WAS EVER OBSERVED IN THE FIELD — the "intermittently empty GC_CMD"
+# once reported here is RETRACTED, along with the timing that appeared to show
+# it (a PreToolUse hook completes BEFORE the Bash tool runs the command, so a
+# timer inside the command cannot observe it; see
+# .superpowers/sdd/sync-feedback/empty-payload-failopen.md). What stands is the
+# STATE, found by reading this code: `command` key present, read yields nothing,
+# gate exits 0. In a gate, an unreadable input is a block, never a pass. The fix
+# is mechanism-agnostic because every sub-cause below warrants the same refusal.
+#
+# THE POLARITY IS NOT FLIPPED UNCONDITIONALLY, and that is the whole design. An
+# unconditional refusal on an empty GC_CMD would block every legitimate Bash
+# payload that carries no command at all — a hard block traded for a silent gap,
+# strictly worse. Of the three states, two are ALREADY fail-closed and only the
+# third is live:
+#
+#   stdin empty or unreadable   -> gc_read_stdin exits 2 (json_valid treats
+#                                  empty stdin as INVALID, deliberately).
+#   no JSON parser on PATH      -> gc_read_stdin exits 2.
+#   payload parsed, GC_CMD ""   -> HERE. It splits three ways:
+#
+#     tool is not Bash/PowerShell   -> GC_CMD is "" BY DESIGN. Allow.
+#     no `command` key at all       -> a legitimate Bash payload carrying no
+#                                      command (see the note in gc_read_stdin
+#                                      and the shipped "Bash payload with no
+#                                      command" fixtures). Allow.
+#     a `command` key IS present and
+#     the read still yielded ""     -> the gate cannot do its job on a real
+#                                      invocation. REFUSE.
+#
+# So this is NARROWER than "missing or empty": an ABSENT key still allows,
+# because making that refuse would hard-block a documented, fixture-covered
+# legitimate case. Only "present but unreadable" refuses.
+#
+# THE KEY PROBE IS A GREP OVER THE RAW PAYLOAD, not a json.sh call — the same
+# reason json_session greps: the state being detected is one where the parser
+# has already returned nothing, so asking it again proves nothing. It is also
+# backend-invariant, so it answers identically in all three parser
+# configurations. A false positive needs an unreadable command AND the literal
+# `"command":` in some other field of the same payload, and it fails CLOSED,
+# which is the correct direction for these three gates.
+#
+# GC_TOOL EMPTY IS DELIBERATELY INCLUDED in the matched set. These gates are
+# registered on Bash|PowerShell, so an empty tool_name on a live invocation is
+# the identical cannot-determine one field over — the read that came back empty
+# just happened to be tool_name instead of tool_input.command. Excluding it
+# would leave the same fault silent through a neighbouring door.
+gc_cmd_unreadable() {
+  [ -z "$GC_CMD" ] || return 1
+  case "$GC_TOOL" in
+    Bash|PowerShell|'') ;;
+    *) return 1 ;;
+  esac
+  printf '%s' "$GC_JSON" | grep -q '"command"[[:space:]]*:'
+}
+
 # gc_protect_c_paths <command> -- make quoted `-C` paths survive quote stripping.
 #
 # gc_segments deletes quote characters, so `git -C "C:/a b" push` would become

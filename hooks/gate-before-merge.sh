@@ -56,16 +56,29 @@ gc_guard_off && exit 0
 
 CWD="$GC_CWD"
 
+# v2.2.6 round 2 -- THE 14th FAIL-OPEN, third instance. Checked BEFORE the tool
+# case below, because that case's `*)` arm is exactly the door an unreadable
+# tool_name walks through. See gc_cmd_unreadable in hooks/lib/git-cmd.sh.
+if gc_cmd_unreadable; then
+  echo "BLOCKED: gate-before-merge: the payload carries a command this gate could not read, so it cannot rule out a merge -- refusing. Re-run the command. (If it repeats: create '.claude/git-guard-off' under this cwd, make the one fix, then delete it.)" >&2
+  exit 2
+fi
+
 # Branch on the TOOL, never on the parsed string. This hook is registered on
-# Bash|PowerShell, so if node is missing, the JSON does not parse, or the payload
-# carries no tool_input.command, GC_CMD is empty -- and treating that as "not a
-# Bash call" would fall through to the artifact check and block every Bash call
-# in the session. A Bash payload we cannot read is a Bash payload with no merge
-# in it; only the GitHub merge tools are gated unconditionally.
+# Bash|PowerShell, so if node is missing or the JSON does not parse, GC_CMD is
+# empty -- and treating that as "not a Bash call" would fall through to the
+# artifact check and block every Bash call in the session. A Bash payload with
+# NO COMMAND KEY is a Bash payload with no merge in it; only the GitHub merge
+# tools are gated unconditionally.
+#
+# v2.2.6 round 2 narrows what "we cannot read it" means here: a payload that
+# HAS a `command` key we could not read no longer reaches this case at all --
+# it was refused above. What still falls open below is the genuinely absent
+# key and the genuinely unknown tool, which are not cannot-determine states.
 case "$GC_TOOL" in
   Bash|PowerShell) ;;   # gate only merge-shaped commands (scanned below)
   mcp__*)          ;;   # the GitHub merge tools: always gated
-  *) exit 0 ;;          # unknown or unparseable tool: fail open
+  *) exit 0 ;;          # unknown tool, or a payload with no command key at all
 esac
 
 if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then

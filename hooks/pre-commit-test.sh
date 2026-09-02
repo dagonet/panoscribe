@@ -59,6 +59,17 @@ case "$GC_TOOL" in
     exit 2 ;;
 esac
 
+# v2.2.6 round 2 — THE 14th FAIL-OPEN. A bare `[ -n "$GC_CMD" ] || exit 0` stood
+# here, and a traced `git commit` reached it with an empty GC_CMD on a payload
+# that parsed: the gate exited 0 in silence and the commit completed in ~1 s
+# against an 87 s **Test**. See gc_cmd_unreadable in hooks/lib/git-cmd.sh for the
+# state split and for why the polarity is CONDITIONAL rather than inverted
+# outright — an unconditional refusal here would hard-block every Bash call.
+if gc_cmd_unreadable; then
+  echo "BLOCKED: pre-commit-test: the payload carries a command this gate could not read, so it cannot show your tests passed — refusing rather than allowing an unverified commit. Re-run the commit. (If it repeats: create '.claude/git-guard-off' under this cwd, make the one fix, then delete it.)" >&2
+  exit 2
+fi
+
 [ -n "$GC_CMD" ] || exit 0
 
 # Find the repo of the first `git commit` in the command line (if any).

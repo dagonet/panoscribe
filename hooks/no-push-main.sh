@@ -34,6 +34,15 @@ case "$GC_TOOL" in
     exit 2 ;;
 esac
 
+# v2.2.6 round 2 — THE 14th FAIL-OPEN, same shape as pre-commit-test.sh: a bare
+# `[ -n "$GC_CMD" ] || exit 0` allowed an invocation whose command arrived empty
+# on a payload that parsed. See gc_cmd_unreadable in hooks/lib/git-cmd.sh for the
+# state split and for why the refusal is conditional, not an outright inversion.
+if gc_cmd_unreadable; then
+  echo "BLOCKED: no-push-main: the payload carries a command this gate could not read, so it cannot rule out a push to a protected branch — refusing. Re-run the push. (If it repeats: create '.claude/git-guard-off' under this cwd, make the one fix, then delete it.)" >&2
+  exit 2
+fi
+
 [ -n "$GC_CMD" ] || exit 0
 
 base="$GC_CWD"
