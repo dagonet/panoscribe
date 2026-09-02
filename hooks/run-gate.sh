@@ -16,6 +16,14 @@
 # failure is terminal — a configuration the gate command cannot succeed under,
 # where "re-run it" is the wrong advice. See the exit-code conventions block in
 # hooks/lib/git-cmd.sh.
+#
+# THE TERMINAL CONTRACT IS PUBLIC (v2.3.0). A **Gate** command — typically a
+# preflight chained ahead of the real gate, `bash preflight.sh && <gate>` — can
+# declare its OWN terminal condition: print the remedy to stderr, touch
+# $RUN_GATE_TERMINAL, exit 78. The clamp below then passes the 78 through
+# instead of collapsing it to 1, and the terminal branch stays silent so the
+# consumer's remedy is the last thing on screen. Worked example and the naming
+# commitment this implies: docs/verification.md.
 # No-op (exit 0) when the Gate field is missing or still a {{...}} placeholder,
 # so templates degrade gracefully before a project configures its gate.
 #
@@ -57,6 +65,10 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   echo "Green: writes .gate/last-pass.json (checked by gate-before-merge.sh) and prints GATE PASS <sha>."
   echo "Red:   deletes the artifact and exits 1 (78 when the failure is terminal — see hooks/lib/git-cmd.sh)."
   echo "No Gate configured: prints GATE SKIP and exits 0."
+  echo ""
+  echo "Your Gate command can declare its own terminal condition: print the remedy"
+  echo "to stderr, touch \$RUN_GATE_TERMINAL, and exit with the terminal code."
+  echo "Worked example: docs/verification.md."
   exit 0
 fi
 
@@ -235,9 +247,15 @@ if [ "$GATE_RC" -eq 0 ]; then
   echo "GATE PASS $HEAD_SHA"
   exit 0
 elif [ "$GATE_RC" -eq "$GC_TERMINAL_RC" ]; then
-  # TERMINAL: reachable only when the clamp above let the 78 through, i.e. a
-  # NESTED run-gate.sh hit its own recursion guard (a self-invoking **Gate**,
-  # directly or through a wrapper) and left the provenance marker.
+  # TERMINAL: reachable only when the clamp above let the 78 through, i.e.
+  # something left the provenance marker. Two producers, one rule:
+  #   * a NESTED run-gate.sh hitting its own recursion guard (a self-invoking
+  #     **Gate**, directly or through a wrapper);
+  #   * since v2.3.0, THE **Gate** COMMAND ITSELF, following the public contract
+  #     in docs/verification.md (print remedy, touch $RUN_GATE_TERMINAL, exit
+  #     78). The marker never meant "run-gate.sh decided"; it means "whoever
+  #     exited took responsibility for the remedy", which is why the clamp is
+  #     keyed on it and not on the caller.
   # DELIBERATELY SILENT. The generic "fix the failures and re-run" of the else
   # arm is wrong here, and so is any replacement of it: only the guard knows the
   # specific remedy, it has already printed it on this same stderr, and it must
