@@ -12,7 +12,7 @@
 - **Test Command**: uv run pytest
 - **Format Command**: uv run ruff format .
 - **Lint Command**: uv run ruff check .
-- **Gate Command**: uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=panoscribe --cov-fail-under=95
+- **Gate Command**: bash preflight.sh && uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=panoscribe --cov-fail-under=95
 
 ## Paths
 
