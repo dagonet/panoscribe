@@ -127,19 +127,6 @@ echo "GATE: running: $GATE_CMD"
 # an inconsistency to tidy up.
 cd "$REPO_TOP" || exit 1
 
-# Preflight: the Gate command below relies on pytest-cov (declared in the
-# "dev" optional-dependencies group). A bare `uv sync` does not install
-# extras, so pytest-cov is missing and pytest aborts with an opaque
-# "unrecognized arguments: --cov=..." error before collecting any tests.
-# Catch that case here with an actionable message instead.
-if command -v uv >/dev/null 2>&1; then
-  if ! uv run python -c "import pytest_cov" >/dev/null 2>&1; then
-    echo "GATE ERROR: pytest-cov is not installed in this environment." >&2
-    echo "run: uv sync --extra dev --extra api" >&2
-    exit 1
-  fi
-fi
-
 # v2.1.3 fix round 1 (Critical 2 / penumbra #2c): key the artifact on the
 # INDEX tree, not just HEAD's sha. At PreToolUse commit time (pre-commit-test.sh
 # invoking this script before the `git commit` runs) the index tree is the tree
