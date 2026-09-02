@@ -8,6 +8,11 @@
 # GitHub tools, not the retired git-tools server. Escape hatch:
 # <cwd>/.claude/git-guard-off.
 #
+# v2.4.0 (A6): a merge initiated while the checkout is on a PROTECTED branch is
+# refused outright, before the artifact is even read — on that topology the
+# merge lands the other side's content, so no comparison against this
+# checkout's HEAD can say anything about it. See the block above that check.
+#
 # Requires .gate/last-pass.json (written by hooks/run-gate.sh) at the repo
 # toplevel of the merging session's cwd — worktree-aware, since developer
 # agents self-merge from their worktrees. Blocks (exit 2) unless:
@@ -158,6 +163,41 @@ case "$GATE_CMD" in
   *\{\{*\}\}*) exit 0 ;;
 esac
 
+# v2.4.0 (A6, found live merging PR #75) -- THE ARTIFACT CHECK BELOW COMPARES
+# THE ARTIFACT TO **HEAD**, AND HEAD IS THE MERGE CONTENT ONLY ON SOME
+# TOPOLOGIES. A controller sitting on `main` merges the PR BRANCH's tip, not
+# HEAD; so "re-run the gate on the current head" gates content that is already
+# merged, writes a green artifact, and then permits a merge of entirely
+# different content -- a correct guard whose own remediation manufactures the
+# false receipt. A flow of branch -> commit -> gate -> push -> PR -> merge has
+# the controller ON the branch, where `artifact.sha == branch tip == merged
+# content` and the same check is sound. Same hook, opposite validity.
+#
+# The split is purely local -- no API, no network, and both helpers are already
+# in this hook: if the merge is initiated while HEAD is on a PROTECTED branch,
+# the thing being merged is BY CONSTRUCTION not HEAD, so the comparison below
+# verifies nothing. Say so and refuse; on a feature branch, fall through to the
+# comparison, which is meaningful there.
+#
+# DELIBERATELY NOT UNCONDITIONALLY FAIL-CLOSED. Target resolvability varies by
+# path: `git merge <ref>` resolves locally, the MCP merge tools carry
+# pullNumber/owner/repo (identified, but needing an API call), and a bare
+# `gh pr merge` names no target at all. Refusing on every unresolvable path
+# hard-blocks every PR merge for anyone offline -- the "unconditional
+# fail-closed blocks everything" hazard from the GC_CMD round. The
+# protected-branch detector is what makes cannot-determine-must-refuse
+# affordable here: it refuses exactly the case where the evidence is known to
+# be irrelevant, and stays out of the way otherwise.
+if gc_on_main "$CWD"; then
+  {
+    echo "BLOCKED: this merge was initiated while the checkout is on a protected branch ($(gc_current_branch "$CWD"))."
+    echo "A merge run from a protected branch lands the OTHER side's content, not this checkout's HEAD — so comparing the gate artifact to HEAD verifies nothing, and re-running the gate here would only bless content that is already merged."
+    echo "Gate the content that is actually being merged: check out the merge target (the PR branch head) and run 'bash hooks/run-gate.sh' there, or gate on the branch before opening the PR, and merge from that checkout."
+    echo "(If this is a false positive: create '.claude/git-guard-off' under this cwd, make the one merge, then delete it.)"
+  } >&2
+  exit 2
+fi
+
 ARTIFACT="$REPO_TOP/.gate/last-pass.json"
 
 if [ ! -f "$ARTIFACT" ]; then
@@ -165,8 +205,27 @@ if [ ! -f "$ARTIFACT" ]; then
   exit 2
 fi
 
-ARTIFACT_SHA=$(grep -o '"sha":"[^"]*"' "$ARTIFACT" | head -1 | sed 's/"sha":"//;s/"$//')
-ARTIFACT_TREE=$(grep -o '"tree":"[^"]*"' "$ARTIFACT" | head -1 | sed 's/"tree":"//;s/"$//')
+# v2.4.0 (A6, consumer report): READ THE ARTIFACT AS JSON, NOT AS ONE SPELLING
+# OF IT. Until now both reads were hardcoded to `"sha":"` — exactly the bytes
+# our own run-gate.sh printf emits, with no space after the colon. A consumer
+# whose project-owned gate writes the same fields pretty-printed
+# (`{"sha": "…"}`, entirely valid JSON) got an EMPTY ARTIFACT_SHA and was
+# blocked on every merge with `artifact sha: none` — a gate that passed,
+# reported as stale, for a reason that has nothing to do with staleness. They
+# carried a local widening for releases.
+#
+# REPLACING run-gate.sh WHOLESALE IS A SUPPORTED CONFIGURATION: the contract
+# between the two halves is the `**Gate**` field plus the artifact FORMAT, not
+# the script. So the reader must accept any valid JSON spelling of that format,
+# not merely the one our writer happens to produce.
+#
+# THE `sed` IS WIDENED IN LOCKSTEP WITH THE `grep`, deliberately. Accepting
+# `"sha": "` in the grep while stripping only `"sha":"` in the sed leaves a
+# LEADING SPACE on the value — a sha that matches nothing, i.e. the same silent
+# mismatch moved one step later and made harder to see. Both use the same
+# tolerant pattern for that reason; do not "simplify" one of them.
+ARTIFACT_SHA=$(grep -o '"sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"sha"[[:space:]]*:[[:space:]]*"//;s/"$//')
+ARTIFACT_TREE=$(grep -o '"tree"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"tree"[[:space:]]*:[[:space:]]*"//;s/"$//')
 HEAD_SHA=$(git -C "$CWD" rev-parse HEAD 2>/dev/null)
 HEAD_TREE=$(git -C "$CWD" rev-parse 'HEAD^{tree}' 2>/dev/null)
 
@@ -177,7 +236,20 @@ HEAD_TREE=$(git -C "$CWD" rev-parse 'HEAD^{tree}' 2>/dev/null)
 # is the tree the new commit just got). Both still gated by the freshness
 # window below.
 if [ -z "$ARTIFACT_SHA" ] || { [ "$ARTIFACT_SHA" != "$HEAD_SHA" ] && { [ -z "$ARTIFACT_TREE" ] || [ "$ARTIFACT_TREE" != "$HEAD_TREE" ]; }; }; then
-  echo "BLOCKED: Gate artifact is stale (artifact sha: ${ARTIFACT_SHA:-none}, HEAD: $HEAD_SHA). Re-run 'bash hooks/run-gate.sh' on the current head, then merge." >&2
+  # v2.4.0 (A6, defect 1): the MESSAGE had drifted to the weaker half of the
+  # check. The artifact matches by sha OR by tree, and the tree half is the one
+  # that survives a squash -- a consumer measured a squash changing the sha and
+  # leaving the tree byte-identical -- so a message naming only the sha sends
+  # them to re-run a gate whose tree already matched. It also said "the current
+  # head" without saying WHICH head, which is exactly the ambiguity that makes
+  # gating `main` look like a remedy. The message is what a consumer acts on at
+  # 2am; report both keys and name the head.
+  {
+    echo "BLOCKED: Gate artifact is stale — it matches this checkout by neither key."
+    echo "  artifact sha:  ${ARTIFACT_SHA:-none}    HEAD:          $HEAD_SHA"
+    echo "  artifact tree: ${ARTIFACT_TREE:-none}    HEAD^{tree}:   $HEAD_TREE"
+    echo "Run 'bash hooks/run-gate.sh' on the head that is actually being MERGED — the PR branch tip, from a checkout of that branch — then merge from there. Gating some other head produces a fresh artifact that verifies nothing."
+  } >&2
   exit 2
 fi
 

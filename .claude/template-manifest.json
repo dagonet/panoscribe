@@ -2,9 +2,9 @@
   "version": 2,
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSynced": "83b123d",
-  "lastSyncedVersion": "v2.3.0",
-  "lastSyncedVersionOf": "83b123d",
+  "lastSynced": "5bab5fa",
+  "lastSyncedVersion": "v2.4.0",
+  "lastSyncedVersionOf": "5bab5fa",
   "placeholders": {
     "PROJECT_NAME": "panoscribe",
     "PROJECT_NAME_LOWER": "panoscribe",
@@ -186,12 +186,12 @@
       "templatePartHashAtSync": "315ded8926896ec93b4170653365705a30e2ec69e024377aa7fe72f9e72fd416"
     },
     "hooks/gate-before-merge.sh": {
-      "templateHash": "2bdfff1109279b3a4c7482a8a6337442d76bda047570dd341f19462e05592af5",
-      "templateRawHash": "2bdfff1109279b3a4c7482a8a6337442d76bda047570dd341f19462e05592af5",
-      "localHash": "2bdfff1109279b3a4c7482a8a6337442d76bda047570dd341f19462e05592af5",
+      "templateHash": "6179f74d0fd38c1b31cd74de1f3c763ec714484c9f968b3d139876a146a2cbf0",
+      "templateRawHash": "6179f74d0fd38c1b31cd74de1f3c763ec714484c9f968b3d139876a146a2cbf0",
+      "localHash": "6179f74d0fd38c1b31cd74de1f3c763ec714484c9f968b3d139876a146a2cbf0",
       "locallyModified": false,
-      "localPartHash": "2bdfff1109279b3a4c7482a8a6337442d76bda047570dd341f19462e05592af5",
-      "templatePartHashAtSync": "2bdfff1109279b3a4c7482a8a6337442d76bda047570dd341f19462e05592af5"
+      "localPartHash": "6179f74d0fd38c1b31cd74de1f3c763ec714484c9f968b3d139876a146a2cbf0",
+      "templatePartHashAtSync": "6179f74d0fd38c1b31cd74de1f3c763ec714484c9f968b3d139876a146a2cbf0"
     },
     "hooks/lib/git-cmd.sh": {
       "templateHash": "9d4b4290485b121376ab8a8acd3938a7eb5fbd345a894325888bcbcc1d02d036",
@@ -234,12 +234,12 @@
       "templatePartHashAtSync": "0cd3f394c1100422b0f86f571e2f865159eea85beb2f4f933af6b00970ab453c"
     },
     "hooks/require-skills-block.sh": {
-      "templateHash": "99784750c7510598dcd4829dacd1f7a697a7411ff3be7c66911acf5a36462643",
-      "templateRawHash": "99784750c7510598dcd4829dacd1f7a697a7411ff3be7c66911acf5a36462643",
-      "localHash": "99784750c7510598dcd4829dacd1f7a697a7411ff3be7c66911acf5a36462643",
+      "templateHash": "fd8df70ec66b9059fedd82f82183136f9b90682b7d1b0cfdfd00af6acd2327a8",
+      "templateRawHash": "fd8df70ec66b9059fedd82f82183136f9b90682b7d1b0cfdfd00af6acd2327a8",
+      "localHash": "fd8df70ec66b9059fedd82f82183136f9b90682b7d1b0cfdfd00af6acd2327a8",
       "locallyModified": false,
-      "localPartHash": "99784750c7510598dcd4829dacd1f7a697a7411ff3be7c66911acf5a36462643",
-      "templatePartHashAtSync": "99784750c7510598dcd4829dacd1f7a697a7411ff3be7c66911acf5a36462643"
+      "localPartHash": "fd8df70ec66b9059fedd82f82183136f9b90682b7d1b0cfdfd00af6acd2327a8",
+      "templatePartHashAtSync": "fd8df70ec66b9059fedd82f82183136f9b90682b7d1b0cfdfd00af6acd2327a8"
     },
     "hooks/retro-brief.sh": {
       "templateHash": "2981b5bee511147f3e57ab58ef14cbfab3d08c2a005cafed0b552ed267b49790",
@@ -258,13 +258,12 @@
       "templatePartHashAtSync": "e63cf323c95b00849a7461f74156af21f4b3d6b426d35c88071ee0280fb3d6c9"
     },
     "hooks/run-gate.sh": {
-      "templateHash": "1a2876b04234373aaa967285c6877636bdfa03e1e4ec3ff20162e29a6e45eaca",
-      "templateRawHash": "1a2876b04234373aaa967285c6877636bdfa03e1e4ec3ff20162e29a6e45eaca",
-      "localHash": "43e4621898891a23cc100ad937b870f949a5b76219460ba90ba0f68155e6e17d",
-      "locallyModified": true,
-      "localPartHash": "43e4621898891a23cc100ad937b870f949a5b76219460ba90ba0f68155e6e17d",
-      "templatePartHashAtSync": "1a2876b04234373aaa967285c6877636bdfa03e1e4ec3ff20162e29a6e45eaca",
-      "resolution": "keep-mine"
+      "templateHash": "2e3db0da488e2fbd719181b87df69277bebfa321028e79e3e5d6ca3bca78ffc7",
+      "templateRawHash": "2e3db0da488e2fbd719181b87df69277bebfa321028e79e3e5d6ca3bca78ffc7",
+      "localHash": "2e3db0da488e2fbd719181b87df69277bebfa321028e79e3e5d6ca3bca78ffc7",
+      "locallyModified": false,
+      "localPartHash": "2e3db0da488e2fbd719181b87df69277bebfa321028e79e3e5d6ca3bca78ffc7",
+      "templatePartHashAtSync": "2e3db0da488e2fbd719181b87df69277bebfa321028e79e3e5d6ca3bca78ffc7"
     }
   }
 }

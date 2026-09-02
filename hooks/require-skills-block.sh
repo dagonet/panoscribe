@@ -52,9 +52,36 @@ case "$SUBAGENT_TYPE" in
   requirements-engineer)
     REQUIRED="superpowers:brainstorming"
     ;;
-  code-reviewer|doc-generator)
+  # DELIBERATELY EXEMPT — v2.4.0 (item A5) MADE THIS SET EXPLICIT, and the
+  # names are the whole point of the change. Until now `ops` and `Explore`
+  # reached the `*)` arm below, which is BYTE-IDENTICAL IN EFFECT to this one:
+  # an agent exempted on purpose and an agent whose name silently fell out of
+  # the enumeration produced the same `exit 0`, with no signal at runtime or
+  # afterwards that distinguished them. A consumer could not tell whether their
+  # own `game-tester` was unbound deliberately or by accident.
+  #
+  # THE OBVIOUS FIX — make `*)` warn — IS UNAVAILABLE, and this programme has
+  # already paid for the lesson: a hook that exits 0 has no reliable channel to
+  # the transcript, and hook stderr was measured not to reach the lead. A
+  # warning nobody receives is the same silence with more code, and it reads as
+  # fixed. So the intent is written down HERE, as arm labels, and
+  # scripts/verify-template-consistency.sh check 29 asserts statically — in the
+  # gate, where output demonstrably reaches someone — that every SHIPPED agent
+  # name matches a binding arm or appears on this list. Deleting or renaming an
+  # agent without updating this file is red before the release ships.
+  #
+  # ADDING A NAME HERE IS A DECISION, NOT A TIDY-UP: it says this agent needs
+  # no skills block. Do not add a name here to silence check 29 — the check
+  # exists to make that decision visible.
+  ops|Explore|code-reviewer|doc-generator)
     exit 0
     ;;
+  # The genuinely UNKNOWN type: a project's own agent (a consumer's
+  # `game-tester`, a `cpp-coder` they added). It must pass — a template
+  # enumeration has no business blocking an agent it never shipped, and check
+  # 29 is scoped to the toolkit's own agent set for exactly that reason. A gate
+  # that goes red on a consumer's own file is the cries-wolf failure this
+  # release exists to reduce.
   *)
     exit 0
     ;;
