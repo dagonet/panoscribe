@@ -70,7 +70,7 @@ These are not optional. If the trigger fires, invoke the named skill BEFORE gene
 
 **Strong triggers, plugin defaults, and meta skills:** see the same section in `~/.claude/CLAUDE.md`.
 
-**When spawning agents:** `AGENT_TEAM.md` -> *Spawn-Prompt Binding Table* lists the skills each subagent type must invoke. `hooks/require-skills-block.sh` enforces it mechanically — a spawn of a bound `subagent_type` without a `## Required Skills` block is blocked with exit 2.
+**When spawning agents:** every spawn of a bound `subagent_type` MUST carry a `## Required Skills` block in the prompt body, listing the skills that `AGENT_TEAM.md` -> *Spawn-Prompt Binding Table* binds to that type. Also enforced by `hooks/require-skills-block.sh`.
 
 ## Working Preferences
 
