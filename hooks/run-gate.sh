@@ -226,7 +226,29 @@ if [ "$GATE_RC" -eq "$GC_TERMINAL_RC" ] && [ ! -f "$RUN_GATE_TERMINAL" ]; then
   GATE_RC=1
 fi
 
+# v2.4.0 (A6, observed live and unplanned during v2.3.0's release): THE
+# CHECKOUT CAN MOVE UNDER A RUNNING GATE. Two gate runs overlapped; the second
+# was still running when the checkout moved from detached c43f51f to `main`. It
+# finished green and wrote `sha: c43f51f` — a sha captured at one moment,
+# describing a run whose working tree changed midway through it. No harm came of
+# it only because the two trees happened to be byte-identical, which is luck,
+# not a property. (Both runs also recorded `"branch":"unknown"` because the
+# checkout was detached, so the `branch` field cannot be relied on either.)
+#
+# HEAD_SHA and TREE_HASH above were both captured BEFORE the gate command ran.
+# Re-read HEAD now: if it moved, the run described no single coherent state and
+# the artifact would be a receipt for something that never existed. Refuse to
+# write it, delete any older one, and say why. Exit 1 rather than the terminal
+# 78 — a concurrent checkout move is a race, not a settled condition, so
+# "re-run it" is the right advice.
 if [ "$GATE_RC" -eq 0 ]; then
+  HEAD_SHA_AFTER=$(git -C "$REPO_TOP" rev-parse HEAD 2>/dev/null)
+  if [ "$HEAD_SHA_AFTER" != "$HEAD_SHA" ]; then
+    rm -f "$ARTIFACT"
+    echo "GATE ERROR: the checkout moved while the gate was running (HEAD was ${HEAD_SHA:-unknown} at start, is ${HEAD_SHA_AFTER:-unknown} now)." >&2
+    echo "The run does not describe any single state, so no artifact was written. Settle the checkout and re-run 'bash hooks/run-gate.sh'." >&2
+    exit 1
+  fi
   mkdir -p "$ARTIFACT_DIR"
   TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   printf '{"sha":"%s","tree":"%s","branch":"%s","ts":"%s","status":"pass"}\n' \
