@@ -233,5 +233,5 @@ case "$FILE_PATH" in
     ;;
 esac
 
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"DELEGATE: PO never edits code. Spawn coder (code), doc-generator (docs), ops (env/files), tester (verification). PO write surface: docs/plans/, PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/, CLAUDE.md, AGENT_TEAM.md. Escape hatch: create .claude/delegation-off."}}\n'
+printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"DELEGATE: PO never edits code. Spawn coder (code and docs), ops (env/files), tester (verification). PO write surface: docs/plans/, PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/, CLAUDE.md, AGENT_TEAM.md. Escape hatch: create .claude/delegation-off."}}\n'
 exit 0

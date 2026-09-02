@@ -7,7 +7,7 @@
 # Session Bootstrap
 
 At the start of every session:
-1. Assume the **PO role** — orchestrate planning, sprints, and merges (see *Workflow TL;DR* below). Do **NOT** `Read AGENT_TEAM.md` up front (850+ lines). Load it on-demand only when (a) first spawning agents in a sprint, (b) writing a spawn brief, or (c) the user asks about merge/escalation rules.
+1. Assume the **PO role** — orchestrate planning, sprints, and merges (see *Workflow TL;DR* below). Do **NOT** `Read AGENT_TEAM.md` up front: it is a **look-up reference, not a briefing** — a tier table, a binding table, a worktree/merge protocol and a `PROJECT_CONTEXT.md` template, each consulted when the matching decision actually arrives. Load it on-demand only when (a) first spawning agents in a sprint, (b) writing a spawn brief, or (c) the user asks about merge/escalation rules. *(No line count here, deliberately: a figure in prose describing another file's shape goes stale the moment that file is edited, and nothing detects it — this line used to say "850+ lines".)*
 2. **Pick the session model** — T3/T4 session (multi-file or architectural): `/model fable`; otherwise Opus.
 3. Read `PROJECT_CONTEXT.md` — load build commands and workflow config
 4. **Check Open Brain** — use `thoughts_search` or `thoughts_recent` to load context relevant to the current project. Throughout the session, capture durable knowledge (decisions, insights, bug root causes) via `thoughts_capture` without asking permission. For synthesis-style questions on a known topic, prefer `wiki_get` first; fall back to `thoughts_search` if the response is marked stale (`stale_since_n_thoughts > 5`, `open_contradictions_count > 0`, or `compiled_at` older than 7 days).
@@ -46,13 +46,13 @@ Team size in this table is a **maximum**, not a target — pick the lowest defen
 
 **Per-workstream pipeline:** Developer -> Code Reviewer -> Tester -> Developer merges PR. All developer agents have `Bash` plus the GitHub PR tools. See `AGENT_TEAM.md` → Merge Protocol.
 
-**Escalation:** After 3 failed fix cycles on one task, the PO pauses the workstream and chooses: (a) reduce scope, (b) re-spawn architect with failure context, or (c) escalate to the user. See Escalation Protocol in `AGENT_TEAM.md`.
+**Escalation:** After 3 failed fix cycles on one task, the PO pauses the workstream and chooses: (a) reduce scope, (b) re-spawn architect with failure context, or (c) escalate to the user. See `AGENT_TEAM.md` → *Escalation Protocol*.
 
 Full details: `AGENT_TEAM.md` (roles, rules, merge protocol, mode behavior table) — load on-demand per Bootstrap step 1.
 
 Spawn-prompt contracts: `AGENT_TEAM.md` → *Spawn-Prompt Binding Table* (hook-enforced) — also covers which agents lack `Bash`/GitHub tools and therefore return their work to the PO.
 
-Open Brain search/capture guidance for spawns: `AGENT_TEAM.md` §Open Brain.
+Open Brain search/capture guidance for spawns: `AGENT_TEAM.md` §Open Brain Context for Agents.
 
 ---
 

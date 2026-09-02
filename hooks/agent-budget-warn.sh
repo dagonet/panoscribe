@@ -53,6 +53,32 @@ AGENT_ID=$(printf '%s' "$INPUT" | grep -o '"agent_id":"[^"]*"' | head -1 | cut -
 SESSION=$(printf '%s' "$INPUT" | grep -o '"session_id":"[^"]*"' | head -1 | cut -d'"' -f4)
 [ -z "$SESSION" ] && exit 0
 
+# ---------------------------------------------------------------------------
+# SendMessage IS EXEMPT — NOT COUNTED, NOT BLOCKED (v3.0.0, item B3).
+#
+# Measured: this hook blocked FIVE agent reports. It stopped agents FILING THEIR
+# WORK, which is the exact failure the whole liveness effort exists to prevent —
+# a budget guard whose worst outcome is that the agent it bounded can no longer
+# tell anyone what it did. The block message itself says "report your partial
+# result plus the blocker", and the tool that does that is the one it was
+# blocking. That is a guard denying its own remedy, the same shape as the merge
+# gate whose remediation manufactured a false receipt.
+#
+# THE CEILING IS KEPT, deliberately and against the temptation to soften it:
+# spawns hit 417, 420 and 480 calls, so the escalating block is doing real work
+# and stays exactly as it was. This narrows WHICH calls it applies to, not how
+# hard it applies.
+#
+# NOT COUNTED, not merely not-blocked, and the distinction is the whole design.
+# Exempting only the block would let a SendMessage land on call 120 and CONSUME
+# that threshold — the `-eq` test fires once per exact value, so the ceiling
+# would be silently skipped and the next block deferred to 180. Leaving the
+# counter untouched means the next working call still lands on 120 and still
+# blocks. Filing your work does not spend your budget, and it does not buy you
+# extra budget either.
+TOOL_NAME=$(printf '%s' "$INPUT" | grep -o '"tool_name":"[^"]*"' | head -1 | cut -d'"' -f4)
+[ "$TOOL_NAME" = "SendMessage" ] && exit 0
+
 # Kill switch, mirroring the other guards. ROOT is reused for the audit log.
 ROOT=""
 HOOK_CWD=$(printf '%s' "$INPUT" | grep -o '"cwd":"[^"]*"' | head -1 | cut -d'"' -f4)
