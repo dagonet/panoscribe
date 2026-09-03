@@ -26,6 +26,17 @@
 # its prior tool-call counter, so a budget block soon after a resume may just
 # reflect the PO's own choice to let it keep going, not a runaway.
 #
+# v3.0.1: it is not counted in errors=<n> either. Measured on a consumer: 30
+# ledger rows, every one a budget warning, zero real failures -- because the
+# tally ran one line BEFORE the budget split. A budget-only spawn still gets a
+# ROW (the ledger is the RECORD); it is hooks/retro-brief.sh, the VIEW, that
+# filters it out. Do NOT "fix" this by suppressing the row: rows that vanish
+# from retro.md read as "clean" rather than "changed" to anyone grepping an
+# agent id, which is a silent negative. And do NOT filter on errors= or budget=
+# alone anywhere: a measured row `dead=[Bash,Edit] | budget=0 | errors=2`
+# carried a grant gap that produced two real defect reports, and either filter
+# would have dropped exactly that row.
+#
 # <project-slug> replicates Claude Code's auto-memory directory rule, measured
 # against the real dirs under ~/.claude/projects: EVERY one of  :  \  /  .  _
 # becomes a dash. Verified against existing directories on this host:
@@ -102,25 +113,35 @@ process.stdin.on("end", () => {
       const text = typeof b.content === "string" ? b.content : JSON.stringify(b.content || "");
       const isBlock = HOOKBLOCK.test(text);
       if (!isBlock && !(b.is_error === true && FAIL.test(text))) continue;
-      errors++;
       let m;
+      // `dead` is collected BEFORE the budget split, on purpose: a grant gap is
+      // surfaced on its own merits and never depends on the errors tally.
       DEAD.lastIndex = 0;
       while ((m = DEAD.exec(text)) !== null) dead.add(m[1]);
+      // v3.0.1: the budget split happens BEFORE errors++, not after. A ceiling
+      // tripping as designed is not a failure, and counting it as one made
+      // `errors=<n>` — the headline field — lie on every budget-only spawn.
+      if (isBlock && BUDGET.test(text)) { budget++; continue; }
+      errors++;
       if (isBlock) {
-        if (BUDGET.test(text)) {
-          budget++;
-        } else {
-          HOOKCMD.lastIndex = 0;
-          let cmd;
-          while ((cmd = HOOKCMD.exec(text)) !== null) {
-            SCRIPT.lastIndex = 0;
-            while ((m = SCRIPT.exec(cmd[0])) !== null) blocks.add(path.basename(m[1]));
-          }
+        HOOKCMD.lastIndex = 0;
+        let cmd;
+        while ((cmd = HOOKCMD.exec(text)) !== null) {
+          SCRIPT.lastIndex = 0;
+          while ((m = SCRIPT.exec(cmd[0])) !== null) blocks.add(path.basename(m[1]));
         }
       }
     }
   }
-  if (errors === 0) return;
+  // v3.0.1: emit whenever ANYTHING was observed — a budget-only spawn keeps its
+  // row. THE LEDGER IS THE RECORD; the view is hooks/retro-brief.sh, which is
+  // where budget-only rows are filtered out. Suppressing the row here would make
+  // the rows of an agent DISAPPEAR from retro.md, and disappearing rows read as
+  // "clean" rather than "changed" — a silent negative for anyone grepping an
+  // agent id. NOTE: no apostrophes below this point — the whole program is a
+  // single-quoted shell string, and one would end it. `blocks` is not tested:
+  // it can only be non-empty on a path that already incremented `errors`.
+  if (errors === 0 && budget === 0 && dead.size === 0) return;
 
   // Bounded rendering: one pathological run must not produce a line that dwarfs
   // the rest of the ledger (and, through retro-brief, the session context).

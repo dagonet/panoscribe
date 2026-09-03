@@ -52,9 +52,45 @@ process.stdin.on("end", () => {
 [ -n "$LEDGER" ] || exit 0
 [ -s "$LEDGER" ] || exit 0
 
-# Truncated at 200 columns: this output is injected into the session context, so
-# one pathological ledger line must not be able to flood it.
-echo "RETRO (last 10 subagent-failure entries — fix the cause or delegate it):"
-tail -n 10 "$LEDGER" | cut -c1-200
+# v3.0.1: THIS IS THE VIEW. hooks/retro-ledger.sh keeps every row it observed,
+# including budget-only spawns; the filtering belongs here, where dropping a row
+# hides nothing (retro.md still holds it) instead of in the record, where a row
+# that disappears reads as "clean" rather than "changed".
+#
+# Two transforms, both of which the previous `tail -n 10` alone got wrong:
+#
+#   1. Drop budget-only rows. A budget ceiling is a liveness control tripping as
+#      designed. Measured on a consumer: 30 rows, all 30 budget warnings, zero
+#      real failures — a brief nobody could read.
+#      NEVER key this filter on errors= or budget= ALONE. A measured row
+#      `dead=[Bash,Edit] | budget=0 | errors=2` had a fabricated errors count and
+#      an exactly-true dead list, and it produced two real defect reports. A grant
+#      gap is not a failure — the agent completes and silently delivers something
+#      weaker — so `dead=` is surfaced on its own merits and a row carrying one is
+#      never dropped.
+#
+#   2. Dedupe by agent id, LAST ROW WINS, *before* tailing. Measured: one
+#      long-running agent held 11 of 30 cumulative rows and hid three of the four
+#      agents behind the tail, under a heading promising the last 10 SUBAGENT
+#      entries. The heading below says "one row per agent" for the same reason.
+#
+# Fields are parsed from the END (`$(NF)` … `$(NF-3)`): only agent_type and
+# agent_id sit ahead of them, so tail-indexing cannot be thrown off by an extra
+# separator. A line that is not a ledger row (fewer than 7 fields) passes
+# through untouched. Truncated at 200 columns: this output is injected into the
+# session context, so one pathological ledger line must not be able to flood it.
+echo "RETRO (last 10 subagent failures, one row per agent — fix the cause or delegate it):"
+awk -F' \\| ' '
+  NF >= 7 {
+    d = $(NF-3); bl = $(NF-2); bu = $(NF-1); er = $(NF)
+    sub(/^dead=/, "", d); sub(/^blocks=/, "", bl)
+    sub(/^budget=/, "", bu); sub(/^errors=/, "", er)
+    if (d == "[]" && bl == "[]" && bu + 0 > 0 && er + 0 == 0) next
+    k = $3
+  }
+  NF < 7 { k = "\x01line" NR }
+  { row[k] = $0; pos[k] = ++n; ord[n] = k }
+  END { for (i = 1; i <= n; i++) if (pos[ord[i]] == i) print row[ord[i]] }
+' "$LEDGER" | tail -n 10 | cut -c1-200
 
 exit 0
