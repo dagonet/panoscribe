@@ -46,6 +46,17 @@ When a session starts on a project that has this AGENT_TEAM.md:
 ### Agents without `Bash`:
 - `architect` — CANNOT commit, push, create PRs, merge, or post comments
 
+### The rule that covers every tool, not just `Bash`
+
+**`.claude/agents/<name>.md` is the source of truth. Before you put an operation in a spawn prompt, read that agent's own `tools:` line** — the limitation is not specific to git, and `Bash` is simply the one that bit often enough to get written down. The cases that actually bite:
+
+- **`Bash`** — `architect` has none. It cannot commit, push, open or merge PRs, run a build, or run the gate.
+- **`Edit` / `Write`** — `Explore` and `code-reviewer` have **neither**. `Explore` is a read-only search agent and `code-reviewer` reports findings; asking either to apply a fix, fix a typo, or update a doc is asking for a tool it does not hold. Every other agent (`architect`, `coder`, `<lang>-coder`, `ops`, `tester`) has both.
+- **GitHub MCP (`mcp__MCP_DOCKER__*`)** — `Explore`, `architect` and `ops` have none, so none of them can open a PR, merge one, or post a comment. `code-reviewer` holds the review-write tool only; `tester` holds the issue-comment tool only; the coders hold the PR create/merge/update set.
+- **`isolation: worktree`** — set in frontmatter on `coder`, `tester` and every `<lang>-coder`. Those agents run in their own worktree and cannot reach the main checkout, which is why the sync/merge steps say *never spawn a worktree-isolated agent to commit a sync*.
+
+*(Deliberately a rule plus its exceptions, not a per-agent capability matrix. A matrix restating twenty-odd frontmatter cells in prose is the stale-doc defect this release exists to remove, and it would need a consistency assertion diffing it against `.claude/agents/*.md` to stay honest. The rule above names only the facts that change a spawn decision, and it ends by pointing at the file that cannot go stale.)*
+
 **PO responsibility:** When spawning an agent that lacks `Bash` (or lacks the PR tool an instruction needs), do NOT put that operation in its spawn prompt. It will bail, stall, or silently skip the step. Instead:
 1. Have them return their work product (plan, spec, review findings, tests)
 2. The PO performs the git I/O with the git CLI and the GitHub I/O with the MCP tools
