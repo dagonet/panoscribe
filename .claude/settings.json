@@ -24,12 +24,6 @@
       "mcp__git-tools__*"
     ],
     "deny": [
-      "Read(.env)",
-      "Read(.env.local)",
-      "Read(.env.*.local)",
-      "Read(.env.production)",
-      "Read(.env.staging)",
-      "Read(.env.development)",
       "mcp__git-tools__git_push",
       "mcp__git-tools__git_commit",
       "mcp__git-tools__git_revert",
@@ -60,6 +54,15 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-secret-reads.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/deny-secret-reads.sh -- secrets protection offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
           }
         ]
       },

@@ -3,7 +3,6 @@ name: tester
 description: Verifies features against acceptance criteria using automated tests, data inspection, and log analysis. Posts findings on GitHub issues.
 model: sonnet
 effort: medium
-isolation: worktree
 tools: Read, Write, Edit, Grep, Glob, Bash, mcp__MCP_DOCKER__pull_request_read, mcp__MCP_DOCKER__issue_read, mcp__MCP_DOCKER__add_issue_comment, mcp__github-tools__gh_repo_from_origin, Skill
 ---
 
@@ -104,6 +103,8 @@ When all acceptance criteria pass and no critical/major findings remain:
 **Subagent reporting (HARD REQUIREMENT):** your final message IS the deliverable — end your run with the full report in it. There is no side channel: a run that ends without a report is treated as failed and re-dispatched.
 
 ## Liveness & Scope (HARD REQUIREMENT)
+
+This agent runs in the main checkout, not an isolated worktree: it verifies OTHER agents' worktrees by path, and an isolated tester cannot run `git status`/`git diff` against a sibling worktree.
 
 **Report in your final message:** the PO reads your final message, nothing else — no progress channel exists. Put the whole result there. If `hooks/agent-budget-warn.sh` warns that you are near the tool-call budget, stop exploring, wrap up, and report what you have plus what is left.
 

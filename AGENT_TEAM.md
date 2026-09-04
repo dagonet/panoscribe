@@ -270,6 +270,8 @@ See `PROJECT_CONTEXT.md` for worktree base path. See Mode Behavior Table for nam
 - Architect **must** flag scope conflicts before parallel work begins.
 - On completion (PR merged), the developer removes the worktree and deletes the branch.
 
+`isolation: worktree` cuts the agent's worktree from **`origin/main`** — not from the branch you have checked out and not from local `main`. If work lands on a session branch and `main` moves only when the session PR lands, every worktree coder starts from a tree missing the whole session's work, plan files included, until that PR lands: the lag equals the unlanded work. Land PRs mid-session to reset it. "Rebase first" in the brief cannot prevent it — the base is chosen after the brief is written. The PO's control is a post-spawn base check: `git rev-list --count <base>..<session-branch>` must be 0, and `git cat-file -e <base>:<path>` must succeed for every file the brief names. Untracked files (a plan doc not yet committed) are never in the worktree; hand the coder an absolute path.
+
 ---
 
 ## Merge Protocol

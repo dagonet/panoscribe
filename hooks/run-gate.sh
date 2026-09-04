@@ -98,7 +98,10 @@ GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
 # UTF-8 BOM, leading "- " / "* " list
 # markers, the "**Gate Command**:" label style (java/python variants), and
 # surrounding backticks — several variants write commands as `cmd`.
-GATE_CMD=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+# v3.0.3: anchored at GC_KEY_PRE like the other four field extractors — the
+# fifth site, found by enumeration after 3b; a greedy `.*` here let a
+# PR-editable Gate value truncate the command the gate runs.
+GATE_CMD=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed -E "s/${GC_KEY_PRE}\\*\\*Gate( Command)?\\*\\*:[[:space:]]*//;s/[[:space:]]*\$//;s/^\`//;s/\`\$//" | head -1)
 
 # No-op: no PROJECT_CONTEXT.md or no Gate command configured
 if [ -z "$GATE_CMD" ]; then
