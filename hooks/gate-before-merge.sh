@@ -13,6 +13,16 @@
 # merge lands the other side's content, so no comparison against this
 # checkout's HEAD can say anything about it. See the block above that check.
 #
+# QUALIFIER (v3.0.3): "refused outright" is true FOR REPOS WITH A GATE
+# CONFIGURED. The `**Gate**:` lookup below exits 0 when the field is absent,
+# BEFORE any protected-branch judgement — so **no Gate command configured means
+# this hook exits 0 for every merge, on every branch.** Configure `**Gate**:` in
+# PROJECT_CONTEXT.md to get merge protection. That is the contract and not a
+# bug (a gate with no command has nothing to prove), but it is the reading
+# people get wrong, so it is stated here rather than inferred from the code.
+# There is deliberately no stderr notice: the harness drops non-blocking hook
+# stderr, so it would be invisible to the person who needs it.
+#
 # ---------------------------------------------------------------------------
 # v3.0.1 — WHAT IS AND IS NOT GATED ON A PROTECTED BRANCH. Read this before
 # reaching for the kill switch; it is the contract, and it lives HERE because
@@ -60,15 +70,36 @@
 #       operation as separate calls, or name the destination — `git push origin
 #       <branch>` keys on its argument and never consults the current branch.
 #
-#   AND (v3.0.2): the same refusal when an earlier clause MOVES WHAT THE GATED
-#       CLAUSE RESOLVES TO — `git branch -u`, `git config branch.*/remote.*`,
-#       `git update-ref`, `git fetch` with a destination refspec, `git remote
-#       set-url|remove|add` — or when the gated git invocation ITSELF carries
-#       inline configuration (`-c`, `--config-env`, a `GIT_CONFIG_*` env
-#       prefix). The last one needs no chaining at all: a single
-#       `git -c remote.evil.url=… -c branch.main.remote=evil pull --ff-only`
-#       was measured landing foreign content while `branch.main.merge` on disk
-#       still read `refs/heads/main`.
+#   AND (v3.0.2, REPLACED IN v3.0.3 BY AN ALLOWLIST): the same refusal when an
+#       earlier clause of the same command could MOVE WHAT THE GATED CLAUSE
+#       RESOLVES TO. v3.0.2 enumerated the ways (`git branch -u`, `git config
+#       branch.*/remote.*`, `git update-ref`, …) and the enumeration did not
+#       close — `git config include.path /x` and `cp rogue .git/config` both
+#       walked past it. v3.0.3 inverts it into three categories:
+#         inert   `echo`, `printf`, `ls`, `pwd`, `true`, and `git status |
+#                 rev-parse | branch | log | diff | show` WITH read-only flags
+#                 only. An inert clause is not scanned at all, so `git pull
+#                 --ff-only && echo git pull --ff-only on main OK` is allowed.
+#                 NOT inert: a redirection operand, any of the four command
+#                 substitution forms (`$(`, backtick, `<(`, `>(`), a flag that
+#                 is not on the verb's allowlist (`git diff --output=` CLOBBERS
+#                 a file), or ANY clause when the command contains a pipe
+#                 (`echo 'git merge x' | bash` EXECUTES it).
+#         tracked `cd`, `git -C`, `git checkout|switch` — allowed because this
+#                 gate FOLLOWS them and re-decides on where they land.
+#         mover   everything else. Not refused on its own; it makes a LATER
+#                 gated clause on a protected branch refuse.
+#
+#   AND (v3.0.2, WIDENED IN v3.0.3): the same refusal when the gated git
+#       invocation ITSELF carries a global option that changes what it RESOLVES
+#       to — `-c`, `--config-env`, `--git-dir`, `--work-tree`, `--namespace`,
+#       `--exec-path`, `--no-replace-objects`, an unknown global, or an
+#       environment assignment before `git`. This needs no chaining at all: a
+#       single `git -c remote.evil.url=… -c branch.main.remote=evil pull
+#       --ff-only` was measured landing foreign content while
+#       `branch.main.merge` on disk still read `refs/heads/main`. Allowed
+#       globals: `-C <path>`, `--no-pager`, `-P`, `--paginate`,
+#       `--no-optional-locks`, `--literal-pathspecs`, `--no-lazy-fetch`.
 #
 # THE STATED LIMIT: every decision above is taken BEFORE any fetch, so the
 # CONTENT of a remote ref is unknown to this hook — it can only read the form of
@@ -351,43 +382,150 @@ a6_pull_catchup() {
   esac
 }
 
-# a6_mutates_resolution <segment> -- an EARLIER clause that moves what a later
-# gated clause resolves to.
+# v3.0.3 item 2 — a6_clause_class replaces the a6_mutates_resolution BLOCKLIST.
 #
-# KNOWN-INCOMPLETE BLOCKLIST, deliberately, and the incompleteness is the point
-# of writing it down. Four resolution inputs (`branch.*.remote`,
-# `branch.*.merge`, `remote.*.url`, `remote.*.fetch`) times at least four
-# mutation channels (a git verb, a direct ref write, a `.git/config` file edit,
-# env injection) — and WORSE, the same channel behaves differently per key:
-# `-c branch.main.merge=…` fails because that key is MULTI-VALUED so `-c` adds
-# rather than replaces, while `-c branch.main.remote=…` replaces cleanly and
-# lands foreign content. The cell matters, not the row or the column, so no
-# enumeration of keys and channels is sufficient.
+# WHY THE BLOCKLIST HAD TO GO, in its own words: four resolution inputs
+# (`branch.*.remote`, `branch.*.merge`, `remote.*.url`, `remote.*.fetch`) times
+# at least four mutation channels (a git verb, a direct ref write, a
+# `.git/config` file edit, env injection) — and the same channel behaves
+# differently per key. The cell matters, not the row or the column, so no
+# enumeration of keys and channels is sufficient. It missed
+# `git config include.path /x` and `cp rogue .git/config`, both measured.
 #
-# The sound shape is the INVERSE — allow a multi-clause call only when every
-# preceding clause is on a small proven-inert allowlist (`cd`, `echo`, `printf`,
-# `ls`). It is deliberately NOT in this release: it would gate
-# `git checkout feature/z && git merge feature/y`, which v3.0.1 shipped on
-# purpose and a consumer measured working. Queued, not snuck in.
-a6_mutates_resolution() {
-  a6mr=$1
-  # `git branch -u` / `--set-upstream-to` (a6_has_flag is long-flags-only).
-  if gc_matches_subcommand "$a6mr" "branch"; then
-    printf '%s\n' "$a6mr" | grep -qE '(^|[[:space:]])(-u|--set-upstream-to)([[:space:]]|=|$)' && return 0
+# THREE CATEGORIES, not two:
+#   inert   never affects the gated clause. The arms are NOT RUN on it.
+#   tracked allowed BECAUSE the scanner follows it: `cd`, `git -C`,
+#           `git checkout|switch <target>`. `cd` is NOT inert — declaring it so
+#           would switch OFF working machinery: `cd <protected repo> &&
+#           git merge feature/x` from an unprotected cwd is 2 today, via
+#           gc_cd_target/gc_resolve, and would flip to 0.
+#   mover   everything else. The arms still run on it; if none fires, it sets
+#           the `mutated` flag the pull/push arms read. This is what keeps the
+#           gated clause itself — which is a `mover` by classification — from
+#           being skipped, and what keeps a mover on a FEATURE branch from
+#           being gated for no reason.
+#
+# WHY NOT SCANNING INSIDE AN INERT CLAUSE IS THE WHOLE POINT: the arms below
+# grep UNANCHORED inside each segment, so `git pull --ff-only && echo git pull
+# --ff-only on main OK` was refused — the echo body re-parsed as a second pull
+# whose trailing words became a refspec. Running a command and then echoing what
+# you ran is reflexive narration; an allowlist alone does not close it.
+#
+# AND WHY THE CATEGORY IS THIS NARROW. Three measured collisions:
+#
+#  (1) FOUR substitution forms. `$(`, a backtick, `<(` and `>(` can all execute
+#      anything, and the last two carry neither `$` nor a backtick. All four are
+#      refused today only because the arms see inside them; declaring the verb
+#      inert without excluding all four would trade one false positive for four
+#      real bypasses.
+#
+#  (2) NO CLAUSE IS INERT IN A COMMAND CONTAINING A PIPE (`|`, not `||`).
+#      Measured, with paired controls:
+#        echo 'git merge feature/x'          prints it   — the false positive
+#        echo 'git merge feature/x' | bash   RUNS it     — a real merge
+#      Identical leading verb, identical quoted content, opposite correct
+#      verdicts, and the difference is what CONSUMES the clause's stdout, which
+#      a per-clause classifier cannot see. The cheapest sound rule is the whole
+#      command: a pipe anywhere and nothing is inert. `echo hello | bash` still
+#      passes, because nothing in it is gated.
+#
+#  (3) AN INERT GIT VERB IS INERT ONLY WITH A FLAG ALLOWLIST — see
+#      a6_inert_flags. `git diff HEAD~1 --output=.git/config` CLOBBERS
+#      .git/config with NO shell operator in the clause, so the redirection rule
+#      cannot see it: the redirection is an option VALUE. `git show --output=`
+#      and `git log -p --output=` write files too, and
+#      `git branch --set-upstream-to=` / `--unset-upstream` are the long forms
+#      of the `-u` guard. Adding those to a guard list would be the third list
+#      that does not close, so the allowlist is inverted the same way the argv
+#      globals are: any flag not on the verb's list makes the clause a mover.
+#
+# THE MOVER RULE REFUSES WHEN THE VERDICT DEPENDS ON THE BRANCH THE MOVER LANDS
+# ON — not whenever a mover is present. `git checkout main && git merge <x>` is
+# refused: the landing is real and the branch decides. `git checkout main &&
+# git pull --ff-only` is ALLOWED, because a bare `--ff-only` pull fetches first
+# and can only fast-forward to the upstream, so it is judged the same on every
+# branch; refusing it would be a denied legitimate command. It blocked on
+# v3.0.2 and is allowed from v3.0.3 for that reason. Both polarities have rows.
+#
+# SETS TWO GLOBALS, does not print. A `$(a6_clause_class …)` call would run the
+# body in a SUBSHELL and the reason string would never reach the DENY text — the
+# refusal would then read as an ordinary merge refusal and the fixture asserting
+# WHICH arm fired would pass on the wrong discriminator.
+a6_clause_class() { # <segment> -> sets A6_CLASS=inert|tracked|mover, A6_CLASS_WHY
+  a6cc_seg="$1"
+  A6_CLASS_WHY=""
+  case "$a6cc_seg" in
+    *'$('*|*'`'*|*'<('*|*'>('*)
+      A6_CLASS_WHY="the clause contains a command substitution, which can execute anything"
+      A6_CLASS=mover; return ;;
+  esac
+  case "$a6cc_seg" in
+    *'>'*|*'<'*)
+      A6_CLASS_WHY="the clause carries a redirection operand, which can write .git/config"
+      A6_CLASS=mover; return ;;
+  esac
+  a6cc_first=$(printf '%s' "$a6cc_seg" | awk '{print $1}')
+  case "$a6cc_first" in
+    echo|printf|ls|pwd|true|:)
+      a6cc_inert; return ;;
+    cd)
+      A6_CLASS=tracked; return ;;
+    git)
+      if gc_matches_subcommand "$a6cc_seg" "checkout" || gc_matches_subcommand "$a6cc_seg" "switch"; then
+        A6_CLASS=tracked; return
+      fi
+      for a6cc_ro in status rev-parse branch log diff show; do
+        if gc_matches_subcommand "$a6cc_seg" "$a6cc_ro"; then
+          if a6_inert_flags "$a6cc_ro" "$a6cc_seg"; then
+            a6cc_inert; return
+          fi
+          A6_CLASS=mover; return
+        fi
+      done
+      A6_CLASS_WHY="'git $(printf '%s' "$a6cc_seg" | awk '{print $2}')' is not one of the read-only verbs this gate can prove inert"
+      A6_CLASS=mover; return ;;
+  esac
+  A6_CLASS_WHY="'$a6cc_first' is not on the inert or tracked lists"
+  A6_CLASS=mover
+}
+
+# The one place `inert` is emitted, so the pipe rule cannot be forgotten at one
+# of the three call sites above. Only `inert` is suppressed by a pipe; `tracked`
+# is a gating mechanism, not a bypass, and stays on.
+a6cc_inert() {
+  if [ "${A6_NOINERT:-0}" = 1 ]; then
+    A6_CLASS_WHY="a pipe elsewhere in this command can consume this clause's output and execute it"
+    A6_CLASS=mover
+    return
   fi
-  # `git config <anything> branch.* | remote.*` — any subcommand form, any scope.
-  if gc_matches_subcommand "$a6mr" "config"; then
-    printf '%s\n' "$a6mr" | grep -qE '(^|[[:space:]])(branch|remote)\.' && return 0
-  fi
-  gc_matches_subcommand "$a6mr" "update-ref" && return 0
-  # `git fetch` with an explicit DESTINATION refspec (an operand carrying ':').
-  if gc_matches_subcommand "$a6mr" "fetch"; then
-    a6_nonflag "$(a6_args "$a6mr" "fetch")" | grep -q ':' && return 0
-  fi
-  if gc_matches_subcommand "$a6mr" "remote"; then
-    printf '%s\n' "$a6mr" | grep -qE '(^|[[:space:]])(set-url|remove|rm|add)([[:space:]]|$)' && return 0
-  fi
-  return 1
+  A6_CLASS=inert
+}
+
+# a6_inert_flags <verb> <segment> -- true when every FLAG token after <verb> is
+# on that verb's read-only allowlist. Non-flag tokens (revs, paths) are free.
+# Start narrow: a consumer chain that needs another flag gets a row and an entry,
+# which is a decision someone makes on purpose rather than a gap that opens
+# itself. Anything carrying `--output`, `-o` or a path-valued option is by
+# construction absent from these lists and therefore refuses.
+a6_inert_flags() {
+  case "$1" in
+    status)    a6if_ok='--short|-s|--porcelain|--porcelain=.*|--branch|-b|--untracked-files=.*|-u.*|--no-color' ;;
+    rev-parse) a6if_ok='--show-toplevel|--git-dir|--abbrev-ref|--short|--short=.*|--verify|--symbolic-full-name|--is-inside-work-tree' ;;
+    branch)    a6if_ok='--show-current' ;;
+    log)       a6if_ok='--oneline|-n|-[0-9]+|--format=.*|--pretty=.*|--graph|--decorate|--no-decorate|--no-color' ;;
+    diff)      a6if_ok='--stat|--name-only|--name-status|--cached|--staged|--no-color|--' ;;
+    show)      a6if_ok='--stat|--name-only|--format=.*|--pretty=.*|--no-patch|-s|--no-color' ;;
+    *)         A6_CLASS_WHY="'git $1' has no read-only flag allowlist"; return 1 ;;
+  esac
+  for a6if_t in $(a6_args "$2" "$1"); do
+    case "$a6if_t" in
+      -*)
+        printf '%s\n' "$a6if_t" | grep -qE "^($a6if_ok)$" && continue
+        A6_CLASS_WHY="flag '$a6if_t' is not on the read-only allowlist for 'git $1', so this clause is not provably inert"
+        return 1 ;;
+    esac
+  done
+  return 0
 }
 
 # a6_inline_config <segment> <subcommand> -- the gated invocation ITSELF carries
@@ -412,27 +550,62 @@ a6_mutates_resolution() {
 # The `-c` search is restricted to the text BETWEEN `git` and the subcommand:
 # gc_segments strips quotes, so a segment-wide grep would fire on
 # `git merge -m "note -c x" feature/x` and refuse a message body.
-# a6_is_git_sub <segment> <subcommand> -- gc_matches_subcommand, widened for the
-# option forms the lib's GC_GIT_PRE does not know about.
-#
-# MEASURED while writing the fixtures for a6_inline_config:
-# `git --config-env=branch.main.remote=X pull --ff-only` on a protected branch
-# returned 0 — not because the inline-config rule missed it, but because the
-# clause never matched as a `pull` AT ALL. GC_GIT_PRE allows `-C <path>` and
-# `-c <k>=<v>` between `git` and the subcommand and nothing else, so the whole
-# pull arm was skipped and the command fell through ungated. The counting bug is
-# in hooks/lib/git-cmd.sh; compensating at the call site keeps that lib — and
-# its ~90-minute three-parser matrix — out of this release, exactly as the
-# v3.0.2 redirect strip does for gc_has_refspec.
-a6_is_git_sub() {
-  gc_matches_subcommand "$1" "$2" && return 0
-  printf '%s\n' "$1" | grep -qE "\\bgit\\b([[:space:]]+--config-env=[^[:space:]]+|[[:space:]]+-c[[:space:]]+[^[:space:]]+|[[:space:]]+-C[[:space:]]+[^[:space:]]+)+[[:space:]]+$2([[:space:]]|\$)"
-}
+# a6_is_git_sub is GONE (v3.0.3, finding 62). It existed because the lib's
+# GC_GIT_PRE tolerated only `-C` and `-c`, so a clause carrying any other
+# global did not match as a pull/push AT ALL and fell through UNGATED. The
+# prefix is widened in the lib now — which is where the other two git gates
+# read it from — so the local compensation is dead code and the arms below
+# call gc_matches_subcommand directly.
 
-a6_inline_config() {
-  printf '%s\n' "$1" | grep -qE '(^|[[:space:]])GIT_CONFIG_[A-Z_]+=' && return 0
-  a6ic=$(printf '%s\n' "$1" | sed -n "s/.*[[:space:]]*git\\([^;]*\\)[[:space:]]$2\\([[:space:]]\\|\$\\).*/\\1/p" | head -1)
-  printf '%s\n' "$a6ic" | grep -qE '(^|[[:space:]])(-c|--config-env)([[:space:]]|=)'
+
+# v3.0.3 item 1's classifier (gc_global_options) MOVED TO hooks/lib/git-cmd.sh
+# as gc_global_options when finding 62 showed no-push-main.sh and
+# pre-commit-test.sh need the identical classification. Same contract:
+# `ok | refuse:<opt> | env:<VAR>`. One definition, three callers.
+
+# gc_repo_for IS GONE (v3.0.3, defect 1 round 2). It held a private copy of the
+# repeated-`-C` fold, on the stated grounds that fixing hooks/lib/git-cmd.sh
+# would drag the ~90-minute three-parser matrix into this release. That reason
+# was void — the lib already carries functional change in v3.0.3, so the matrix
+# is already mandatory — and the private copy fixed THIS hook while leaving the
+# same bypass live in hooks/no-push-main.sh, MEASURED at 0d7806e:
+#
+#   git -C <feature repo> -C <protected repo> push   from either cwd -> 0
+#
+# i.e. git lands on the protected branch and the push gate never sees it. The
+# fold now lives in gc_repo_for; all three callers get it. See the comment
+# there for the git 2.55.0 measurement of `-C` composition.
+
+# a6_deny_unresolved_c <segment> <base> -- refuse a GATED clause whose repeated
+# `-C` fold does not resolve. Never called for a 0- or 1-`-C` segment: a single
+# `-C` into a missing directory keeps the documented pre-v3.0.3 behaviour (fall
+# back to the cwd, decide, let git fail). A fold that does not resolve is the
+# cannot-determine case, and a fail-closed gate refuses it.
+a6_deny_unresolved_c() {
+  a6du_out=$(gc_dash_c_unresolved "$1" "$2")
+  [ -n "$a6du_out" ] || return 0
+  a6du_kind=$(printf '%s\n' "$a6du_out" | sed -n 1p)
+  a6du=$(printf '%s\n' "$a6du_out" | sed -n 2p)
+  if [ "$a6du_kind" = cannot-determine ]; then
+    # v3.0.3 defect 2 -- a different fact from "does not resolve": the operand
+    # contains an unexpanded shell expression this hook cannot know the value
+    # of without executing it (never done here -- see gc_classify_c).
+    {
+      echo "BLOCKED: A6 — hook cannot DETERMINE the -C target (contains an unexpanded shell expression): $a6du"
+      echo "  clause:          $1"
+      echo "  This clause names a -C operand this hook cannot resolve by string substitution"
+      echo "  alone. Pass a literal or absolute path, or one of \$HOME/\$USERPROFILE/~."
+    } >&2
+    exit 2
+  fi
+  {
+    echo "BLOCKED: A6 — hook could not resolve \`-C $a6du\`; if git can, pass an absolute path."
+    echo "  clause:          $1"
+    echo "  This clause carries more than one 'git -C' and NOT ONE of them resolves, so"
+    echo "  there is no candidate repository to judge. A fold with at least one resolvable"
+    echo "  step is judged on the strictest candidate instead of being refused."
+  } >&2
+  exit 2
 }
 
 # v2.2.6 round 2 -- THE 14th FAIL-OPEN, third instance. Checked BEFORE the tool
@@ -459,6 +632,93 @@ case "$GC_TOOL" in
   mcp__*)          ;;   # the GitHub merge tools: always gated
   *) exit 0 ;;          # unknown tool, or a payload with no command key at all
 esac
+
+# v3.0.3 item 25 — EXIT BEFORE DOING ANY WORK ON A PAYLOAD THAT CANNOT BE GATED.
+#
+# The ~1.5 s this gate spends per call is WORK, not parse: measured, comments
+# intact 49 KB -> 1512 ms/call, the same logic with comments stripped 17 KB ->
+# 1559 ms, a no-op script 38 ms. Stripping 32 KB changed nothing. The lever is
+# not doing the work — the segment walk, gc_repo_for, gc_protected_branches,
+# gc_on_main and their git subprocesses — on a command with no git or gh token
+# in it at all. Every gated path in this file needs one of the two tokens
+# below, so a payload carrying neither cannot reach a refusal.
+#
+# WHY THIS IS AFTER THE PARSE AND NOT BEFORE IT, measured. The obvious cheaper
+# form is to grep the RAW JSON payload before sourcing anything. It is unsound:
+# a newline inside the command is JSON-escaped as `\n`, so
+# `"echo a\ngit merge feature/x"` puts the letter `n` immediately before `git`
+# in the raw bytes, the `(^|[^[:alnum:]_-])` prefix fails, and the grep MISSES a
+# genuinely gated merge — a FALSE NEGATIVE, i.e. an ungated exit 0, on exactly
+# the newline-separated shape gc_segments exists to split. (Probed: the
+# backslash-continuation, leading-tab, `&&` and `gh pr merge` forms are all
+# seen; the newline one is not.) A false positive costs one wasted parse; a
+# false negative costs the gate. So the token test reads GC_CMD, which is
+# unescaped, and sits before the first git subprocess rather than before the
+# parse.
+#
+# The MCP branch is untouched: those payloads carry no command string, and the
+# GitHub merge tools are gated unconditionally.
+#
+# Note the test is for a git TOKEN, not for a leading `git merge`: after
+# finding 62 a gated command can be `git -P merge feature/y`, and an early exit
+# that pattern-matched on the subcommand would pass every timing test and
+# re-open finding 62 in the same change — fast and wrong.
+if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
+  if ! printf '%s\n' "$GC_CMD" | grep -qE '(^|[^[:alnum:]_-])git([[:space:]]|$)' &&
+     ! printf '%s\n' "$GC_CMD" | grep -qE '(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+merge'; then
+    exit 0
+  fi
+fi
+
+# INVARIANT — RE-CHECK IT BEFORE YOU ADD A GATED PATH (v3.0.2; penumbra).
+#
+# `git update-ref refs/remotes/origin/main <sha>` is UNGATED and stays so:
+# the ways to MOVE a ref are unbounded, the ways to LAND content are few, so
+# this gate protects the landing and never the ref. The property this file
+# guarantees is therefore NOT "tracking refs are trustworthy". It is:
+#
+#   every path that acts on a remote-tracking ref on a protected branch is
+#   gated UNCONDITIONALLY — its verdict never depends on the ref's VALUE.
+#
+# That is a property of the CONSUMER LIST, not of any one arm. The list is
+# A6_CONSUMER_LIST below; test-hooks.sh's A6.11 census asserts the case arms
+# in this file match it, and the A6.11 canary runs every form in FOUR ref
+# states. If you add a gated path that RESOLVES a tracking ref and branches on
+# what it finds — a new catch-up exemption, an "only if behind" shortcut, an
+# "already up to date, nothing to gate" fast path, anything keyed on
+# `rev-parse origin/X` — you have reopened ref poisoning, and NO EXISTING
+# FIXTURE GOES RED except the canary, and only if you add the form to the
+# list. The poisoning question is UNREACHABLE today, not ANSWERED.
+# Before merging such a path:
+#   (1) add its command form to A6_CONSUMER_LIST;
+#   (2) the A6.11 canary then runs it in all four values of the pairwise
+#       ancestry relation between HEAD and origin/main — BEHIND, EQUAL,
+#       AHEAD, DIVERGED — and asserts the verdict AND the discriminator are
+#       unchanged across all four. Four, not two: the v3.0.1 exemption keyed
+#       on "HEAD is an ancestor of upstream", which is true for BEHIND and
+#       EQUAL alike, and DIVERGED is the one people forget — "upstream is an
+#       ancestor of HEAD" is true for AHEAD and false for DIVERGED, exactly
+#       the shape a push-side shortcut would key on. WHAT THE FOUR STATES DO
+#       AND DO NOT COVER, measured: the canary is asserted for every ancestry
+#       predicate AND every value-equality predicate — EQUAL is one of the four
+#       and the other three poison away from the honest value, so any
+#       single-sha exemption gives a 1-vs-3 split whichever sha it keys on. It
+#       is NOT asserted for predicates on commit CONTENT or METADATA that the
+#       four fixture states share (author, message text, a file's presence):
+#       the forged AHEAD/DIVERGED commits inherit those from the fixture;
+#   (3) run delete-the-guard on that row: restore v3.0.1's exemption from git
+#       and confirm the row goes red.
+#
+# ACCEPTED RESIDUAL, precisely: the name comparison in a6_pull_catchup reads
+# branch.<cur>.merge ONLY. branch.<cur>.remote, remote.<r>.url and
+# remote.<r>.fetch are NOT read, so a config write to one of those in a
+# SEPARATE call, followed by a bare `git pull --ff-only`, passes with `merge`
+# honest. Those are the reads that would close it, if anyone ever wants to.
+#
+# ONE LINE, ON PURPOSE: test-hooks.sh reads this variable out of this file
+# with grep. Wrapping or splitting it makes the census silently report the
+# list as missing.
+A6_CONSUMER_LIST='merge:any-target pull:bare pull:named-refspec push:any'
 
 if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
   is_merge=0
@@ -499,8 +759,18 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
   # explicitly — stay allowed after a branch change, because for them the moved
   # premise is not load-bearing. Where a decision can key on the payload's
   # arguments it already does; this flag covers what is left.
+
   moved=0
   mutated=0
+
+  # v3.0.3 item 2: a pipe anywhere in the command disables the `inert` category
+  # for EVERY clause — see a6_clause_class's comment (2). `||` is stripped first
+  # because it is a control operator, not a pipe, and gc_segments already splits
+  # on it.
+  A6_NOINERT=0
+  case "$(printf '%s' "$GC_CMD" | sed 's/||//g')" in
+    *'|'*) A6_NOINERT=1 ;;
+  esac
 
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
@@ -512,11 +782,17 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
     # the same defect with a different mutable premise. Set here, read by the
     # merge/pull/push arms below. Never reset: a mutation cannot be undone by a
     # later clause the way a checkout can be.
-    if a6_mutates_resolution "$seg"; then
-      mutated=1
-      A6_MUT_SEG=$seg
-      continue
-    fi
+    # v3.0.3 item 2: the blocklist is replaced by a6_clause_class. `inert` skips
+    # the arms entirely — that is the fix for the echoed-narration false
+    # positive. `mover` does NOT skip them and does NOT set `mutated` here: the
+    # gated clause is itself a mover by classification, and setting the flag
+    # before the arms would make a bare `git pull --ff-only` its own "earlier
+    # clause". The flag is set at the END of the loop body, reached only when no
+    # arm fired.
+    a6_clause_class "$seg"
+    a6cls=$A6_CLASS
+    A6_SEG_WHY=$A6_CLASS_WHY
+    [ "$a6cls" = inert ] && continue
 
     cdt=$(gc_cd_target "$seg")
     if [ -n "$cdt" ]; then
@@ -539,12 +815,14 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
       A6_KIND=ghpr
       [ "$moved" != 0 ] && A6_KIND=moved
       A6_SEG=$seg
+      a6_deny_unresolved_c "$seg" "$base"
       CWD=$(gc_repo_for "$seg" "$base")
       break
     fi
 
     # 2. git merge while the checkout is on a protected branch
-    if a6_is_git_sub "$seg" "merge"; then
+    if gc_matches_subcommand "$seg" "merge"; then
+      a6_deny_unresolved_c "$seg" "$base"
       repo=$(gc_repo_for "$seg" "$base")
       margs=$(a6_args "$seg" "merge")
       # v3.0.1 item 1: the three merge-state subcommands are exempt on the
@@ -569,7 +847,25 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
         # ref by name and trusted its value; see the comment on a6_pull_catchup's
         # neighbour block. A merge on a protected branch is gated.
         is_merge=1
+        # v3.0.3 (finding 62 fixture round): the merge arm never asked the
+        # classifier. The VERDICT was right by luck — a merge on a protected
+        # branch is gated whatever the argv — but the DISCRIMINATOR named the
+        # merge rule when the reason was an inline `-c`, and a 2 from the wrong
+        # discriminator passes without testing what it claims. Scoped inside
+        # gc_on_main so a resolving global on a FEATURE-branch merge stays
+        # allowed, as the A6.9 row asserts.
+        # v3.0.3 defect 2 — this `-c` classifier runs AFTER `$repo` has already
+        # been resolved by gc_repo_for (it is INSIDE the `gc_on_main "$repo"`
+        # scope above), and it is left there BY DESIGN: it is
+        # protected-branch-conditioned, not a `-C`-resolution question, so
+        # moving it earlier would change what it answers. The unresolvable-`-C`
+        # case is refused earlier, unconditionally, by a6_deny_unresolved_c.
         A6_KIND=merge
+        a6g=$(gc_global_options "$seg")
+        case "$a6g" in
+          refuse:*) A6_KIND=global; A6_GLOBAL="${a6g#refuse:}" ;;
+          env:*)    A6_KIND=global; A6_GLOBAL="${a6g#env:}=" ;;
+        esac
         A6_TARGET=$(a6_nonflag "$margs" | head -1)
         A6_SEG=$seg
         A6_ARGS=$margs
@@ -605,7 +901,8 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
     # not a multi-minute gate run. Gating only refspec-bearing pulls would leave
     # bare `git pull` with divergent local history creating a real merge commit
     # on the protected branch, which is the topology A6 exists for.
-    if a6_is_git_sub "$seg" "pull"; then
+    if gc_matches_subcommand "$seg" "pull"; then
+      a6_deny_unresolved_c "$seg" "$base"
       repo=$(gc_repo_for "$seg" "$base")
       pargs=$(a6_args "$seg" "pull")
       # THE PROTECTED-BRANCH DECISION COMES FIRST (v3.0.2). The name comparison
@@ -619,9 +916,14 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
       # is poisoned is still allowed through that exemption. Queued, not fixed
       # here — closing it needs the inverse (allowlist) shape.
       if [ "$moved" = 0 ] && gc_on_main "$repo"; then
-        if a6_inline_config "$seg" "pull"; then
+        a6g=$(gc_global_options "$seg")
+        if [ "$a6g" != ok ]; then
           is_merge=1
-          A6_KIND=config
+          A6_KIND=global
+          case "$a6g" in
+            refuse:*) A6_GLOBAL="${a6g#refuse:}" ;;
+            env:*)    A6_GLOBAL="${a6g#env:}=" ;;
+          esac
         elif [ "$mutated" != 0 ]; then
           is_merge=1
           A6_KIND=mutated
@@ -640,7 +942,7 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
       # --ff-only form is allowed on ANY branch, so a preceding branch change
       # does not change its verdict — it stays out of the refusal.
       if [ "$(a6_nonflag_count "$pargs")" -eq 0 ] && a6_has_flag "$pargs" 'ff-only' \
-         && [ "$mutated" = 0 ] && ! a6_inline_config "$seg" "pull"; then
+         && [ "$mutated" = 0 ] && [ "$(gc_global_options "$seg")" = ok ]; then
         continue
       fi
       if [ "$moved" != 0 ]; then
@@ -654,7 +956,15 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
     fi
 
     # 3. a push that targets a protected branch -- fast-forward merge by push
-    if a6_is_git_sub "$seg" "push"; then
+    #
+    # THE TWO PUSH GATES KEY ON DIFFERENT THINGS, ON PURPOSE (v3.0.3, comment
+    # only). This arm keys on the CURRENT branch being protected — the merge
+    # gate guards what lands FROM here. hooks/no-push-main.sh keys on the push
+    # TARGET — it guards the DESTINATION. Both catch push-main-from-main;
+    # only no-push-main.sh catches push-to-main-from-a-feature-branch, verified.
+    # That is not a gap in this arm: the target check has an owner.
+    if gc_matches_subcommand "$seg" "push"; then
+      a6_deny_unresolved_c "$seg" "$base"
       repo=$(gc_repo_for "$seg" "$base")
       # v3.0.2: the push half of the redirection defect is a FAIL-OPEN, not a
       # false positive. `git push origin 2>&1` on a protected branch gave
@@ -669,10 +979,15 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
       # content somewhere this hook cannot see. Scoped to a protected branch on
       # purpose: gating every `git remote set-url && git push` on a feature
       # branch would be an over-correction on ordinary work.
-      if gc_on_main "$repo" && { a6_inline_config "$seg" "push" || [ "$mutated" != 0 ]; }; then
+      a6g=$(gc_global_options "$seg")
+      if gc_on_main "$repo" && { [ "$a6g" != ok ] || [ "$mutated" != 0 ]; }; then
         is_merge=1
-        A6_KIND=config
-        [ "$mutated" != 0 ] && ! a6_inline_config "$seg" "push" && A6_KIND=mutated
+        A6_KIND=global
+        case "$a6g" in
+          refuse:*) A6_GLOBAL="${a6g#refuse:}" ;;
+          env:*)    A6_GLOBAL="${a6g#env:}=" ;;
+          ok)       A6_KIND=mutated ;;
+        esac
         A6_SEG=$seg
         A6_ARGS=$args
         CWD="$repo"
@@ -706,6 +1021,18 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
         break
       fi
     fi
+
+    # No arm fired on this segment, and it is neither inert nor tracked. It is a
+    # mover: this gate cannot rule out that it changes what a LATER gated clause
+    # resolves through. First one wins, so the DENY text names the earliest
+    # unexplained clause rather than whichever one happened to be last.
+    if [ "$a6cls" = mover ]; then
+      mutated=1
+      if [ -z "${A6_MUT_SEG:-}" ]; then
+        A6_MUT_SEG=$seg
+        A6_MUT_WHY=$A6_SEG_WHY
+      fi
+    fi
   done <<GC_SEGMENTS
 $segments
 GC_SEGMENTS
@@ -725,7 +1052,12 @@ fi
 # Tolerates: leading "- " / "* " list
 # markers, the "**Gate Command**:" label style (java/python variants), and
 # surrounding backticks — several variants write commands as `cmd`.
-GATE_CMD=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed 's/.*\*\*Gate\( Command\)\?\*\*:[[:space:]]*//;s/[[:space:]]*$//;s/^`//;s/`$//' | head -1)
+# v3.0.3 defect 3b — anchored at GC_KEY_PRE (same grammar the grep above
+# uses), not a greedy `.*`: a value that itself contains the literal text
+# `**Gate**:` a second time used to have everything up to THAT occurrence
+# stripped too, truncating the extracted command instead of returning the
+# whole original value.
+GATE_CMD=$(grep -E "${GC_KEY_PRE}\*\*Gate( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed -E "s/${GC_KEY_PRE}\\*\\*Gate( Command)?\\*\\*:[[:space:]]*//;s/[[:space:]]*\$//;s/^\`//;s/\`\$//" | head -1)
 
 # No-op: no PROJECT_CONTEXT.md or no Gate command configured
 if [ -z "$GATE_CMD" ]; then
@@ -818,17 +1150,34 @@ if gc_on_main "$CWD"; then
         echo "                   name comparison: ${A6_PULL_WHY:-<not reached>}"
         echo "                   verdict: not one of the two pull forms whose target can be proved by NAME before the fetch."
         ;;
-      config)
-        echo "  discriminator:   this git invocation carries inline configuration (-c, --config-env, or a GIT_CONFIG_* env prefix)."
-        echo "                   verdict: inline config can re-point remote.*.url / branch.*.remote for this one command, so what it resolves to is not what the repository's configuration says. Measured landing foreign content on a protected branch in a SINGLE clause, while branch.<branch>.merge on disk stayed honest."
+      global)
+        echo "  discriminator:   global option '$A6_GLOBAL' before the subcommand changes what this command RESOLVES to (config, repo, ref namespace, or binaries), or is unknown to this gate."
+        echo "                   verdict: refused. Allowed globals: -C <path>, --no-pager, -P, --paginate, --no-optional-locks, --literal-pathspecs, --no-lazy-fetch."
+        echo "                   inline config in particular can re-point remote.*.url / branch.*.remote for this one command: measured landing foreign content on a protected branch in a SINGLE clause, while branch.<branch>.merge on disk stayed honest."
         ;;
       mutated)
         echo "  discriminator:   earlier clause: ${A6_MUT_SEG}"
-        echo "                   verdict: that clause changes the configuration or refs THIS clause resolves through (upstream, remote URL, or a tracking ref), and this hook runs before any of it."
+        echo "                   clause class: mover (not inert, not tracked) — ${A6_MUT_WHY:-it is not on either allowlist}"
+        # v3.0.3: this line used to ASSERT that the clause changes what the
+        # gated clause resolves through. Under the three-category rule the arm
+        # also fires for clauses the gate has no evidence about at all, so the
+        # honest claim is the one the gate can actually make: it could not prove
+        # the clause inert. A DENY line claiming more than the gate knows is the
+        # same defect as a 2 from the wrong discriminator.
+        echo "                   verdict: this gate could not prove that clause harmless, and it runs BEFORE the command, so it cannot observe what the clause does to the configuration or refs this clause resolves through."
         ;;
       *)
         echo "  discriminator:   not applicable — this operation names no local ref that can be resolved before it runs."
         ;;
+    esac
+    # v3.0.3 item 2: when the MATCHED clause was refused for a reason the arm
+    # above cannot name — a substitution, a redirection operand, or a pipe that
+    # can consume and execute it — say so. Without this a `echo $(git merge …)`
+    # refusal reads as an ordinary merge refusal and the fixture asserting the
+    # arm would pass on the wrong discriminator.
+    case "${A6_SEG_WHY:-}" in
+      *"command substitution"*|*"redirection operand"*|*"pipe elsewhere"*)
+        echo "                   clause class: mover (not inert, not tracked) — ${A6_SEG_WHY}" ;;
     esac
     echo "Could not determine: this check runs before any fetch, so the CONTENT of a remote target ref — what a fetch would bring in — is unknown to it. It decides on the FORM of the command and on refs that already exist locally. If your case is one only the content would settle, the hook cannot see it."
     case "$A6_KIND" in
@@ -839,8 +1188,8 @@ if gc_on_main "$CWD"; then
       pull)
         echo "ALLOWED without a gate run: 'git pull --ff-only' with no remote and no refspec, when this branch's own config names itself (branch.$A6_BRANCH.remote set, branch.$A6_BRANCH.merge = refs/heads/$A6_BRANCH); or 'git pull --ff-only <remote> $A6_BRANCH', which names the same thing explicitly. Either way git itself refuses if the result would not be a fast-forward."
         ;;
-      config)
-        echo "ALLOWED without a gate run: re-run this command WITHOUT the '-c' / '--config-env' option (and with no GIT_CONFIG_* variable set on it). If the setting is one you genuinely need, put it in the repository's configuration in a separate call, where it is visible to a reader, and then run the operation."
+      global)
+        echo "ALLOWED without a gate run: re-run this command WITHOUT the '$A6_GLOBAL' option — the same command with '$A6_GLOBAL' removed. Set the option in your configuration instead, in a separate call where a reader can see it; this gate compares configuration by NAME, so an inline override is exactly what it cannot see."
         ;;
       mutated)
         echo "ALLOWED without a gate run: run the two as SEPARATE calls — make the configuration or ref change first, then issue the pull/merge/push on its own, where this gate reads the configuration the operation will actually use."
