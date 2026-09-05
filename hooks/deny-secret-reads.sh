@@ -148,11 +148,13 @@ dsr_paths_in() {
   esac
 }
 
-dsr_deny() { # <path>
+dsr_deny() { # <path> <location-desc> [extra-clause]
   {
-    echo "BLOCKED: reading '$1' — secrets files are not read by agents."
+    echo "BLOCKED: '$1' — secrets files are not read by agents. (matched: \"$1\" in $2)"
     echo "  Could not determine: this hook sees the command's arguments, not what an interpreter opens; 'python -c open(...)' and 'git show HEAD:.env' are judged by the auto-mode classifier, not here."
+    [ -n "${3:-}" ] && printf '%s\n' "$3" | sed 's/^/  /'
     echo "  If you need a variable's NAME, read '.env.example' — it is allowed on purpose."
+    echo "  Inspecting a config file that merely mentions one? Read it with the Read tool."
   } >&2
   exit 2
 }
@@ -161,7 +163,7 @@ case "$DSR_TOOL" in
   Read)
     DSR_PATH=$(json_get "$DSR_JSON" tool_input.file_path)
     [ -n "$DSR_PATH" ] || exit 0
-    dsr_is_secret "$DSR_PATH" && dsr_deny "$DSR_PATH"
+    dsr_is_secret "$DSR_PATH" && dsr_deny "$DSR_PATH" "the file path argument"
     ;;
   Bash|PowerShell)
     DSR_CMD=$(json_get "$DSR_JSON" tool_input.command)
@@ -193,11 +195,15 @@ DSR_TOK
     [ "$DSR_COPY" -eq 1 ] && [ "$DSR_STDOUT" -eq 1 ] && DSR_READER=1
     [ "$DSR_XMIT" -eq 1 ] && DSR_READER=1
     [ "$DSR_READER" -eq 1 ] || exit 0
+    DSR_ARGN=0
     while IFS= read -r tok; do
       [ -n "$tok" ] || continue
+      DSR_ARGN=$((DSR_ARGN + 1))
       while IFS= read -r dsr_p; do
         [ -n "$dsr_p" ] || continue
-        if dsr_is_secret "$dsr_p"; then dsr_deny "$dsr_p"; fi
+        if dsr_is_secret "$dsr_p"; then
+          dsr_deny "$dsr_p" "argument $DSR_ARGN" "Matched a reader verb and a secrets filename in the same command, though not necessarily in the same clause: a mention in an echo or a comment counts, and so does a reader that never touches the file. Whole-command matching is deliberate, so that a wrapper such as \`bash -c \"...\"\` cannot hide the read."
+        fi
       done <<DSR_PATHS
 $(dsr_paths_in "$tok")
 DSR_PATHS

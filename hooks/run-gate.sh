@@ -11,6 +11,19 @@
 #   {"sha":"<HEAD sha>","tree":"<working-tree hash>","branch":"<branch>",
 #    "ts":"<UTC ISO-8601>","status":"pass"}
 #
+# ARTIFACT DOC NOTE (v3.0.4, item A4): the TREE arm of gate-before-merge's
+# freshness check — the arm that covers a rebase or amend that preserves
+# content, which the SHA arm structurally cannot — is defeated by any
+# untracked file, because `tree` is computed via `git add -A` into a
+# temporary index and therefore INCLUDES UNTRACKED FILES: build output, an
+# editor swap file, a leftover fixture. Any of those changes the hash, so
+# tree-freshness can report stale after a real sha change while untracked
+# content sits in the working tree, or mask staleness the SHA arm would
+# otherwise have caught cleanly on its own. Documented, not fixed, in
+# v3.0.4; tracked-only hashing changes what the gate hashes — the current
+# contract is "the tree about to be tested, as it sits on disk" — and is a
+# v3.1 design item.
+#
 # On failure, any existing artifact is deleted and the script exits nonzero:
 # 1 for an ordinary red gate (retry after fixing), GC_TERMINAL_RC (78) when the
 # failure is terminal — a configuration the gate command cannot succeed under,
