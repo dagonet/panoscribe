@@ -10,7 +10,7 @@
     "PROJECT_NAME_LOWER": "panoscribe",
     "REPO_URL": "https://github.com/dagonet/panoscribe",
     "PYTHON_VERSION": "3.11",
-    "BUILD_COMMAND": "uv run pytest",
+    "BUILD_COMMAND": "uv sync --extra dev --extra api",
     "TEST_COMMAND": "uv run pytest",
     "FORMAT_COMMAND": "uv run ruff format .",
     "LINT_COMMAND": "uv run ruff check .",
@@ -110,21 +110,22 @@
       "templatePartHashAtSync": "5ece13a4032d0627b122fee37a559bc77f43ecc5358b54ba7b0422a9a27808e1"
     },
     "CLAUDE.md": {
-      "templateHash": "189b5cac4e2f86df02133937c09ec174e29103782dd14956ffe8125491a75f17",
+      "templateHash": "e2d0d0f747cee3568890bc7e8d0e7a5471720fd384be84a3fb35e610f084367d",
       "templateRawHash": "2b48f928283ee99ebbf352e8cf22d42292d4f1737703e3246e034b00216930e7",
-      "localHash": "50d3df6fbe2b309fdab1206d798023d69a88d39e06b3e48c9d287fc4c9bbef29",
+      "localHash": "016340cd9e420a29a70b171be01812bdfc51fff389f49c82aa04c148d819102f",
       "locallyModified": true,
-      "localPartHash": "8ac4868030e309b011ebd39faa9690a996fe5aaaa7134a37a951efbb7fe836fa",
-      "templatePartHashAtSync": "c68e88ce14d67a088d7cf790e2158ad46e931a47117510a87fb1be09cf23dabf",
+      "localPartHash": "9a3baefe0dbf597275b31f1b2cb6c84a7631c9052fe1bf509861b78e85e97398",
+      "templatePartHashAtSync": "8df94a4fb321a8912eece95c47bf345d08f1c07bba68f2a19ec8842eb758409f",
       "resolution": "keep-mine"
     },
     "PROJECT_CONTEXT.md": {
-      "templateHash": "c39bab00437e899731ad1705b1f2d163b57f17b2391ca6aa40895009817c80f4",
+      "templateHash": "200e58c0029cb7154db6c2b09fe1eebe640e98b656c4f0fe68a937c0f4831494",
       "templateRawHash": "65fad1c9ad858c59ed7906133a0f6a546347d044f15da15c3d7538d7ce077fce",
       "localHash": "5b4ab2682bf58315633a97d5306670a661a1e642759a03e65155cb7a0038c924",
       "locallyModified": true,
       "localPartHash": "5b4ab2682bf58315633a97d5306670a661a1e642759a03e65155cb7a0038c924",
-      "templatePartHashAtSync": "c39bab00437e899731ad1705b1f2d163b57f17b2391ca6aa40895009817c80f4",
+      "templatePartHashAtSync": "200e58c0029cb7154db6c2b09fe1eebe640e98b656c4f0fe68a937c0f4831494",
+      "resolution": "keep-mine",
       "reason": "Project-specific config"
     },
     "PROJECT_STATE.md": {

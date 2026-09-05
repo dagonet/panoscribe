@@ -85,7 +85,7 @@ Conventions: see `.claude/rules/python.md` (loads when you touch matching files)
 # Build & Test Discipline
 
 Before claiming any task complete, invoke `superpowers:verification-before-completion`.
-Project-specific reminders: diff behavior between your branch and `main` to confirm the change does what's intended; ask "would a staff engineer approve this as-is?" before marking complete. Use `uv run pytest` + `uv run pytest`; for slow suites, target first (`pytest path/to/test_file.py::TestClass::test_method -x`) then run the full suite.
+Project-specific reminders: diff behavior between your branch and `main` to confirm the change does what's intended; ask "would a staff engineer approve this as-is?" before marking complete. Use `uv sync --extra dev --extra api` + `uv run pytest`; for slow suites, target first (`pytest path/to/test_file.py::TestClass::test_method -x`) then run the full suite.
 
 ---
 
