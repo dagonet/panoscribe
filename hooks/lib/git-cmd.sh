@@ -412,6 +412,34 @@ gc_segments() {
   printf '%s\n' "$GC_CMD" | tr -d "\"'" | tr '|;' '\n\n' | sed 's/&&/\n/g'
 }
 
+# gc_seg_quoted -- sibling of gc_segments, additive (no caller of gc_segments
+# breaks). Prints one 0|1 per line, same order and count as gc_segments' own
+# output: 1 when that segment carried a quote character BEFORE stripping.
+#
+# v3.1. A wrapper payload such as `bash -c "git commit -m x"` collapses to ONE
+# segment once quotes are gone, indistinguishable there from an unwrapped
+# `git commit -m x` -- a caller that cares whether the commit segment it
+# matched came from inside such a wrapper reads this list instead. Built by
+# re-splitting the UNSTRIPPED command on the identical delimiters -- removing
+# quote characters never changes where && ; | fall, so the segment boundaries
+# line up -- and testing each raw segment for a leftover quote character.
+#
+# A SEPARATE function, not a side-effect global set inside gc_segments: the
+# caller captures gc_segments via `segments=$(gc_segments)`, and a variable
+# assigned INSIDE a function invoked through command substitution is a
+# subshell's own copy -- it vanishes the instant that subshell exits, never
+# reaching the caller. Measured red before this split existed as its own
+# function. Callers assign the result to a variable named GC_SEG_QUOTED
+# themselves, e.g. `GC_SEG_QUOTED=$(gc_seg_quoted)`.
+gc_seg_quoted() {
+  printf '%s\n' "$GC_CMD" | tr '|;' '\n\n' | sed 's/&&/\n/g' | while IFS= read -r _gcsq_raw; do
+    case "$_gcsq_raw" in
+      *[\"\']*) printf '1\n' ;;
+      *)        printf '0\n' ;;
+    esac
+  done
+}
+
 # Prints the `cd <target>` argument of a segment, if the segment is a bare cd.
 gc_cd_target() {
   printf '%s\n' "$1" | sed -n 's/^[[:space:]]*cd[[:space:]]\+\([^[:space:]]\+\)[[:space:]]*$/\1/p' | head -1
@@ -908,6 +936,72 @@ gc_protected_alt() {
   printf '%s' "$(gc_protected_branches "$1")" | tr ' ' '|'
 }
 
+# gc_gate_checked_branches <repo> -- companion spec (v3.1): GLOBS of branches
+# that get ONLY the artifact-freshness check on merge, never the protected-
+# branch refusals, and whose PUSH stays ungated. Built for a worktree-based
+# session-branch landing route (e.g. `m113-session-2026-09-03`): dated, so a
+# literal name goes stale on the first rollover and a stale gate-checked list
+# fails open -- the worst way for it to fail. A glob is enough.
+#
+# Mirrors gc_protected_branches' grammar exactly (same GC_KEY_PRE grep, same
+# sed strip, same comma/space normalisation, same gc_is_placeholder test), but
+# the "not configured" arms differ: there is no protected-style fallback set
+# to widen into here, so every unconfigured arm means simply "none".
+#   absent      -> "" -- fully backward compatible, no warning.
+#   `none`      -> "" -- the deliberate way to declare none.
+#   empty value -> "" -- a typo or truncated sync is never "match everything".
+#   unreplaced  -> "" with one WARN: an unfilled `{{...}}` must be REPORTED,
+#   placeholder    never silently treated as absent (spec req. 3).
+gc_gate_checked_branches() {
+  gcgb_top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)
+  [ -n "$gcgb_top" ] || { printf '%s' ""; return 0; }
+  gcgb_line=$(grep -E "${GC_KEY_PRE}\*\*Gate-checked [Bb]ranches\*\*:" "$gcgb_top/PROJECT_CONTEXT.md" 2>/dev/null | head -1)
+  [ -n "$gcgb_line" ] || { printf '%s' ""; return 0; }
+  gcgb=$(printf '%s' "$gcgb_line" \
+    | sed -E "s/${GC_KEY_PRE}\\*\\*Gate-checked [Bb]ranches\\*\\*:[[:space:]]*//;s/[[:space:]]*\$//;s/^\`//;s/\`\$//" \
+    | tr ',' ' ' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
+  if gc_is_placeholder "$gcgb"; then
+    json_warn_once "gate-checked-branches" "$(json_session "$GC_JSON")" \
+      "WARN: **Gate-checked branches**: in $gcgb_top/PROJECT_CONTEXT.md is still an unfilled placeholder ($gcgb) — treated as none, fill it or delete the line."
+    printf '%s' ""
+    return 0
+  fi
+  case "$(printf '%s' "$gcgb" | tr 'A-Z' 'a-z')" in
+    none|"") printf '%s' "" ;;
+    *) printf '%s' "$gcgb" ;;
+  esac
+}
+
+# gc_branch_is_gate_checked <repo> <branch> -- <branch> matches one of the
+# declared gate-checked GLOBS. Matched literally against the plain branch name
+# gc_current_branch reports -- a `refs/heads/` prefix in the declared value is
+# NOT normalised away, exactly as the case-glob match below is not a filename
+# glob (`/` is an ordinary character to it, not a segment separator).
+gc_branch_is_gate_checked() {
+  # (task-2.7 fix round 1, review Critical F1) `set -f` BEFORE the unquoted
+  # split, same shape as gc_global_options above: word splitting is wanted,
+  # PATHNAME EXPANSION is not. Without it a declared value of a bare `*` (or
+  # any glob that happens to collide with a real filename) is globbed against
+  # the INVOKING PROCESS's cwd instead of being matched as a glob against the
+  # branch name below -- an eligible branch then silently goes UNGATED,
+  # depending on a cwd unrelated to the target repo. Saved/restored
+  # CONDITIONALLY (unlike gc_global_options' unconditional `set +f`): a caller
+  # that had deliberately set `-f` itself must not have it cleared out from
+  # under it by this function returning.
+  case $- in
+    *f*) gcgbb_hadf=1 ;;
+    *) gcgbb_hadf=0 ;;
+  esac
+  set -f
+  gcgbb_rc=1
+  # shellcheck disable=SC2086
+  for gcgbb in $(gc_gate_checked_branches "$1"); do
+    case "$2" in $gcgbb) gcgbb_rc=0; break ;; esac
+  done
+  [ "$gcgbb_hadf" = 1 ] || set +f
+  return "$gcgbb_rc"
+}
+
 # gc_on_main <repo> -- the checkout sits on a protected branch.
 gc_on_main() {
   b=$(gc_current_branch "$1")
@@ -931,10 +1025,60 @@ gc_on_main() {
 # into two bare words by the quote strip (`C:/a` then `b`) matches neither, so
 # the strict form still fails on it. The fallback is the only thing standing
 # between that shape and an ungated push.
+#
+# v3.1 DEFECT (penumbra): the fallback used to be `\bgit\b.*\b$2\b` -- unanchored
+# and word-bounded over the WHOLE remainder. `-` is a word boundary, so
+# `merge-base`/`merge-tree`/`merge-file` matched "merge", and any token merely
+# EQUAL to the verb (`--grep=merge`, a path `docs/merge.md`, a branch
+# `feature/push-fix`) matched too -- over-refusal with a discriminator that
+# names a rule for a command with no such verb in it. FIX: walk the token
+# stream the same way gc_push_args does -- skip `git`, skip each recognised
+# global-option token (and its value, so a quote-stripped `-C "C:/a b"` that
+# word-split into `-C`, `C:/a`, `b` still advances past both `C:/a` and `b`),
+# skip any other bare word without stopping, and match only a token EQUAL to
+# $2. This is strictly tighter than the old fallback, never looser: it never
+# matches a word merely CONTAINING $2, only one equal to it, so it cannot
+# newly refuse anything arm 1 plus the old fallback did not already refuse.
+#
+# A6.14 / N3 (measured, controller, 2026-09-06; probes in the controller's
+# scratchpad n3-probe2.sh + n3-payloads.txt, cwd = protected main). Under the
+# OLD (v3.0.4) fallback, `git -C <abs> show-branch --merge-base a b` and bare
+# `show-branch merge` both returned 0, and it looked like `--merge-base`
+# itself was being read as harmless -- it was not. The OLD fallback was
+# `\bgit\b.*\b$2\b`, the SAME regex gate-before-merge.sh's own A6 read-only
+# list (`status rev-parse branch log diff show`) was tested with, and
+# `\bbranch\b` matches inside `show-branch` -- so the clause classified INERT
+# (a known read-only verb) before the merge arm was ever reached. `foo
+# --merge-base`, `show --merge-base` and bare `merge-base HEAD HEAD~1` all
+# still returned 2 under the old lib, because none of those first words match
+# `\bbranch\b`. Under the CURRENT positional walk, `show-branch --merge-base
+# a b` still returns 0, but for the intended reason this time: `show-branch`
+# and `--merge-base` are matched against the verb by EXACT token equality, so
+# neither equals "merge" and the merge arm is never entered. Bare `show-branch
+# merge` returns 2 under the current lib (and did not before): the bare
+# `merge` token IS matched by exact equality, which is the documented posture
+# -- a bare `merge` operand anywhere after the globals refuses.
 gc_matches_subcommand() {
   printf '%s\n' "$1" | grep -qE "${GC_GIT_PRE}[[:space:]]+$2([[:space:]]|\$)" && return 0
   printf '%s\n' "$1" | grep -qE '\bgit\b[[:space:]]+-C\b' || return 1
-  printf '%s\n' "$1" | grep -qE "\bgit\b.*\b$2\b"
+  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk -v verb="$2" '
+    BEGIN { seen_git = 0; want_value = 0 }
+    $0 == "" { next }
+    {
+      tok = $0
+      if (!seen_git) {
+        if (tok == "git" || tok ~ /\/git$/ || tok ~ /\\git$/) seen_git = 1
+        next
+      }
+      if (want_value) { want_value = 0; next }
+      if (tok == "-C" || tok == "-c" || tok == "--config-env" || tok == "--git-dir" ||
+          tok == "--work-tree" || tok == "--namespace" || tok == "--exec-path" ||
+          tok == "--attr-source" || tok == "--super-prefix") { want_value = 1; next }
+      if (tok ~ /^-/) next                 # single-token global -- skip, not a match
+      if (tok == verb) { print "MATCH"; exit }
+      next                                 # unrecognised bare word -- keep scanning
+    }
+  ' | grep -q MATCH
 }
 
 # gc_push_args <segment> -- everything after the `push` subcommand ("" if none).

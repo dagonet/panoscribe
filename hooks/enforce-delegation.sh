@@ -15,6 +15,12 @@
 # AGENT_TEAM.md, and any path OUTSIDE the repo root (scratchpad, ~/.claude
 # memory). Everything else (source code, tests, docs content) is agent work.
 #
+# v3.1: a project may extend this list without editing the hook -- the
+# PROJECT_CONTEXT.md **PO write surface** key names extra path prefixes,
+# space/comma-separated (docs/ tools/). `none` or an absent key adds nothing;
+# an unfilled {{...}} placeholder is reported on stderr once and treated as
+# none.
+#
 # Main-thread Bash: build/test runners (npm test, dotnet build, pytest,
 # cargo test, playwright, mvn, gradle, go test) and hooks/run-gate.sh are
 # denied — the coder runs the gate, the tester verifies, ops handles env
@@ -66,7 +72,8 @@ if [ "${1:-}" = "--help" ]; then
 Usage: registered as a Claude Code PreToolUse hook (settings.json).
   Matcher "Edit|Write|NotebookEdit": denies main-thread edits outside the PO
   write surface (docs/plans/, PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/,
-  CLAUDE.md, CLAUDE.local.md, AGENT_TEAM.md, paths outside the repo).
+  CLAUDE.md, CLAUDE.local.md, AGENT_TEAM.md, paths outside the repo, plus any
+  prefixes named by PROJECT_CONTEXT.md's **PO write surface** key).
   Matcher "Bash": denies main-thread build/test-runner commands and
   hooks/run-gate.sh.
 Subagent calls (stdin contains agent_id) always pass. Disable by creating
@@ -99,6 +106,31 @@ process.stdin.on("end", () => {
   const tool = j.tool_name || "";
   const input = j.tool_input || {};
   const cwd = (j.cwd || process.cwd()).replace(/\\/g, "/");
+
+  // v3.1 Task 2.2: the PROJECT_CONTEXT.md **PO write surface** key names
+  // extra path prefixes for THIS project. `none` or an absent key -- no
+  // extras. An unfilled {{...}} placeholder is reported once on stderr (via
+  // the WARN sentinel line below) and treated as none -- fail-open, never a
+  // block on a project that has not filled in its template yet.
+  const fs = require("fs");
+  const path = require("path");
+  let extra = [];
+  let warn = "";
+  try {
+    const pc = fs.readFileSync(
+      path.join(process.env.CLAUDE_PROJECT_DIR || cwd, "PROJECT_CONTEXT.md"),
+      "utf8"
+    );
+    const m = /^[-*\s]*\*\*PO write surface\*\*:\s*(.*)$/m.exec(pc);
+    if (m) {
+      const v = m[1].trim();
+      if (/\{\{/.test(v)) {
+        warn = "WARN\tenforce-delegation: unfilled placeholder in **PO write surface** — treated as none\n";
+      } else if (v !== "none" && v !== "") {
+        extra = v.replace(/^`|`$/g, "").split(/[\s,]+/).filter(Boolean);
+      }
+    }
+  } catch (e) { /* no PROJECT_CONTEXT.md -- no extras */ }
 
   if (tool === "Bash" || tool === "PowerShell") {
     // v2.3.0: strip HEREDOC BODIES before anything else looks at the string.
@@ -183,14 +215,60 @@ process.stdin.on("end", () => {
     /(^|\/)CLAUDE\.local\.md$/,
     /(^|\/)AGENT_TEAM\.md$/,
   ];
-  if (allowPatterns.some(re => re.test(p))) { console.log("PASS"); return; }
+  if (allowPatterns.some(re => re.test(p))) { console.log(warn + "PASS"); return; }
+
+  // v3.1 Task 2.2 fix rounds 1-2 (review probes A, B): **PO write surface**
+  // extras are anchored to the REPO ROOT, not to any path-segment boundary
+  // -- "docs/" means the repo-root docs/ tree, never a nested directory also
+  // named docs, and a `..` segment cannot walk back out of it either. `p` is
+  // normalized (path.posix semantics: collapses `.`/`..` segments) BEFORE
+  // relativizing against CLAUDE_PROJECT_DIR (or cwd if unset); the resulting
+  // relative path is normalized again, and if it is `..`, starts with
+  // `../`, or is still absolute, extras never match (falls through to the
+  // existing CHECK_ROOT path) -- a path outside the repo root, before or
+  // after normalization, cannot match an extra. Each extra is matched with
+  // `^` against the normalized relative path. A leading `./` is normalized
+  // away like any other dot-segment, so "./docs/x.md" resolves to
+  // "docs/x.md" and IS allowed. A prefix without a trailing slash is still a
+  // plain string prefix -- "tools" also matches "toolsx"; write "tools/" to
+  // bind it to a directory. If the key appears more than once in
+  // PROJECT_CONTEXT.md, the first occurrence wins (the regex above has no
+  // `g` flag).
+  p = path.posix.normalize(p);
+  const root = (process.env.CLAUDE_PROJECT_DIR || cwd).replace(/\\/g, "/").replace(/\/+$/, "");
+  let rel = p;
+  if (/^(\/|[A-Za-z]:\/)/.test(p)) {
+    if (p === root || p.startsWith(root + "/")) {
+      rel = p.slice(root.length).replace(/^\//, "");
+    } else {
+      rel = null; // absolute and outside the repo root -- extras never match
+    }
+  }
+  if (rel !== null) {
+    rel = path.posix.normalize(rel);
+    if (rel === ".." || rel.startsWith("../") || /^(\/|[A-Za-z]:\/)/.test(rel)) rel = null;
+  }
+  if (rel !== null && extra.some((prefix) => {
+    const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp("^" + esc).test(rel);
+  })) { console.log(warn + "PASS"); return; }
 
   // Paths outside the repo root (scratchpad, ~/.claude memory) are PO-legal.
   // Repo root detection happens in the shell wrapper (git); here we only
   // handle the relative-path case: a relative path is inside the repo.
-  console.log("CHECK_ROOT\t" + p + "\t" + cwd);
+  console.log(warn + "CHECK_ROOT\t" + p + "\t" + cwd);
 });
 ' <<<"$INPUT" 2>/dev/null) || exit 0
+
+# v3.1 Task 2.2: a WARN sentinel line (unfilled **PO write surface**
+# placeholder) rides along in $DECISION ahead of the real decision line --
+# node -e's own stderr is discarded above, so this is how the diagnostic
+# reaches the hook's actual stderr instead.
+WARN_LINE=$(printf '%s\n' "$DECISION" | grep '^WARN	' | head -1)
+if [ -n "$WARN_LINE" ]; then
+  printf '%s\n' "$WARN_LINE" | cut -f2- >&2
+  DECISION=$(printf '%s\n' "$DECISION" | grep -v '^WARN	')
+fi
 
 case "$DECISION" in
   PASS|"")

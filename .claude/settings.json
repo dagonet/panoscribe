@@ -129,20 +129,19 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/bash-output-guard.sh\""
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/post-edit-build.sh\""
+          }
+        ]
       }
     ],
     "SubagentStop": [
       {
-        "matcher": "^([a-z0-9]+-)?coder$|^code-reviewer$|^tester$|^architect$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo 'PIPELINE: Agent finished. Review workstream status and advance if ready.'"
-          }
-        ]
-      },
-      {
-        "matcher": "^([a-z0-9]+-)?coder$|^code-reviewer$",
         "hooks": [
           {
             "type": "command",

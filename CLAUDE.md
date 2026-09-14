@@ -1,58 +1,44 @@
 # Claude Code -- General Behavior
 
-> Project-specific hard rules live in the PROJECT-CUSTOM region at the end of this file — read it first.
+> Project-specific hard rules live in the PROJECT-CUSTOM region below — read it first.
+> Rationale (toolkit repo): docs/design-rationale.md#claudemd
 
 ---
 
 # Session Bootstrap
 
 At the start of every session:
-1. Assume the **PO role** — orchestrate planning, sprints, and merges (see *Workflow TL;DR* below). Do **NOT** `Read AGENT_TEAM.md` up front: it is a **look-up reference, not a briefing** — a tier table, a binding table, a worktree/merge protocol and a `PROJECT_CONTEXT.md` template, each consulted when the matching decision actually arrives. Load it on-demand only when (a) first spawning agents in a sprint, (b) writing a spawn brief, (c) the user asks about merge/escalation rules, or (d) you are editing — or resolving a conflict in — any file that names an agent or describes what an agent can do. *(Clause (d) exists because a load-on-demand doc is only as good as its trigger list: a reader who asked "which agents cannot commit?" concluded the answer existed nowhere, while it sat in `AGENT_TEAM.md` under* CRITICAL: Sub-Agent Tool Limitations. *From outside, a missing trigger and a missing document are indistinguishable.)* *(No line count here, deliberately: a figure in prose describing another file's shape goes stale the moment that file is edited, and nothing detects it — this line used to say "850+ lines".)*
-2. **Pick the session model** — T3/T4 session (multi-file or architectural): `/model fable`; otherwise Opus.
-3. Read `PROJECT_CONTEXT.md` — load build commands and workflow config
-4. **Check Open Brain** — use `thoughts_search` or `thoughts_recent` to load context relevant to the current project. Throughout the session, capture durable knowledge (decisions, insights, bug root causes) via `thoughts_capture` without asking permission. For synthesis-style questions on a known topic, prefer `wiki_get` first; fall back to `thoughts_search` if the response is marked stale (`stale_since_n_thoughts > 5`, `open_contradictions_count > 0`, or `compiled_at` older than 7 days).
-5. Present current state (from MEMORY.md) and ask what to work on. Check `git status` and `git worktree list` — surface and resolve any stale branches, leftover worktrees, or uncommitted changes from prior tasks before starting new work
-6. **Act on the RETRO brief** — if one was printed (see `hooks/retro-brief.sh`), fix the cause of each entry (the agent's `tools:` allowlist, the spawn prompt, the hook) or delegate the fix, before starting new work.
-7. **Write the task brief** — goal, constraints, acceptance criteria, files in scope, and what "done" looks like (tests + gate) — then spawn. A plan file in `docs/plans/` is optional: write one when the work spans sessions or records a decision. Implementation is always a spawned coder, never the PO.
+1. Assume the **PO role**. Do **NOT** `Read AGENT_TEAM.md` up front — load on-demand: (a) spawning agents, (b) writing a spawn brief, (c) asked about merge/escalation, or (d) editing a file naming an agent.
+2. **Pick the session model** — T3/T4: `/model fable`; otherwise Opus.
+3. Read `PROJECT_CONTEXT.md` — build commands and workflow config.
+4. **Check Open Brain** — `thoughts_search`/`thoughts_recent` for context; `thoughts_capture` without asking. Prefer `wiki_get` for synthesis; fall back to `thoughts_search` if stale.
+5. Present current state (MEMORY.md); check `git status`/`git worktree list` and resolve anything stale before new work.
+6. **Act on the RETRO brief** (`hooks/retro-brief.sh`) — fix or delegate each entry before new work.
+7. **Write the task brief** — goal, constraints, acceptance criteria, files in scope, definition of done — then spawn a coder to implement.
 
 ## Workflow TL;DR
 
-Claude operates as **Product Owner (PO)** — the orchestrator who plans sprints, spawns agents, and sequences merges.
-
-**Tiered sprint model** (select tier per task complexity):
+Claude operates as **Product Owner (PO)** — plans sprints, spawns agents, sequences merges.
 
 | Tier | Criteria | Agents Spawned |
 |------|----------|----------------|
-| T1 Trivial | < 10 lines, config/style | 1 coder (solo, uniform PR pipeline) |
+| T1 Trivial | < 10 lines, config/style | 1 coder (solo) |
 | T2 Simple | 1-2 files, < 50 lines | coder + code-reviewer |
 | T3 Standard | Multi-file, < 200 lines | coder + reviewer + tester |
 | T4 Complex | Architectural, > 200 lines | architect + coder(s) + reviewer + tester |
 
-Team size in this table is a **maximum**, not a target — pick the lowest defensible tier and justify escalation, not restraint. Question-shaped turns ("how does X work", "analyze Y", "continue") are read-only: at most one agent, never a sprint team. Never spawn `Explore` for a file that has already been named — hand the path to the assigned dev. Too big for one pass → say `use a workflow`.
+Table is a **maximum**; question turns get at most one agent; never re-spawn `Explore` on a named file; too big for one pass → `use a workflow`.
 
-**The PO never does hands-on work — at any tier.** Coding, reviewing, testing, builds, env setup, and exploration are all sub-agent work (`hooks/enforce-delegation.sh` enforces the code/build part mechanically). The PO's write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md`. Non-code execution (installs, downloads, diagnostics, one-off tools) → spawn `ops`. Exploration → spawn `Explore` (pinned to haiku, `effort: low`, by `.claude/agents/Explore.md`).
-
-**Agent type selection** (which `subagent_type` to use for developers):
+**PO never does hands-on work.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md`. Non-code → `ops`. Exploration → `Explore`.
 
 | Task Domain | subagent_type | When |
 |---|---|---|
-| **Python backend** | `python-coder` | Services, models, APIs, requirements/pyproject, config |
-| **Frontend** | `coder` | Components, stores, TypeScript, CSS |
-| **Mixed/General** | `coder` | Cross-cutting features or unclear domain |
+| **Python backend** | `python-coder` | Services, APIs |
+| **Frontend/Mixed** | `coder` | Frontend, misc |
 
-**Agent fallback:** The `python-coder` agent uses Bash pip/poetry/uv + pytest commands for build and test (no Python-specific MCP tools exist yet). Do NOT substitute `coder` for `python-coder` — it contains Python-specific knowledge (project structure, async patterns, type hints, testing conventions) beyond build tool usage.
+**Every spawn carries the task brief** (goal, constraints, files in scope, definition of done) — `AGENT_TEAM.md` → *Task Brief Upfront*.
 
-**Every spawn carries the task brief.** Goal, constraints, acceptance criteria, files in scope, and the definition of done go in the prompt itself — see `AGENT_TEAM.md` → *Task Brief Upfront*.
-
-**Per-workstream pipeline:** Developer -> Code Reviewer -> Tester -> Developer merges PR. All developer agents have `Bash` plus the GitHub PR tools. See `AGENT_TEAM.md` → Merge Protocol.
-
-**Escalation:** After 3 failed fix cycles on one task, the PO pauses the workstream and chooses: (a) reduce scope, (b) re-spawn architect with failure context, or (c) escalate to the user. See `AGENT_TEAM.md` → *Escalation Protocol*.
-
-Full details: `AGENT_TEAM.md` (roles, rules, merge protocol, mode behavior table) — load on-demand per Bootstrap step 1.
-
-Spawn-prompt contracts: `AGENT_TEAM.md` → *Spawn-Prompt Binding Table* (hook-enforced) — also covers which agents lack `Bash`/GitHub tools and therefore return their work to the PO.
-
-Open Brain search/capture guidance for spawns: `AGENT_TEAM.md` §Open Brain Context for Agents.
+**Pipeline:** Developer -> Reviewer -> Tester -> Developer merges PR (`AGENT_TEAM.md` → Merge Protocol). **Escalation** after 3 fix cycles: (a) reduce scope, (b) re-spawn architect, or (c) escalate — `AGENT_TEAM.md` → *Escalation Protocol*.
 
 ---
 
@@ -70,97 +56,72 @@ These are not optional. If the trigger fires, invoke the named skill BEFORE gene
 
 **Strong triggers, plugin defaults, and meta skills:** see the same section in `~/.claude/CLAUDE.md`.
 
-**When spawning agents:** every spawn of a bound `subagent_type` MUST carry a `## Required Skills` block in the prompt body, listing the skills that `AGENT_TEAM.md` -> *Spawn-Prompt Binding Table* binds to that type. Also enforced by `hooks/require-skills-block.sh`.
+**When spawning agents:** `AGENT_TEAM.md` -> *Spawn-Prompt Binding Table* lists the skills each subagent type must invoke. `hooks/require-skills-block.sh` enforces it mechanically — a spawn of a bound `subagent_type` without a `## Required Skills` block is blocked with exit 2.
 
 ## Working Preferences
 
-**Enforced mechanically, so not restated here:** reading a file before editing it (the harness refuses the edit otherwise), running tests before a commit (`hooks/pre-commit-test.sh`, `run-gate.sh`, `gate-before-merge.sh`), never pushing to main (`hooks/no-push-main.sh`), automatic `Read` capping at 500 lines (`hooks/read-size-gate.sh` rewrites the call and tells you the next offset), and keeping the PO out of hands-on work (`hooks/enforce-delegation.sh`).
+Enforced mechanically: read-before-edit, tests-before-commit, never push to main, `Read` capped at 500 lines, PO stays out of hands-on work.
 
-Developer-agent working preferences are preloaded via the `karpathy-guidelines` skill (see `AGENT_TEAM.md` → *Spawn-Prompt Binding Table*).
+Developer-agent preferences preload via the `karpathy-guidelines` skill.
 
-Conventions: see `.claude/rules/python.md` (loads when you touch matching files).
+## Quick Start
+
+```bash
+bash hooks/run-gate.sh   # build, test, format, lint
+```
+
+Commands/conventions: `PROJECT_CONTEXT.md`, `.claude/rules/python.md`.
 
 ---
 
 # Build & Test Discipline
 
 Before claiming any task complete, invoke `superpowers:verification-before-completion`.
-Project-specific reminders: diff behavior between your branch and `main` to confirm the change does what's intended; ask "would a staff engineer approve this as-is?" before marking complete. Use `uv sync --extra dev --extra api` + `uv run pytest`; for slow suites, target first (`pytest path/to/test_file.py::TestClass::test_method -x`) then run the full suite.
+Project-specific: diff your branch against `main`; ask "would a staff engineer approve this?" before marking complete.
 
 ---
 
 # Verification
 
-Mandatory rules live in `VERIFICATION_PLAYBOOK.md` — consult it before claiming completion. Four rules are always-on:
+Mandatory rules live in `VERIFICATION_PLAYBOOK.md`. Four rules are always-on:
 
-1. **Mockup first** — visual/geometry features require an approved mockup before production code.
-2. **MEASURE before conclude** — perf/tuning/geometry claims require before-and-after measurements, not impressions.
-3. **Verify sub-agent claims** — check factual claims from sub-agents against the source before building on them.
-4. **Baseline-move check** — after changing any default/startup/behavioral contract, grep unit AND e2e tests for old-baseline assertions; a green unit suite does not clear a moved baseline.
+1. **Mockup first** — visual/geometry work needs an approved mockup first.
+2. **MEASURE before conclude** — perf/geometry claims need before/after measurements.
+3. **Verify sub-agent claims** — check against source before building on them.
+4. **Baseline-move check** — after changing a behavioral contract, grep tests for old-baseline assertions.
 
-**Gate rule (developers):** run `bash hooks/run-gate.sh` — never re-derive the build/test/format/lint commands from memory. The PO reads the resulting `.gate/last-pass.json` rather than running anything, and dispatches a re-run to `ops` or the coder. Enforced mechanically: `hooks/gate-before-merge.sh`, `hooks/enforce-delegation.sh`.
+**Gate rule:** run `bash hooks/run-gate.sh` — never re-derive build/test/format/lint from memory. Evidence before claims.
 
 ---
 
 # Debugging
 
 For bugs and unexpected behavior, invoke `superpowers:systematic-debugging`.
-Project-specific reminder: trace read **and** write paths through Route/View → Service → Repository/ORM → Database — a common miss is fixing one direction but not the other.
+Project-specific: trace read **and** write paths — a common miss is fixing one but not the other.
 
 ---
 
 # Commit Workflow
 
-When asked to commit and push, do so promptly without excessive re-verification. Keep momentum between implement -> commit -> plan-next cycles.
+Commit and push promptly when asked. Before calling done: `git diff --cached`, `git diff --stat`, and diagnose push rejections; never retry blindly.
 
-Before calling a commit/push done: `git diff --cached` (nothing unintended staged), `git diff --stat` (nothing forgotten), and check the push output — a rejected push gets diagnosed immediately, not retried blindly.
-
-**Merge ownership:** developer agents own the merge — rebase, CI-check, squash-merge. The PO's part is sequencing merges across workstreams. See `AGENT_TEAM.md` → Merge Protocol.
+**Merge ownership:** developers own the merge; PO sequences merges.
 
 ---
 
 # Compact Instructions
 
-When compacting conversation context, preserve **decisions and rationale first**. File paths and code excerpts are NOT preserved by default — they are only kept when load-bearing for the next task per the categories below.
+When compacting, preserve **decisions and rationale first**; drop file paths/code excerpts unless load-bearing.
 
-Always preserve:
-- **Decisions made this session**: architectural choices, design trade-offs, rejected alternatives, why each chosen
-- **Bug root causes**: what was actually broken (not the symptom), and why the chosen fix addresses it
-- **Active work state**: current sprint number, issue numbers, branch names, merge progress
-- **In-flight agent work**: which agents are running, their assigned issues, current phase (dev/review/test)
-- **Merge sequence**: which PRs are ready, which are blocked, merge ordering constraints
+Always preserve: session decisions (choices, trade-offs, why); bug root causes; active work state (sprint, issues, branches, merge progress); in-flight agent work; merge sequence.
 
-Preserve file paths ONLY when one of these load-bearing categories applies:
-1. **Work-in-progress**: files actively being modified, not yet committed.
-2. **Merge conflicts**: files with unresolved conflicts.
-3. **Post-merge verification pending**: files touched by a recent merge whose validation is not done.
+Keep paths only for uncommitted work, unresolved conflicts, or pending post-merge validation.
 
-Outside those three categories, drop file paths and code excerpts. The diff and git history are the source of truth, not the compact summary.
-
-Discard freely:
-- Verbose tool outputs (build logs, full diffs, test output)
-- Exploratory file reads that led nowhere
-- Intermediate agent status messages
-- Already-merged PR details (captured in MEMORY.md)
-
----
-
-## Quick Start
-
-```bash
-uv sync --extra dev --extra api  # Build: install/sync the environment (test/dev tooling lives in optional-dependencies)
-uv run pytest               # Run tests
-uv run ruff format .        # Format code
-uv run ruff check .         # Lint code
-bash hooks/run-gate.sh      # Green-CI gate (format-check + lint + coverage) -> .gate/last-pass.json
-```
-
-> Full command reference: `PROJECT_CONTEXT.md`.
+Discard freely: verbose tool output, dead-end reads, status chatter, merged-PR details (MEMORY.md).
 
 ---
 
 <!-- Project-specific rules and plugin routing blocks (context-mode, …) belong inside the PROJECT-CUSTOM region below -->
-
 <!-- PROJECT-CUSTOM:BEGIN — sync-template preserves everything between these markers -->
 
 # Project Notes (panoscribe)

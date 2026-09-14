@@ -1,8 +1,24 @@
 #!/usr/bin/env bash
 # SubagentStop hook: contract stop-gate for coder/reviewer agents.
-# Matcher: coder|dotnet-coder|rust-coder|java-coder|python-coder|code-reviewer
+# v3.1 (R17): registered with NO settings.json matcher (fires for every
+# subagent) -- eligibility, AND its behavior, are derived from the stopping
+# agent's own project-level definition: `.claude/agents/<agent_type>.md`
+# frontmatter carries a `pipeline:` key with ONE OF TWO VALUES. A settings.json
+# matcher used to encode two DIFFERENT sets and this key reproduces both:
+#   - pipeline: true    -- PIPELINE echo AND this hook's contract verdict
+#                          (coder, code-reviewer, and the five language coders)
+#   - pipeline: notify  -- PIPELINE echo ONLY, then exit 0, no verdict
+#                          (tester, architect -- architect has no Bash and
+#                          cannot always produce a "## Gate Results" report)
+# Anything else -- the key absent, an unrecognised value, appearing only in
+# the agent file's BODY rather than its frontmatter block, or an agent_type
+# containing a path separator or `..` -- is ineligible: no echo, exit 0. A
+# consumer's own pipeline agents (e.g. mm-runner, finisher) opt in by adding
+# the key to their own agent file; settings.json stays byte-identical
+# everywhere.
 #
-# Blocks (exit 2) an agent from ending WITHOUT its required deliverable:
+# Blocks (exit 2) a `pipeline: true` agent from ending WITHOUT its required
+# deliverable:
 #   - coder types:    final message must contain "## Gate Results" AND "## Spec Compliance"
 #   - code-reviewer:  final message must BE the single word "clean" (strict equality)
 #                     or contain a severity-tagged findings list ("**Severity**")
@@ -50,6 +66,28 @@ jlib="$(dirname "$0")/lib/json.sh"
 json_require_node enforce-agent-contract "$(json_session "$INPUT")" || exit 0
 
 AGENT_TYPE=$(json_get "$INPUT" agent_type)
+
+# v3.1 (R17): reject any agent_type containing a path separator or `..`
+# before building the path so this can never read outside .claude/agents/.
+case "$AGENT_TYPE" in
+  *"/"*|*"\\"*|*".."*) exit 0 ;;
+esac
+def="${CLAUDE_PROJECT_DIR:-.}/.claude/agents/${AGENT_TYPE}.md"
+if [ -f "$def" ]; then
+  # Confine the match to the frontmatter block (between the first two `---`
+  # lines) so a `pipeline:` line appearing only in the agent's body text does
+  # not make it eligible.
+  frontmatter=$(awk '/^---$/{n++; next} n==1' "$def")
+  PIPELINE_MODE=""
+  printf '%s\n' "$frontmatter" | grep -qE '^pipeline:[[:space:]]*true[[:space:]]*$'   && PIPELINE_MODE="true"
+  printf '%s\n' "$frontmatter" | grep -qE '^pipeline:[[:space:]]*notify[[:space:]]*$' && PIPELINE_MODE="notify"
+  [ -n "$PIPELINE_MODE" ] || exit 0
+else
+  exit 0
+fi
+echo 'PIPELINE: Agent finished. Review workstream status and advance if ready.'
+[ "$PIPELINE_MODE" = "true" ] || exit 0
+
 # v2.2.2: the measured SubagentStop payload lists agent_transcript_path -- this
 # subagent's own JSONL, not the session's -- and retro-ledger.sh, the other
 # consumer of this event, reads it. This hook read transcript_path. Prefer the
