@@ -11,18 +11,22 @@
 #   {"sha":"<HEAD sha>","tree":"<working-tree hash>","branch":"<branch>",
 #    "ts":"<UTC ISO-8601>","status":"pass"}
 #
-# ARTIFACT DOC NOTE (v3.0.4, item A4): the TREE arm of gate-before-merge's
-# freshness check — the arm that covers a rebase or amend that preserves
-# content, which the SHA arm structurally cannot — is defeated by any
-# untracked file, because `tree` is computed via `git add -A` into a
-# temporary index and therefore INCLUDES UNTRACKED FILES: build output, an
-# editor swap file, a leftover fixture. Any of those changes the hash, so
-# tree-freshness can report stale after a real sha change while untracked
-# content sits in the working tree, or mask staleness the SHA arm would
-# otherwise have caught cleanly on its own. Documented, not fixed, in
-# v3.0.4; tracked-only hashing changes what the gate hashes — the current
-# contract is "the tree about to be tested, as it sits on disk" — and is a
-# v3.1 design item.
+# ARTIFACT DOC NOTE (v3.0.4 item A4, FIXED v3.1): the TREE arm of
+# gate-before-merge's freshness check IS LOAD-BEARING, not a nice-to-have --
+# on a new branch's FIRST commit the SHA arm can never match (a PreToolUse
+# hook runs BEFORE the commit it gates exists, so no sha it could record is
+# the one the commit will get; consumer report, yutraffic), so the tree arm
+# is the only one that can pass at all there. Through v3.0.4 that arm hashed
+# via `git add -A` into a temporary index, which therefore INCLUDED UNTRACKED
+# FILES: build output, an editor swap file, a leftover fixture. Any of those
+# changed the hash, so tree-freshness could report stale after a real sha
+# change while untracked content sat in the working tree, or mask staleness
+# the SHA arm would otherwise have caught cleanly on its own. v3.1: both this
+# script and hooks/pre-commit-test.sh hash via `git add -u -- .` instead --
+# untracked files no longer enter the hash at all. A mutation batched into the
+# SAME Bash call as the commit (the case pre-commit-test.sh's own
+# last-precommit.json `tree` field discriminates, separately from this one)
+# remains exactly as before: tracked-file staleness is still caught.
 #
 # On failure, any existing artifact is deleted and the script exits nonzero:
 # 1 for an ordinary red gate (retry after fixing), GC_TERMINAL_RC (78) when the
@@ -161,24 +165,25 @@ cd "$REPO_TOP" || exit 1
 # single-run merge path never fired for agents, who chain add+commit habitually.
 #
 # A temp index (a copy of the real one, so unchanged paths need no re-stat) is
-# `add -A`'d and hashed. The REAL index is never touched, and .gitignore is
-# respected, so .gate/ and build output stay out of the hash.
+# refreshed with `add -u -- .` (v3.1 -- TRACKED FILES ONLY, see the doc note
+# above) and hashed. The REAL index is never touched.
 #
-# Consequently `git add -A && git commit`, `git commit -a`, and separate
-# add/commit calls all yield `HEAD^{tree} == tree`. A PARTIAL-add commit
-# mismatches by design: the committed tree is not what was gated, so
-# gate-before-merge.sh correctly demands a fresh run.
+# Consequently `git add -u -- . && git commit`, `git commit -a`, and separate
+# add/commit calls of already-tracked files all yield `HEAD^{tree} == tree`.
+# A PARTIAL-add commit mismatches by design: the committed tree is not what
+# was gated, so gate-before-merge.sh correctly demands a fresh run. An
+# UNTRACKED file present at gate time no longer enters the hash at all (v3.1)
+# -- committing it anyway (`git add -A` on an otherwise tracked-only commit)
+# now mismatches too, which is the point: an untracked file is no longer
+# something this gate can bless sight-unseen.
 #
 # CAVEAT -- the hash is taken BEFORE the gate command runs (deliberately: a
 # gate that fails must not have its own mutations blessed). So a gate that
-# MUTATES the tree makes the following commit mismatch anyway:
-#   * a formatter in the gate rewriting tracked files;
-#   * gate-generated output that is untracked and NOT gitignored (coverage
-#     reports, `pytest-of-*`, build logs) -- `add -A` on the temp index writes
-#     blobs for every unignored untracked file on every run, so such output
-#     lands in the NEXT run's hash and never in this one's.
-# The fix is on the project side: gitignore everything the gate produces (and
-# run the formatter before the gate, not inside it).
+# MUTATES a TRACKED file makes the following commit mismatch anyway (a
+# formatter in the gate rewriting tracked files). Gate-generated output that
+# is untracked no longer perturbs the hash either way (v3.1) -- the prior
+# caveat about it leaking into the NEXT run's hash no longer applies, though
+# gitignoring it remains good practice regardless.
 #
 # `rev-parse --git-path index` (not a hardcoded .git/index) is what makes this
 # work in a LINKED WORKTREE, where the index lives at
@@ -187,7 +192,7 @@ TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 TMPIDX="$TMPD/index"   # must not pre-exist: git rejects a 0-byte index
 cp "$(git -C "$REPO_TOP" rev-parse --git-path index)" "$TMPIDX" 2>/dev/null || true
-GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" add -A >/dev/null 2>&1
+GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" add -u -- . >/dev/null 2>&1
 TREE_HASH=$(GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" write-tree 2>/dev/null)
 
 RUN_GATE_ACTIVE=1

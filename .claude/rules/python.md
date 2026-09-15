@@ -43,3 +43,11 @@ the code MUST be rewritten until it complies.
 - Check `pyproject.toml` / `requirements.txt` for new dependencies before adding
 - After branch merges, verify no `import` statements were dropped
 - Run `uv run ruff format .` + `uv run ruff check .` before every commit
+
+# Agent Routing and Build/Test Notes (moved from CLAUDE.md)
+
+**Agent fallback:** The `python-coder` agent uses Bash pip/poetry/uv + pytest (no Python-specific MCP tools exist yet). Do NOT substitute `coder` for `python-coder` — it carries Python-specific knowledge beyond build tool usage.
+
+**Build & Test:** use the project's pip/poetry/uv build+test commands (see `PROJECT_CONTEXT.md`); for slow suites, target first (`pytest path/to/test_file.py::TestClass::test_method -x`) then run the full suite.
+
+**Debugging:** trace read and write paths through Route/View → Service → Repository/ORM → Database — a common miss is fixing one direction but not the other.

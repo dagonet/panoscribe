@@ -1,6 +1,8 @@
 ---
 name: coder
 description: Use this agent to implement any kind of software changes in a repository with high-quality engineering standards.
+# pipeline: values true = PIPELINE echo + contract verdict; notify = echo only (see hooks/enforce-agent-contract.sh)
+pipeline: true
 model: sonnet
 effort: medium
 isolation: worktree
