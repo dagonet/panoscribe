@@ -15,7 +15,7 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.0.0** (`89dcaee`), synced 2026-09-14 (PR #141). Manifest is **v3** (three-class ownership).
+**claude-code-toolkit v4.0.1** (`a97235bd`), synced 2026-09-17 (PR #143). Manifest is **v3** (three-class ownership). `template_verify` post_commit: **18 PASS, 0 FAIL**.
 
 Sync history since v3.0.0:
 
@@ -26,6 +26,18 @@ Sync history since v3.0.0:
 | v3.0.4 | `1450034` | #139 | |
 | — | — | #140 | Fixed `placeholders.BUILD_COMMAND`, which held the *test* command; repaired the rendered damage at `CLAUDE.md:88` |
 | v4.0.0 | `89dcaee` | #141 | Manifest v2 → v3; sync server now ships from the toolkit checkout |
+| — | — | #142 | Declared `**Gate-checked branches**`/`**PO write surface**`/`**Post-edit build**` (all `none`, measured); removed `**Test Command**` |
+| v4.0.1 | `a97235bd` | #143 | `lastSynced*` pair dropped; gate artifacts moved into `.git/gate/`; `**Gate Command**` → `**Gate**` |
+
+### v4.0.1 — what changed here
+
+- **Legacy version labels gone.** `lastSyncedVersion`/`lastSyncedVersionOf` were client-stamped by the old skill step 7b and duplicated the server-written `template_version`/`template_commit`. Step 7b is deleted upstream, so `superseded_keys_dropped` removed them for good rather than re-adding them next sync. `unknown_keys` is now empty.
+- **Gate artifacts moved** to `<common git dir>/gate/last-pass.<sha>.json` — shared across worktrees, and inside `.git`, so no longer a working-tree object `git add -A` could sweep up. The three legacy `.gate/` files were removed **by name** after checking `**Log Path**`; another consumer had 585 KB of unrecoverable logs behind the same instruction when it said to delete the directory.
+- **`**Gate Command**` renamed to `**Gate**`.** v4.0.1 normalised `Gate` and `Test` to the short spelling while keeping `Build`/`Format`/`Lint Command` long. The hooks accept both; the rename cleared the one `template_verify` FAIL (`declared_keys: deprecated_spelling`). **Do not** shorten Build/Format/Lint — the template declares those long, and renaming creates the same mismatch in the other direction.
+
+**CORRECTION carried in #143:** the long-standing note that `**Test**: none` is eval'd as a command and blocks every commit is **wrong, and has been since toolkit v3.0.3**. `hooks/pre-commit-test.sh` treats a trimmed, case-insensitive `none` as *not declared* and falls through to the Gate — identical to absent. It came from the template's own stale comment, which is `once`-class here and so would never have self-corrected. `**Test**` stays absent because absent is unambiguous, not because `none` is unsafe.
+
+**Rules-file delivery, measured 2026-09-17.** An *unscoped* `.claude/rules/*.md` (no `paths:` key) IS delivered to every subagent at spawn, with full content, at `CLAUDE.md` priority — `.claude/rules/project.md` arrives; `python.md` (scoped `**/*.py`) does not. But a rules file **created or edited mid-session does not reach a subagent spawned later in that session** — measured twice, untracked and staged, so index-tracked-ness is not the gate. Whether the gate is "committed to HEAD" or "present at session start" is unresolved. Practical rule: after touching a rules file, assume nothing reads it until the next session.
 
 ### v4.0.0 — manifest v2 → v3 ownership classes
 
