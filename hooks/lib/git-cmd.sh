@@ -124,6 +124,15 @@
 # scripts/verify-template-consistency.sh asserts the two copies agree.
 GC_TERMINAL_RC=78
 
+# GC_GATE_TTL_S (v4.0.1, item 17) -- the single source of truth for how long a
+# gate artifact stays acceptable to gate-before-merge.sh (mtime-based
+# freshness check). hooks/run-gate.sh derives its prune window from THIS
+# constant rather than a second hardcoded number, so "the prune window is
+# always longer than the accept window" is structural: run-gate.sh repeats the
+# literal (same standalone reason as GC_KEY_PRE/GC_TERMINAL_RC above) and
+# scripts/verify-template-consistency.sh asserts the two copies agree.
+GC_GATE_TTL_S=3600
+
 # Fail CLOSED when the JSON reader is missing: without it GC_CMD would be empty
 # and every gate would allow every command.
 gc_json_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/json.sh"
@@ -138,37 +147,19 @@ GC_TOOL=""
 GC_CWD=""
 GC_CMD=""
 
-# Word-boundary-safe prefix for a git invocation: ANY sequence of global option
-# tokens between `git` and the subcommand.
-#
-# v3.0.3, FINDING 62 — THIS CONSTANT WAS A THREE-GATE FAIL-OPEN. Until now it
-# tolerated `-C <path>` and `-c <k>=<v>` and NOTHING ELSE, so a single common
-# global made gc_matches_subcommand return false, and the subcommand was never
-# FOUND. Measured on four hosts, three variants, on a protected branch:
-#
-#   git --no-pager merge feature/y            ALLOWED   (control: git merge -> 2)
-#   git --no-pager push origin main           ALLOWED   past BOTH git gates
-#   git --no-optional-locks merge feature/y   ALLOWED
-#   git --literal-pathspecs push origin main  ALLOWED
-#   git -P merge feature/y                    ALLOWED   (three characters)
-#   git -P commit -m x                        no test run, 0 s, exit 0
-#   control: git -C . merge --ff-only origin/main -> 2, via the -C tolerance
-#
-# All three callers exited 0 having evaluated NOTHING: gate-before-merge,
-# no-push-main and pre-commit-test. Fixing it per hook would have been three
-# copies of one fix and the third caller would have got none, so it is fixed
-# here, once.
-#
-# MATCHING IS NOT ALLOWING. This constant answers "is this segment a `git <sub>`
-# invocation at all"; whether the globals in front of it are acceptable is
-# gc_global_options' separate question. An INERT global must lead to the normal
-# verdict, never to a skip — `git --paginate merge feature/y` is found here and
-# then refused by the merge arm, which is the point.
-#
-# The two-token forms are listed first so the alternation consumes an option's
-# VALUE with it; the trailing `-[^[:space:]]+` arm then covers every one-token
-# global, including ones git has not shipped yet.
-GC_GIT_PRE='\bgit\b([[:space:]]+(-C|-c|--config-env|--git-dir|--work-tree|--namespace|--exec-path)[[:space:]]+[^[:space:]]+|[[:space:]]+-[^[:space:]]+)*'
+# GC_GIT_PRE — RETIRED in v4.0.1 (item 10). It was a word-boundary-safe regex
+# prefix matching ANY sequence of global-option tokens between `git` and the
+# subcommand, used by gc_matches_subcommand's deleted fast path (see that
+# function's comment block, below) as a first, looser attempt before falling
+# back to a positional token walk. Having two paths that could disagree was
+# itself the item-10 defect: the fast path's alternation matched `commit`
+# stretched past `log --grep`, so `git -C /x log --grep commit` was read as a
+# real commit and ran the target repo's Test on a read-only command. The walk
+# is now the sole authority for every caller (gate-before-merge, no-push-main,
+# pre-commit-test), so this constant has no remaining reader — confirmed via
+# `grep -n GC_GIT_PRE hooks/lib/git-cmd.sh hooks/*.sh`, whose only hits left
+# are historical narrative in other hooks' comments about the v3.0.3 widening,
+# not live code.
 
 # gc_global_options <segment> -> prints ok | refuse:<opt> | env:<VAR>
 #
@@ -777,6 +768,31 @@ gc_current_branch() {
   git -C "$1" branch --show-current 2>/dev/null
 }
 
+# gc_gate_dir <cwd> -- the gate artifact directory shared by every worktree of
+# a repo: <common git dir>/gate. Inside .git, so never a working-tree object
+# (v4.0.1, item 17): no gitignore entry needed, cannot be swept into a commit,
+# one location for every worktree by construction. `--path-format=absolute`
+# (git >= 2.31) is required: the bare `--git-common-dir` prints a RELATIVE
+# `.git` from the main checkout and an ABSOLUTE path from a linked worktree --
+# two different spellings of the same directory, which is exactly the
+# difference that would break a worktree-to-main-checkout handoff. Prints
+# forward slashes on Windows (`G:/git/...`); callers must never compare it
+# against a backslash spelling. Falls back to <toplevel>/.gate (the pre-4.0.1,
+# per-worktree location) on git < 2.31, with a WARN -- a caller writing a
+# diagnostic that must never itself block (pre-commit-test.sh's pct_note) is
+# responsible for swallowing that WARN, same as every other failure there.
+#
+# hooks/run-gate.sh repeats this function (same standalone reason as
+# GC_KEY_PRE/GC_TERMINAL_RC/GC_GATE_TTL_S above); scripts/verify-template-
+# consistency.sh asserts the two copies agree.
+gc_gate_dir() {
+  local common
+  common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
+  if [ -n "$common" ]; then printf '%s/gate\n' "$common"; return 0; fi
+  echo "WARN: git < 2.31: gate artifacts stay at <toplevel>/.gate (per-worktree)" >&2
+  printf '%s/.gate\n' "$(git -C "$1" rev-parse --show-toplevel)"
+}
+
 # gc_is_placeholder <value> -- true for an unreplaced `{{...}}`.
 #
 # GENERAL PRINCIPLE, and the reason this is a shared helper rather than one
@@ -1014,60 +1030,109 @@ gc_on_main() {
 
 # gc_matches_subcommand <segment> <subcommand>
 #
-# The strict form requires `-C <path>` to be a single space-free token. A quoted
-# path with a space (`git -C "C:/a b" push …`) loses its quotes in gc_segments
-# and no longer matches, which would silently bypass every gate — so a segment
-# that carries a `git -C` is re-tested against a looser shape and fails closed.
+# v4.0.1 (item 10): the two-arm shape this function used to have -- a fast
+# `grep -qE "${GC_GIT_PRE}..."` path, falling back to this positional walk only
+# when the fast path missed AND the segment carried `git -C` -- is gone. TWO
+# CODE PATHS THAT CAN DISAGREE is exactly how item 10 happened: the fast path's
+# `${GC_GIT_PRE}[[:space:]]+$2(...)` matched `commit` anywhere GC_GIT_PRE's
+# global-option prefix could stretch to, including past `log --grep`, so
+# `git -C /x log --grep commit` matched `commit` and ran the target repo's
+# **Test** on a read-only `git log`. The walk below did not have this bug (it
+# already matches only a token EQUAL to the verb), but the fast path ran FIRST
+# and returned before the walk was ever consulted. FIX: delete the fast path
+# and its `-C`-gated fallback trigger; the walk is now the SOLE authority for
+# every caller, always. `GC_GIT_PRE` itself is retired (see the removed
+# definition, formerly here at :171) — grep -n GC_GIT_PRE hooks/lib/git-cmd.sh
+# hooks/*.sh shows its only remaining mentions are historical narrative in
+# other hooks' comments, not live references.
 #
-# v3.0.3: the widened GC_GIT_PRE does NOT make this fallback dead, and it is
-# kept for exactly the case it was written for. Every arm of the widened prefix
-# consumes either an option token or an option-plus-value pair; a path split
-# into two bare words by the quote strip (`C:/a` then `b`) matches neither, so
-# the strict form still fails on it. The fallback is the only thing standing
-# between that shape and an ungated push.
+# The strict-vs-loose distinction the old fast/fallback split existed for (a
+# quoted `-C "C:/a b"` path losing its quotes in gc_segments and word-splitting
+# into `-C`, `C:/a`, `b`) is still handled — the walk already treats `-C` as a
+# value-consuming global regardless of what the value looks like, so it never
+# needed the fast path's help for that case.
 #
-# v3.1 DEFECT (penumbra): the fallback used to be `\bgit\b.*\b$2\b` -- unanchored
-# and word-bounded over the WHOLE remainder. `-` is a word boundary, so
-# `merge-base`/`merge-tree`/`merge-file` matched "merge", and any token merely
-# EQUAL to the verb (`--grep=merge`, a path `docs/merge.md`, a branch
-# `feature/push-fix`) matched too -- over-refusal with a discriminator that
-# names a rule for a command with no such verb in it. FIX: walk the token
-# stream the same way gc_push_args does -- skip `git`, skip each recognised
-# global-option token (and its value, so a quote-stripped `-C "C:/a b"` that
-# word-split into `-C`, `C:/a`, `b` still advances past both `C:/a` and `b`),
+# v3.1 DEFECT (penumbra, historical): the fallback used to be `\bgit\b.*\b$2\b`
+# -- unanchored and word-bounded over the WHOLE remainder, so `merge-base` etc.
+# matched "merge" and any token merely EQUAL to the verb matched too. FIX (from
+# that round, unchanged here): walk the token stream the same way gc_push_args
+# does — skip `git`, skip each recognised global-option token (and its value),
 # skip any other bare word without stopping, and match only a token EQUAL to
-# $2. This is strictly tighter than the old fallback, never looser: it never
-# matches a word merely CONTAINING $2, only one equal to it, so it cannot
-# newly refuse anything arm 1 plus the old fallback did not already refuse.
+# the verb.
 #
-# A6.14 / N3 (measured, controller, 2026-09-06; probes in the controller's
-# scratchpad n3-probe2.sh + n3-payloads.txt, cwd = protected main). Under the
-# OLD (v3.0.4) fallback, `git -C <abs> show-branch --merge-base a b` and bare
-# `show-branch merge` both returned 0, and it looked like `--merge-base`
-# itself was being read as harmless -- it was not. The OLD fallback was
-# `\bgit\b.*\b$2\b`, the SAME regex gate-before-merge.sh's own A6 read-only
-# list (`status rev-parse branch log diff show`) was tested with, and
-# `\bbranch\b` matches inside `show-branch` -- so the clause classified INERT
-# (a known read-only verb) before the merge arm was ever reached. `foo
-# --merge-base`, `show --merge-base` and bare `merge-base HEAD HEAD~1` all
-# still returned 2 under the old lib, because none of those first words match
-# `\bbranch\b`. Under the CURRENT positional walk, `show-branch --merge-base
-# a b` still returns 0, but for the intended reason this time: `show-branch`
-# and `--merge-base` are matched against the verb by EXACT token equality, so
-# neither equals "merge" and the merge arm is never entered. Bare `show-branch
-# merge` returns 2 under the current lib (and did not before): the bare
-# `merge` token IS matched by exact equality, which is the documented posture
-# -- a bare `merge` operand anywhere after the globals refuses.
+# A6.14 / N3 posture (measured, controller, 2026-09-06): `merge` and `push` are
+# matched ANYWHERE a bare token equals them after the globals — `show-branch
+# merge` refuses, `show-branch --merge-base a b` does not (neither word equals
+# "merge"). This posture is UNCHANGED here and pinned in test-hooks.sh.
+#
+# v4.0.1 (item 10, F1-F3 -- outside review of the first draft of this fix):
+#   F1 (compound segments): `commit` is matched ONLY at git's first non-global
+#      token (GC_FIRST_TOKEN_VERBS below), so a bare `commit` operand later in
+#      the stream (a --grep VALUE, a grep PATTERN) is not a match. But a first
+#      non-global token that is NOT the verb used to `exit` the walk outright —
+#      fine when every caller pre-splits on `&&`/`;`/`|` via gc_segments before
+#      calling this function (they all do today), but nothing pinned that
+#      invariant, and a single unsplit segment with two `git` invocations
+#      (`git add -A && git commit -m x`) would lose the second one. FIX: on a
+#      first-token mismatch in first-only mode, RESTART the state machine
+#      (seen_git/want_value reset) instead of exiting, so scanning continues
+#      for a later `git` token. merge/push are not first-only, so their posture
+#      (scan every bare word, never restart) is untouched.
+#   F2 (git-token test): `tok ~ /\\git$/` is not a portable backslash match in
+#      awk — on some awk an unescaped `\g` degrades to plain `g` with a
+#      warning, which would let a bare word merely ENDING in "git" (`notgit`)
+#      open the walk. FIX: `is_git()` below tests equality, a `/git` suffix, or
+#      a literal `\git` suffix via `substr()`, none of which depend on
+#      backslash-in-regex escaping semantics.
+#   F3 (quoted wrappers and substitution openers): the deleted fast path was,
+#      incidentally, the only thing that matched `bash -c "git commit -m x"`,
+#      `sh -lc "git commit -m x"`, `(git commit -m x)`, and — this is also how
+#      gate-before-merge.sh's A6.10 command-substitution rows stayed gated —
+#      `$(git merge)`, `` `git merge` ``, `<(git merge)`, `>(git merge)`: `$(`
+#      and a bare verb glued to an opener are their OWN token after the `tr`
+#      split (`$(git`, `` `git``, `<(git`, `>(git`), which `is_git()` alone
+#      does not recognise, and a trailing `)` glued to the verb (`merge)`)
+#      does not equal the verb either. gc_segments does not strip any of this.
+#      FIX: strip a leading run of `"`/`(`/`$`/`<`/`>`/backtick/`'` and a
+#      trailing run of `"`/`)`/backtick/`'` from every token before testing
+#      it, via a regex built at runtime from `-v sq="'"` (the awk program is
+#      itself single-quoted in this shell script and cannot contain a literal
+#      `'`; a backtick needs no such escaping and is a literal char in the
+#      class).
+#
+# DELIBERATE WIDENING (v4.0.1, review round 2): the F3 strip runs before the
+# verb comparison for EVERY token, not only at the seen_git stage — a wrapper
+# whose verb is the LAST token (`sh -c 'git commit'`) needs it there too. One
+# consequence for the merge/push posture above: a quoted operand now also
+# refuses, e.g. `git -C X log --grep "merge"` matches `merge` the same as the
+# unquoted form does (it did not before this file's F3 fix). This is a
+# fail-CLOSED widening — refusing something that previously slipped through
+# quoted — not a new gap, and is pinned in test-hooks.sh.
+GC_FIRST_TOKEN_VERBS=" commit "
+
 gc_matches_subcommand() {
-  printf '%s\n' "$1" | grep -qE "${GC_GIT_PRE}[[:space:]]+$2([[:space:]]|\$)" && return 0
-  printf '%s\n' "$1" | grep -qE '\bgit\b[[:space:]]+-C\b' || return 1
-  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk -v verb="$2" '
-    BEGIN { seen_git = 0; want_value = 0 }
+  case "$GC_FIRST_TOKEN_VERBS" in
+    *" $2 "*) _gc_first_only=1 ;;
+    *)        _gc_first_only=0 ;;
+  esac
+  # -v sq: a single quote handed in as a variable, because the awk program below
+  # is itself single-quoted in this shell and cannot contain one literally.
+  # -v bs: a literal backslash, same reason as sq but for a different awk
+  # pitfall -- a `"\\git"` STRING literal is well-defined portable escaping,
+  # but relying on that instead of a variable was rejected on review as one
+  # more thing an unusual awk could get creatively wrong; passed in as data
+  # instead, so is_git()'s backslash-path test does not depend on any awk's
+  # string-literal escape handling at all.
+  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk -v verb="$2" -v first_only="$_gc_first_only" -v sq="'" -v bs='\' '
+    BEGIN { seen_git = 0; want_value = 0; wrap = "^[\"($<>`" sq "]+|[\")`" sq "]+$" }
     $0 == "" { next }
+    function is_git(t) { return (t == "git" || t ~ /\/git$/ || substr(t, length(t) - 3, 4) == bs "git") }
     {
       tok = $0
+      gsub(wrap, "", tok)                  # quoted / parenthesised wrappers: bash -c "git …", (git …)
+      if (tok == "") next
       if (!seen_git) {
-        if (tok == "git" || tok ~ /\/git$/ || tok ~ /\\git$/) seen_git = 1
+        if (is_git(tok)) seen_git = 1
         next
       }
       if (want_value) { want_value = 0; next }
@@ -1076,7 +1141,12 @@ gc_matches_subcommand() {
           tok == "--attr-source" || tok == "--super-prefix") { want_value = 1; next }
       if (tok ~ /^-/) next                 # single-token global -- skip, not a match
       if (tok == verb) { print "MATCH"; exit }
-      next                                 # unrecognised bare word -- keep scanning
+      if (first_only) {                    # first non-global token was not the verb:
+        seen_git = is_git(tok) ? 1 : 0     # this invocation is done; restart at the NEXT git token
+        want_value = 0                     # (a compound segment: git add -A && git commit)
+        next
+      }
+      next                                 # unrecognised bare word -- keep scanning (merge/push posture)
     }
   ' | grep -q MATCH
 }

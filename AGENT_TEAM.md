@@ -33,7 +33,7 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 `architect` — cannot commit, push, create PRs, merge, or post comments.
 
 ### The rule that covers every tool, not just `Bash`
-`Explore`/`code-reviewer` hold neither `Edit` nor `Write`. `Explore`/`architect`/`ops` hold no GitHub MCP tool. `isolation: worktree` (`coder`, `tester`, `<lang>-coder`) means those agents cannot reach the main checkout — never spawn one to commit a sync.
+`Explore`/`code-reviewer` hold neither `Edit` nor `Write`. `Explore`/`architect`/`ops` hold no GitHub MCP tool. `isolation: worktree` (`coder`, `tester`, `<lang>-coder`) means those agents cannot reach the main checkout for a sync.
 
 **PO responsibility:** if an agent lacks a needed tool, it returns the work product and the PO performs the git/GitHub I/O.
 
@@ -242,7 +242,7 @@ An agent that has to go looking for any of the five is under-briefed — a promp
 2. **One task per developer, one worktree** — no multitasking, no writes outside the assigned worktree.
 3. **Max parallel workstreams** as specified in `PROJECT_CONTEXT.md`.
 4. **Architect reviews BEFORE development** (T4).
-5. **Developers own the merge and its sequencing** — wait for the PO's merge-go-ahead. Agents without `Bash` (`architect`) return work to the PO.
+5. **Developers own the merge and its sequencing** — wait for the PO's go-ahead. Agents without `Bash` (`architect`) return work to the PO. Template syncs are PO-run.
 6. **Post-rebase verification required** — rebuild + retest before merge.
 7. **Max 3 fix cycles per task** — then PO selects (a) scope reduction, (b) architect re-design, or (c) human escalation.
 8. **Workstream agents are ephemeral** — shut down after their phase.

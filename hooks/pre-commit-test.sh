@@ -48,7 +48,9 @@ command -v gc_current_branch >/dev/null 2>&1 || { echo "BLOCKED: $lib is present
 # repo's own hooks/run-gate.sh instead of this toolkit's.
 RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
 
-# v3.0.3 — THE SIDE EFFECT THAT OUTLIVES THE HOOK (.gate/last-precommit.json).
+# v3.0.3 — THE SIDE EFFECT THAT OUTLIVES THE HOOK (last-precommit.json under
+# <common git dir>/gate/, v4.0.1 item 17 — see gc_gate_dir's header note in
+# hooks/lib/git-cmd.sh).
 #
 # A PreToolUse hook completes BEFORE the tool it gates ever starts, and the
 # harness drops non-blocking hook stderr. Between them, nothing this hook PRINTS
@@ -59,9 +61,11 @@ RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
 # read, and it is why the answer is an artifact and not a message.
 #
 # IT IS A DIAGNOSTIC AND NEVER A GATE. Every failure below is swallowed —
-# unwritable cwd, no git repo, a read-only .gate. A diagnostic that can block a
-# commit is a second gate nobody declared, and it would be the worst kind: one
-# whose refusal has nothing to do with the tests.
+# unwritable cwd, no git repo, a read-only gate directory, a git older than
+# 2.31 (gc_gate_dir's own fallback WARN is swallowed here too — a diagnostic
+# path must never grow new stderr of its own, v4.0.1 addendum). A diagnostic
+# that can block a commit is a second gate nobody declared, and it would be
+# the worst kind: one whose refusal has nothing to do with the tests.
 #
 # Written on every path past payload parsing, so the file distinguishes "the
 # hook ran and found nothing to gate" from "the hook did not run". Not written
@@ -69,13 +73,17 @@ RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
 # (whose whole contract is that this hook does nothing) and the pre-v2
 # settings.json refusal (which has no readable command to describe).
 #
-# WHERE THE ARTIFACT LANDS (v3.0.3, both cases measured). Written at
-# `<resolved repo>/.gate/last-precommit.json` — the repo whose commit was
-# gated, which is NOT the cwd when `-C` is in play. Exception: a
-# `global-refused` artifact lands in the cwd repo's `.gate/`, because that
-# refusal fires before the target is resolved (PCT_ARTIFACT_BASE is assigned
-# after REPO_PATH). Reading the target repo's `.gate/` after such a refusal
-# finds nothing, which is not evidence the hook did not run.
+# WHERE THE ARTIFACT LANDS. Written under `<common git dir>/gate/` (v4.0.1,
+# item 17) resolved from the repo whose commit was gated, which is NOT the cwd
+# when `-C` is in play. Exception: a `global-refused` artifact resolves
+# against the cwd repo, because that refusal fires before the target is
+# resolved (PCT_ARTIFACT_BASE is assigned after REPO_PATH). Reading the target
+# repo's gate directory after such a refusal finds nothing there, which is not
+# evidence the hook did not run. The filename carries the gated TREE (v4.0.1
+# addendum), not a fixed name: `last-precommit.<tree>.json` and
+# `last-precommit-noop.<tree>.json`, `<tree>` replaced with the literal
+# `unknown` when no tree was hashed (unreadable, empty-cmd, global-refused,
+# unresolved-c — every path before pct_capture_tree can run).
 PCT_HOOK_T0=$(date +%s 2>/dev/null || echo 0)
 PCT_ARTIFACT_BASE=""
 PCT_TREE=""
@@ -96,7 +104,7 @@ PCT_QUOTED=false
 # comparison apart: artifact tree == the PARENT's tree means the mutation was
 # batched with the commit; equal to neither means an untracked file moved.
 #
-# Computed EXACTLY as run-gate.sh computes `tree` for .gate/last-pass.json
+# Computed EXACTLY as run-gate.sh computes `tree` for last-pass.<sha>.json
 # (temp index, add -u -- ., write-tree — hooks/run-gate.sh) so the two
 # artifacts cannot disagree about what "tree" names. v3.1: tracked files
 # only -- an untracked file no longer enters either hash. Captured BEFORE the
@@ -122,7 +130,19 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # sees every Bash call, not only commits.
   _pn_top=$(git -C "$_pn_base" rev-parse --show-toplevel 2>/dev/null) || return 0
   [ -n "$_pn_top" ] || return 0
-  mkdir -p "$_pn_top/.gate" 2>/dev/null || return 0
+  # v4.0.1 (item 17): the shared <common git dir>/gate/ directory, not a
+  # per-worktree .gate/ at toplevel -- see gc_gate_dir's header note in
+  # hooks/lib/git-cmd.sh. `2>/dev/null` swallows its git<2.31 fallback WARN:
+  # this function is a diagnostic that must never grow stderr of its own.
+  _pn_gd=$(gc_gate_dir "$_pn_top" 2>/dev/null)
+  [ -n "$_pn_gd" ] || return 0
+  mkdir -p "$_pn_gd" 2>/dev/null || return 0
+  # v4.0.1 (item 17 addendum): the filename carries the gated TREE, not a
+  # fixed name -- the directory is shared by every worktree now, same reason
+  # as last-pass.<sha>.json in run-gate.sh. "unknown" on every path that
+  # exits before pct_capture_tree can run (unreadable, empty-cmd,
+  # global-refused, unresolved-c).
+  _pn_treeseg="${PCT_TREE:-unknown}"
   _pn_t1=$(date +%s 2>/dev/null || echo 0)
   # `tool` is the ONLY payload-controlled field in this record. Mapped to the
   # declared enum rather than interpolated: a tool_name carrying a quote or a
@@ -146,10 +166,11 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # writing last-precommit.json exactly as before, now carrying
   # matched_in_quoted as well.
   if [ "$1" = no-commit-segment ]; then
+    _pn_noop="$_pn_gd/last-precommit-noop.$_pn_treeseg.json"
     printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","kind":"no-commit-segment"}\n' \
       "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "${#GC_CMD}" "$_pn_tool" \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" \
-      > "$_pn_top/.gate/last-precommit-noop.json" 2>/dev/null || return 0
+      > "$_pn_noop.tmp" 2>/dev/null && mv -f "$_pn_noop.tmp" "$_pn_noop" 2>/dev/null || return 0
     return 0
   fi
   # The COMMAND ITSELF is never recorded, only its length: this file lands in
@@ -160,10 +181,11 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # was only found because gc_segments strips quote characters -- a payload of
   # the shape `bash -c "git commit -m x"` -- as opposed to an unwrapped `git
   # commit -m x`; see gc_seg_quoted in hooks/lib/git-cmd.sh.
+  _pn_art="$_pn_gd/last-precommit.$_pn_treeseg.json"
   printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","matched_in_quoted":%s}\n' \
     "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "${#GC_CMD}" "$_pn_tool" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$PCT_QUOTED" \
-    > "$_pn_top/.gate/last-precommit.json" 2>/dev/null || return 0
+    > "$_pn_art.tmp" 2>/dev/null && mv -f "$_pn_art.tmp" "$_pn_art" 2>/dev/null || return 0
   return 0
 }
 
@@ -229,10 +251,13 @@ while IFS= read -r seg; do
     # `git --no-pager commit` were measured skipping the suite entirely while
     # the control `git commit -m x` ran it in 5 s. Both exited 0, so the EXIT
     # CODE cannot discriminate on a green suite — the signal is whether the
-    # suite ran. GC_GIT_PRE is widened in the lib so the subcommand is now
-    # FOUND; the globals are classified here by the same gc_global_options the
-    # other two git gates use. An inert global (`-C <path>`, `--no-pager`, `-P`,
-    # …) falls through and the Test runs normally.
+    # suite ran. v4.0.1: the lib's positional walk in gc_matches_subcommand is
+    # now the SOLE authority (the GC_GIT_PRE fast path that originally fixed
+    # this is retired -- see hooks/lib/git-cmd.sh) and it finds the subcommand
+    # regardless of the globals; the globals are classified here by the same
+    # gc_global_options the other two git gates use. An inert global
+    # (`-C <path>`, `--no-pager`, `-P`, …) falls through and the Test runs
+    # normally.
     pctg=$(gc_global_options "$seg")
     if [ "$pctg" != ok ]; then
       case "$pctg" in

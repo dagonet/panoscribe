@@ -143,8 +143,10 @@ while IFS= read -r seg; do
   # v3.0.3 (finding 62): a global before `push` used to make the line above
   # false, so this gate exited 0 having evaluated nothing — `git --no-pager
   # push origin main` and `git -P push origin main` were ALLOWED past BOTH git
-  # gates, measured on four hosts. The lib's GC_GIT_PRE is widened so the
-  # subcommand is FOUND regardless of the globals; the globals are then
+  # gates, measured on four hosts. v4.0.1: the lib's positional walk in
+  # gc_matches_subcommand is now the SOLE authority (the GC_GIT_PRE fast path
+  # that originally fixed this is retired -- see hooks/lib/git-cmd.sh) and it
+  # finds the subcommand regardless of the globals; the globals are then
   # classified separately, here, by the same gc_global_options the merge gate
   # uses. An inert global (`--no-pager`, `-P`, `--paginate`, …) falls through to
   # the push checks below and gets the normal verdict — matching is not

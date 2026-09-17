@@ -1,8 +1,6 @@
 {
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSyncedVersion": "v4.0.0",
-  "lastSyncedVersionOf": "89dcaeea6328cac704bb2529cd737b16764466eb",
   "placeholders": {
     "PROJECT_NAME": "panoscribe",
     "PROJECT_NAME_LOWER": "panoscribe",
@@ -15,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 3,
-  "template_version": "v4.0.0",
-  "template_commit": "89dcaeea6328cac704bb2529cd737b16764466eb",
+  "template_version": "v4.0.1",
+  "template_commit": "a97235bd5bfe8a973f0e512ec7212f16b3f053ce",
   "requires_server": ">=0.3.2",
   "files": {
     ".claude/agents/Explore.md": {
@@ -55,7 +53,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:9a09861aae4fc9399535269ae33cfeb85b801e55d44c3ce08167439345a9e106",
+      "hash": "sha256:37dcc09ce6f0e690d14cefecb4976f4027e208d3463571422b792ad6ef909a4e",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -69,7 +67,7 @@
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:567aa12bfa1a43df9857b597ea85e46c82b30ebe6ed7bca3f1c25cf14ca1d2a5",
+      "hash": "sha256:6ad4083cc88252cd546180ead5642a175aa5f49dffd498785fe0ca4fcc5a32b4",
       "ownership": "template"
     },
     "CLAUDE.md": {
@@ -103,15 +101,15 @@
       "ownership": "template"
     },
     "hooks/enforce-delegation.sh": {
-      "hash": "sha256:0787590c9ecce85c0bd25bcb3dee48069702556e1d0d5d9a1786cc421b89342a",
+      "hash": "sha256:908ef9588f0ecd27b98b7ca9f87f92770712ed0504843cc5eaa5e6878e5c7b3c",
       "ownership": "template"
     },
     "hooks/gate-before-merge.sh": {
-      "hash": "sha256:58fa53dfc964970c00566e39dbd9bc25b27d13ef08c607d228341b349a406d3d",
+      "hash": "sha256:68f4adf4df4f482b36959a3249884c4ef23ccff448f8df0da4de58bf28dfa137",
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:a415c47a0203c7c2a9e4ddd25e1e020b1380c79647a1c8de54155a6bf64a5aa1",
+      "hash": "sha256:e686aabc6f5ef62b5a5e180f8455f2dcf4bdbbc8a2383496454394743c487788",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
@@ -119,7 +117,7 @@
       "ownership": "template"
     },
     "hooks/no-push-main.sh": {
-      "hash": "sha256:868b761edad98266bd75745020fdf3fa4bf26c723f4a6e613c1c73027ac785e2",
+      "hash": "sha256:b1aa47e89f0835feb8c12ae0473ea74fe41baf64f3507385e2afd86375991408",
       "ownership": "template"
     },
     "hooks/post-edit-build.sh": {
@@ -127,7 +125,7 @@
       "ownership": "template"
     },
     "hooks/pre-commit-test.sh": {
-      "hash": "sha256:7d077f17387685c0a12ef51720401a3b11c4d398d5deeabb0bec5788c86acb00",
+      "hash": "sha256:5d8ef299fe0c7418e9f8918c43fea0e5a6f011f9ac5ba987313e0b846ba44792",
       "ownership": "template"
     },
     "hooks/read-size-gate.sh": {
@@ -147,7 +145,7 @@
       "ownership": "template"
     },
     "hooks/run-gate.sh": {
-      "hash": "sha256:8f767622901df6a7cb4e054dc6c71abe67fb01ae6b9fbb6aa7555859b5baa00a",
+      "hash": "sha256:0256ad11053441373a2b8b6de3085d2bf4a7d8233d86066d0744608f18a31680",
       "ownership": "template"
     }
   }

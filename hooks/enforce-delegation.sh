@@ -24,7 +24,8 @@
 # Main-thread Bash: build/test runners (npm test, dotnet build, pytest,
 # cargo test, playwright, mvn, gradle, go test) and hooks/run-gate.sh are
 # denied — the coder runs the gate, the tester verifies, ops handles env
-# work. The PO verifies via the .gate/last-pass.json artifact, never by
+# work. The PO verifies via the <common git dir>/gate/last-pass.<sha>.json
+# artifact (v4.0.1, item 17), never by
 # running the suite. Evaluated per SEGMENT (split on && || ; & | newline);
 # a segment whose first token is `git` or `gh` is EXEMPT — git/GitHub I/O is
 # the PO's documented role (AGENT_TEAM.md), so `git add hooks/run-gate.sh`
@@ -295,7 +296,7 @@ fi
 
 if [ -z "$FILE_PATH" ]; then
   # Bash deny path
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"DELEGATE: builds/tests run inside agents — coder runs the gate, tester verifies, ops handles env/tool work. The PO verifies via the .gate/last-pass.json artifact. Escape hatch: create .claude/delegation-off."}}\n'
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"DELEGATE: builds/tests run inside agents — coder runs the gate, tester verifies, ops handles env/tool work. The PO verifies via the shared gate artifact (<common git dir>/gate/last-pass.<sha>.json). Escape hatch: create .claude/delegation-off."}}\n'
   exit 0
 fi
 
