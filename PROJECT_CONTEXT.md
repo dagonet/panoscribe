@@ -11,21 +11,27 @@
 - **Build Command**: uv sync --extra dev --extra api
 - **Format Command**: uv run ruff format .
 - **Lint Command**: uv run ruff check .
-- **Gate Command**: bash preflight.sh && uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=panoscribe --cov-fail-under=95
-<!-- **Test Command** is deliberately ABSENT, not `none` — `none` is eval'd as a
-     command and would block every commit. With no Test field, pre-commit-test.sh
-     falls back to the Gate, which MINTS `.gate/last-pass.json`, so a commit and
-     the merge artifact are the same run. Measured: Test ~42s, Gate ~55s, and
-     break-even is gate/(gate-test) ~= 4-5 commits per PR. panoscribe averages
-     about one, so declaring both cost a full extra gate run per PR (two commits
-     on 2026-09-15 needed two test runs PLUS two delegated `ops` gate runs).
-     Re-add a Test line only if commits-per-PR rises above the break-even. -->
+- **Gate**: bash preflight.sh && uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=panoscribe --cov-fail-under=95
+<!-- **Test** is deliberately ABSENT. With no Test field, pre-commit-test.sh falls
+     back to the Gate, which MINTS the pass artifact, so the commit and the merge
+     artifact are one run. Measured: Test ~42s, Gate ~55s, break-even
+     gate/(gate-test) ~= 4-5 commits per PR; panoscribe averages about one, so
+     declaring both cost a full extra gate run per PR (the two commits on
+     2026-09-15 each needed a test run PLUS a separately delegated `ops` gate run).
+     Re-add a Test line only if commits-per-PR rises above the break-even.
+     A literal `none` here would behave IDENTICALLY to absent: pre-commit-test.sh
+     has treated a trimmed, case-insensitive `none` as "not declared" since
+     toolkit v3.0.3. Earlier wording in this file said `none` is eval'd as a
+     command and blocks every commit — that was true BEFORE v3.0.3 and is false
+     now; it was corrected upstream in v4.0.1, but this file is `once`-class so
+     the correction never arrives by sync. Absent is still preferred over `none`
+     for being unambiguous, not because `none` is dangerous. -->
 <!-- Post-edit build runs after every Edit/Write via hooks/post-edit-build.sh and
      is NOT scoped to the edited file, so any real command here runs the whole
      project build on every keystroke-level write. `none` is a true no-op for
      this key (unlike Gate). -->
 - **Post-edit build**: none
-<!-- Declaring BOTH means the Test runs on commit and the Gate does not, so no artifact is minted and every merge needs a separate `bash hooks/run-gate.sh`. Worth it only above roughly gate_seconds / (gate_seconds - test_seconds) commits per PR — measure yours. Below that, declare the Gate alone and leave the Test field empty (a literal `none` is NOT an opt-out here: it is eval'd as a command and blocks every commit — measured 2026-09-03). -->
+<!-- Declaring BOTH means the Test runs on commit and the Gate does not, so no artifact is minted and every merge needs a separate `bash hooks/run-gate.sh`. Worth it only above roughly gate_seconds / (gate_seconds - test_seconds) commits per PR — measure yours. Below that, declare the Gate alone and leave the Test field empty: a literal `none` IS an opt-out here (fixed since v3.0.3) -- pre-commit-test.sh treats a trimmed, case-insensitive `none` as absent and falls through to the Gate, the same as leaving the field out. -->
 <!-- Join Gate command steps with `&&`, never `;` — `;` discards an earlier step's failure status, so `<real gate> ; <anything>` exits 0 and the gate mints a pass artifact on a failing suite. -->
 - **Python Version**: 3.11
 

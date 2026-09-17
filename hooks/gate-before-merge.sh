@@ -109,16 +109,37 @@
 # one the pull will land.
 # ---------------------------------------------------------------------------
 #
-# Requires .gate/last-pass.json (written by hooks/run-gate.sh) at the repo
-# toplevel of the merging session's cwd — worktree-aware, since developer
-# agents self-merge from their worktrees. Blocks (exit 2) unless:
+# Requires an artifact written by hooks/run-gate.sh under <common git dir>/gate/
+# (v4.0.1, item 17 — see gc_gate_dir's header note in hooks/lib/git-cmd.sh),
+# resolved from the merging session's cwd — worktree-aware, since developer
+# agents self-merge from their worktrees, and this is the ONE location every
+# worktree of a repo resolves to, so an artifact written from a linked
+# worktree is visible to a merge attempted from the main checkout. The
+# filename is sha-keyed (`last-pass.<sha>.json`), not a single fixed name,
+# because the directory is shared: two worktrees gating concurrently must not
+# clobber each other's artifact. Lookup order:
+#   1. exact filename for the sha about to be merged (fast path — resolved via
+#      `git rev-parse --verify HEAD^{commit}` ONLY, never from command text,
+#      and validated against `^[0-9a-f]{7,40}$` before it is used to build a
+#      path);
+#   2. a scan of `last-pass.*.json` in that directory, newest mtime first,
+#      skipping `*.tmp` (an in-progress atomic write), for one whose "tree"
+#      matches — this is a PINNED decision (R20): it deliberately blesses a
+#      commit whose own sha never had a gate run when another commit with the
+#      identical tree did (a different worktree, a cherry-pick, a
+#      message-only rebase), because the tree — not the sha — is what was
+#      actually tested (item 15);
+#   3. the legacy `<repo toplevel>/.gate/last-pass.json` (pre-4.0.1, one
+#      release only), which prints a deprecation NOTE to stderr when used.
+# Whichever artifact is selected, blocks (exit 2) unless:
 #   - the artifact exists,
 #   - its "sha" equals the current HEAD of that checkout OR its "tree" equals
 #     that checkout's HEAD^{tree} — as of v2.1.5 "tree" is the WORKING tree at
 #     gate time, so a commit of exactly what was gated (chained
 #     `git add … && git commit`, or `git commit -a`) matches by tree even
 #     though the artifact's sha is the parent commit's, and
-#   - the artifact file is younger than 60 minutes (mtime).
+#   - the artifact file is younger than GC_GATE_TTL_S (hooks/lib/git-cmd.sh;
+#     3600s = 60 minutes) by mtime.
 #
 # CONSEQUENCE, by construction, on a repo that commits straight to trunk: the
 # artifact is STALE most of the time. Any commit moves HEAD and changes the
@@ -1292,10 +1313,63 @@ if gc_on_main "$CWD"; then
   exit 2
 fi
 
-ARTIFACT="$REPO_TOP/.gate/last-pass.json"
+# HEAD_SHA/HEAD_TREE computed here (moved up from below, v4.0.1 addendum to
+# item 17): the exact-filename lookup needs the candidate sha before it can
+# build a path.
+HEAD_SHA=$(git -C "$CWD" rev-parse --verify HEAD^{commit} 2>/dev/null)
+HEAD_TREE=$(git -C "$CWD" rev-parse 'HEAD^{tree}' 2>/dev/null)
 
-if [ ! -f "$ARTIFACT" ]; then
-  echo "BLOCKED: No gate artifact found. Run 'bash hooks/run-gate.sh' on the PR branch head (green gate writes .gate/last-pass.json), then merge." >&2
+# CANDIDATE SHA AS A PATH SEGMENT (v4.0.1 addendum to item 17): HEAD_SHA came
+# ONLY from `git rev-parse --verify ...^{commit}` above, never from command
+# text, but it is about to be interpolated into a filename — validate its
+# SHAPE before that happens. A `rev-parse` failure (empty output) or anything
+# that is not bare lowercase hex is treated as "no exact candidate": the
+# lookup below falls through to the tree scan rather than building a path
+# from a value that did not pass validation.
+HEAD_SHA_PATH=""
+if printf '%s' "$HEAD_SHA" | grep -qE '^[0-9a-f]{7,40}$'; then
+  HEAD_SHA_PATH="$HEAD_SHA"
+fi
+
+GATE_DIR=$(gc_gate_dir "$CWD" 2>/dev/null)
+ARTIFACT=""
+
+# 1. Exact filename for the candidate sha (fast path — the common case: the
+#    gate ran on this exact commit).
+if [ -n "$GATE_DIR" ] && [ -n "$HEAD_SHA_PATH" ] && [ -f "$GATE_DIR/last-pass.$HEAD_SHA_PATH.json" ]; then
+  ARTIFACT="$GATE_DIR/last-pass.$HEAD_SHA_PATH.json"
+fi
+
+# 2. Tree scan, newest mtime first, skipping `*.tmp` (an in-progress atomic
+#    write from hooks/run-gate.sh — never a finished artifact). SAME TREE,
+#    DIFFERENT SHA is a pinned decision (R20, v4.0.1): this deliberately
+#    blesses a commit whose own sha never had a gate run when another commit
+#    — a different worktree, a cherry-pick, a message-only rebase — gated the
+#    identical tree, because the tree is what was actually tested (item 15).
+if [ -z "$ARTIFACT" ] && [ -n "$GATE_DIR" ] && [ -d "$GATE_DIR" ]; then
+  GBM_NAMES=$(cd "$GATE_DIR" && ls -1t -- last-pass.*.json 2>/dev/null)
+  while IFS= read -r gbm_name; do
+    [ -n "$gbm_name" ] || continue
+    case "$gbm_name" in *.tmp) continue ;; esac
+    gbm_f="$GATE_DIR/$gbm_name"
+    gbm_tree=$(grep -o '"tree"[[:space:]]*:[[:space:]]*"[^"]*"' "$gbm_f" 2>/dev/null | head -1 | sed 's/.*"tree"[[:space:]]*:[[:space:]]*"//;s/"$//')
+    if [ -n "$gbm_tree" ] && [ "$gbm_tree" = "$HEAD_TREE" ]; then
+      ARTIFACT="$gbm_f"
+      break
+    fi
+  done <<GBM_NAMES
+$GBM_NAMES
+GBM_NAMES
+fi
+
+# 3. Legacy pre-4.0.1 location, one release only.
+if [ -z "$ARTIFACT" ] && [ -f "$REPO_TOP/.gate/last-pass.json" ]; then
+  echo "NOTE: legacy artifact path $REPO_TOP/.gate (pre-4.0.1); re-run hooks/run-gate.sh to migrate" >&2
+  ARTIFACT="$REPO_TOP/.gate/last-pass.json"
+fi
+
+if [ -z "$ARTIFACT" ]; then
+  echo "BLOCKED: No gate artifact found. Run 'bash hooks/run-gate.sh' on the PR branch head (green gate writes <common git dir>/gate/last-pass.<sha>.json), then merge." >&2
   exit 2
 fi
 
@@ -1320,8 +1394,8 @@ fi
 # tolerant pattern for that reason; do not "simplify" one of them.
 ARTIFACT_SHA=$(grep -o '"sha"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"sha"[[:space:]]*:[[:space:]]*"//;s/"$//')
 ARTIFACT_TREE=$(grep -o '"tree"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"tree"[[:space:]]*:[[:space:]]*"//;s/"$//')
-HEAD_SHA=$(git -C "$CWD" rev-parse HEAD 2>/dev/null)
-HEAD_TREE=$(git -C "$CWD" rev-parse 'HEAD^{tree}' 2>/dev/null)
+# HEAD_SHA/HEAD_TREE: computed above, before the artifact lookup (v4.0.1
+# addendum to item 17) — not recomputed here.
 
 # v2.1.3 fix round 1 (Critical 2 / penumbra #2c): accept either a sha match
 # (the classic case: gate ran on this exact commit) or a tree match (the
@@ -1355,13 +1429,33 @@ if [ -z "$ARTIFACT_SHA" ] || { [ "$ARTIFACT_SHA" != "$HEAD_SHA" ] && { [ -z "$AR
   exit 2
 fi
 
-# Freshness: artifact file mtime < 60 minutes (mtime avoids date-parsing portability issues)
+# Freshness: artifact file mtime < GC_GATE_TTL_S (hooks/lib/git-cmd.sh; 3600s
+# = 60 minutes, mtime avoids date-parsing portability issues). Applies
+# uniformly to whichever arm selected $ARTIFACT above -- exact-sha, tree scan,
+# or the legacy fallback all flow through this same check (v4.0.1 addendum to
+# item 17): the legacy path is a REASSIGNMENT of $ARTIFACT above, not a
+# separate early exit, specifically so it cannot skip freshness.
 ARTIFACT_EPOCH=$(stat -c %Y "$ARTIFACT" 2>/dev/null || stat -f %m "$ARTIFACT" 2>/dev/null || echo 0)
 NOW_EPOCH=$(date +%s)
 AGE=$((NOW_EPOCH - ARTIFACT_EPOCH))
-if [ "$ARTIFACT_EPOCH" -eq 0 ] || [ "$AGE" -gt 3600 ]; then
-  echo "BLOCKED: Gate artifact expired (${AGE}s old, max 3600s). Re-run 'bash hooks/run-gate.sh', then merge." >&2
+if [ "$ARTIFACT_EPOCH" -eq 0 ] || [ "$AGE" -gt "$GC_GATE_TTL_S" ]; then
+  echo "BLOCKED: Gate artifact expired (${AGE}s old, max ${GC_GATE_TTL_S}s). Re-run 'bash hooks/run-gate.sh', then merge." >&2
   exit 2
+fi
+
+# v4.0.1 (item 15): name which arm of the sha-or-tree check above actually
+# matched. sha is the classic case (the gate ran on this exact commit); tree
+# is EITHER the pre-commit-test.sh -> run-gate.sh chain (the gate ran against
+# the INDEX just before `git commit`, so the artifact's sha is the commit's
+# PARENT but its tree already equals HEAD^{tree}) OR the same-tree-different-
+# sha case above (R20, v4.0.1 addendum) -- sha is checked first, so a sha
+# match takes the label even when tree also happens to match. Names the
+# matched FILE too (v4.0.1 addendum): the directory can hold several
+# artifacts now, so "matched: tree" alone no longer says which one.
+if [ -n "$ARTIFACT_SHA" ] && [ "$ARTIFACT_SHA" = "$HEAD_SHA" ]; then
+  echo "matched: sha ($ARTIFACT)"
+else
+  echo "matched: tree ($ARTIFACT)"
 fi
 
 exit 0

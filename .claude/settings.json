@@ -27,10 +27,8 @@
       "mcp__git-tools__git_push",
       "mcp__git-tools__git_commit",
       "mcp__git-tools__git_revert",
-      "mcp__git-tools__git_merge",
       "mcp__git-tools__git_rebase",
-      "mcp__git-tools__git_reset",
-      "mcp__git-tools__git_push_tags"
+      "mcp__git-tools__git_reset"
     ],
     "defaultMode": "auto"
   },
