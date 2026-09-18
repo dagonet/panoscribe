@@ -2,18 +2,28 @@
 
 <!-- template-sync: project-owned, and never overwritten by a sync; introduced in v3.1.0 -->
 
-Add `paths:`-scoped conventions here — style, language and file-type rules that
-should load only when a matching file is touched.
+This file has no `paths:` key, so Claude Code loads it at EVERY session start,
+at the same priority as CLAUDE.md. Anything you write here is always on.
 
-**This file is deliberately inert.** A rules file with no `paths:` key loads at
-launch at `CLAUDE.md` priority, so anything written here is always in context.
-panoscribe's always-on project rules live in the PROJECT-CUSTOM region of
-`CLAUDE.md`; duplicating them here would create a second always-loaded copy to
-drift out of sync with the first.
+A new or edited rules file is picked up at the NEXT session start, not the current
+one -- restart the session to test a change.
 
-> The v2→v3 migration originally wrote a diff of `CLAUDE.md`'s out-of-region
-> hunks into this file, on the assumption that an unscoped rules file is never
-> delivered. That assumption was wrong — the file loads for every session — so
-> the record was removed: both hunks were superseded by toolkit v4.0.0, and the
-> original is preserved in git history and in the pre-migration backup.
-> Fixed upstream in toolkit v4.0.1.
+To scope it to files instead, add a frontmatter block at the very top:
+
+    ---
+    paths:
+      - "src/**/*.py"
+      - "pyproject.toml"
+    ---
+
+Always-on project rules belong in CLAUDE.md's PROJECT-CUSTOM region, not here;
+a rule in both places exists twice and drifts.
+
+---
+
+**panoscribe carries no rules here deliberately.** The always-on set lives in
+`CLAUDE.md`'s PROJECT-CUSTOM region — green-CI merge gate, verify-jobs-not-
+conclusion, gate artifact location, the `uv sync --extra dev --extra api`
+bootstrap note, and the compact rule. Add `paths:`-scoped conventions below this
+line if a rule should load only when a matching file is touched; put anything
+always-on in the region instead.
