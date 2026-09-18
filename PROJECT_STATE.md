@@ -15,7 +15,9 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.0.1** (`a97235bd`), synced 2026-09-17 (PR #143). Manifest is **v3** (three-class ownership). `template_verify` post_commit: **18 PASS, 0 FAIL**.
+**claude-code-toolkit v4.0.2** (`39135e78`), synced 2026-09-18 (PR #145). Manifest is **v3** (three-class ownership). `template_verify` post_commit: **18 PASS, 0 FAIL, 0 SKIP, 6 INFO**.
+
+> **Record the sync in the same PR as the sync.** This line has gone stale twice now — after #142/#143, and again after #144/#145 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside all 24 of its checks. Nothing but this habit closes the gap.
 
 Sync history since v3.0.0:
 
@@ -28,6 +30,15 @@ Sync history since v3.0.0:
 | v4.0.0 | `89dcaee` | #141 | Manifest v2 → v3; sync server now ships from the toolkit checkout |
 | — | — | #142 | Declared `**Gate-checked branches**`/`**PO write surface**`/`**Post-edit build**` (all `none`, measured); removed `**Test Command**` |
 | v4.0.1 | `a97235bd` | #143 | `lastSynced*` pair dropped; gate artifacts moved into `.git/gate/`; `**Gate Command**` → `**Gate**` |
+| — | — | #144 | Brought this file up to v4.0.1; retired the hand-kept "permanent deviations" list, which described the v2 keep-mine model |
+| v4.0.2 | `39135e78` | #145 | `require-skills-block.sh` fails closed on an Agent payload with no prompt; `post-edit-build.sh` treats `None` as `none`; adopted the v4.0.2 `project.md` seed |
+
+### v4.0.2 — what changed here
+
+- **`require-skills-block.sh` now fails closed.** It guards on `tool_name` and refuses an Agent payload carrying no `tool_input.prompt`. Verified two-sided on the installed hook: Agent-without-prompt → exit 2, Bash payload → exit 0. The second arm is the one that matters — a guard refusing everything passes the positive arm identically to one that works.
+- **`post-edit-build.sh` treats a literal `None` as `none`.** No effect here; panoscribe declares lowercase `none`. The behaviour change is measured at the toolkit end (`test-hooks.sh` fixture pair, pre-fix failure reproduced by reversion), not on this tree.
+- **Adopted the v4.0.2 `.claude/rules/project.md` seed.** It carries the sentence this project's own measurement produced — a new or edited rules file is picked up at the NEXT session start — plus a worked `paths:` frontmatter example the hand-written header lacked.
+- **`registered_tools`** joins `capabilities` in the load response, and it is the stronger instrument: `capabilities` says what the loaded modules support, `registered_tools` says what the process can actually dispatch. A pre-release server once advertised `template_verify` with a nine-tool registry.
 
 ### v4.0.1 — what changed here
 
