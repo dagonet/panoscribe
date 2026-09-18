@@ -82,19 +82,47 @@ json_have || { json_warn_no_parser require-skills-block "$(json_session "$HOOK_P
 # which the reader does support, and the variable above is renamed so it no
 # longer claims a descent that never happened.
 #
-# The top-level read is KEPT as a fallback, deliberately: the live Agent payload
-# cannot be observed from inside the suite, so reading both shapes is correct
-# under either and cannot regress. Nested wins when both are present.
+# v4.0.2 (item 14): the top-level fallback that used to live here is DELETED.
+# It was read "to be safe" while the live Agent payload could not be observed
+# from inside the suite; re-measured from this session's own transcript
+# (2026-09-17, client 2.1.274 / 2.1.220) the fallback shape has never once been
+# sent by any Claude Code client — it is the shape THIS TOOLKIT's own hook
+# wrongly read before toolkit v3.0.0 ($.subagent_type at the top level).
+# Reading both shapes did not make the hook safer; it made a malformed or
+# unrecognised payload indistinguishable from a legitimate empty field, which
+# is exactly the fail-open path this item closes. See the shape witness below.
 #
 # ⚠ DO NOT "FIX" hooks/enforce-agent-contract.sh BY ANALOGY. It reads
 # `agent_type`, `agent_id` and `agent_transcript_path` off the top level with no
 # `tool_input` descent, which looks like the same defect and is not: it is a
 # SubagentStop hook, and those fields ARE top-level in that event. Changing it
 # would break a working hook while fixing a dead one.
-SUBAGENT_TYPE=$(json_get "$HOOK_PAYLOAD" tool_input.subagent_type)
-[ -n "$SUBAGENT_TYPE" ] || SUBAGENT_TYPE=$(json_get "$HOOK_PAYLOAD" subagent_type)
+
+# v4.0.2 (item 14): tool_name guard. The matcher scopes this hook to Agent
+# today, but a widened matcher must not make it fail closed on a call it was
+# never meant to see -- an agent-ADJACENT tool such as SendMessage carries
+# `to`/`message` and no `prompt` at all. A NAMED, DIFFERENT tool (tool_name
+# present and not Agent/Task) is untouched. tool_name unreadable/absent is
+# NOT treated as "some other tool" -- that is the shape anomaly this item
+# exists to catch (the harness never omits tool_name), so it falls through to
+# the shape witness below and is refused there.
+TOOL_NAME=$(json_get "$HOOK_PAYLOAD" tool_name)
+case "$TOOL_NAME" in
+  Agent|Task|"") ;;
+  *) exit 0 ;;
+esac
+
+# v4.0.2 (item 14): shape witness. `tool_input.prompt` is present on every
+# real Agent call (subagent_type is legitimately optional -- its absence alone
+# is not a shape change). Empty/absent means the payload is not the shape this
+# hook reads; refuse it fail-closed rather than fall through with an empty
+# SUBAGENT_TYPE the way the dead top-level fallback used to.
 PROMPT=$(json_get "$HOOK_PAYLOAD" tool_input.prompt)
-[ -n "$PROMPT" ] || PROMPT=$(json_get "$HOOK_PAYLOAD" prompt)
+if [ -z "$PROMPT" ]; then
+  echo "BLOCKED: Agent payload carries no tool_input.prompt -- the shape this hook reads is not what arrived; refusing (fail closed). Keys present (any depth): $(printf '%s' "$HOOK_PAYLOAD" | grep -oE '"[a-zA-Z_]+":' | tr -d '":' | tr '\n' ' ')" >&2
+  exit 2
+fi
+SUBAGENT_TYPE=$(json_get "$HOOK_PAYLOAD" tool_input.subagent_type)
 
 case "$SUBAGENT_TYPE" in
   # Any language coder, including ones a project adds itself (cpp-coder, …).

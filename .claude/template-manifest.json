@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 3,
-  "template_version": "v4.0.1",
-  "template_commit": "a97235bd5bfe8a973f0e512ec7212f16b3f053ce",
+  "template_version": "v4.0.2",
+  "template_commit": "39135e78b159efaa2f432524894178020f22a321",
   "requires_server": ">=0.3.2",
   "files": {
     ".claude/agents/Explore.md": {
@@ -121,7 +121,7 @@
       "ownership": "template"
     },
     "hooks/post-edit-build.sh": {
-      "hash": "sha256:9db1849d7bbf9d61197118f5db1bb2132f69dd3a85b46dfcbd33f1c2c7e148c4",
+      "hash": "sha256:5f9d6ba0a671821f519fd9156bd4a34e455f1011950fce7cfe36ad1380f8846a",
       "ownership": "template"
     },
     "hooks/pre-commit-test.sh": {
@@ -133,7 +133,7 @@
       "ownership": "template"
     },
     "hooks/require-skills-block.sh": {
-      "hash": "sha256:aaa5811d18d6435054a64494792432663547f91587eca2821a653d82f69129bd",
+      "hash": "sha256:2e44cb6701f0762ffc6b0f5603345c95e3a6e645c6f036fa71c16df67e0de1e4",
       "ownership": "template"
     },
     "hooks/retro-brief.sh": {
