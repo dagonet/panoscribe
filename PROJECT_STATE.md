@@ -15,9 +15,9 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.0.2** (`39135e78`), synced 2026-09-18 (PR #145). Manifest is **v3** (three-class ownership). `template_verify` post_commit: **18 PASS, 0 FAIL, 0 SKIP, 6 INFO**.
+**claude-code-toolkit v4.0.3** (`150627de`), synced 2026-09-19 (PR #147). Manifest is **v3** (three-class ownership). `template_verify` post_commit: **18 PASS, 0 FAIL, 0 SKIP, 6 INFO**.
 
-> **Record the sync in the same PR as the sync.** This line has gone stale twice now — after #142/#143, and again after #144/#145 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside all 24 of its checks. Nothing but this habit closes the gap.
+> **Record the sync in the same PR as the sync.** This line has now gone stale three times — after #142/#143, #144/#145, and #147/#148 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside every one of its checks. Nothing but this habit closes the gap, and writing the habit down has not been enough on its own.
 
 Sync history since v3.0.0:
 
@@ -32,6 +32,25 @@ Sync history since v3.0.0:
 | v4.0.1 | `a97235bd` | #143 | `lastSynced*` pair dropped; gate artifacts moved into `.git/gate/`; `**Gate Command**` → `**Gate**` |
 | — | — | #144 | Brought this file up to v4.0.1; retired the hand-kept "permanent deviations" list, which described the v2 keep-mine model |
 | v4.0.2 | `39135e78` | #145 | `require-skills-block.sh` fails closed on an Agent payload with no prompt; `post-edit-build.sh` treats `None` as `none`; adopted the v4.0.2 `project.md` seed |
+| — | — | #146 | Brought this file up to v4.0.2 |
+| v4.0.3 | `150627de` | #147 | Guard hooks read a script argument's first 16 KB; expired gate artifact accepted within 24 h on tree + environment identity |
+
+### v4.0.3 — what changed here
+
+Five enforcement files: `hooks/lib/git-cmd.sh`, `gate-before-merge.sh`, `no-push-main.sh`, `pre-commit-test.sh`, `run-gate.sh`. Toolkit HEAD was seven docs-only commits past the tag; tracked-tree diff verified clean, so step 1b case 2 — `template_commit 150627de`, `template_version v4.0.3`.
+
+- **Guard hooks now read a script argument's first 16 KB.** A git verb inside a script is gated exactly as if typed. Measured here two-sided, and the instrument is the tree-keyed gate record, not `cmd_len`:
+
+  | arm | body | gate record |
+  |---|---|---|
+  | control | no git verb | `elapsed` UNCHANGED at 178 — no Gate ran |
+  | test | `false && git commit -m unreachable` | `elapsed` 63 — fresh Gate run |
+
+  The verb is present as text but unreachable, so nothing executes; the guard reads it regardless. **`cmd_len` on `last-precommit-noop` cannot be used as the instrument**: the PreToolUse hook writes that record *before* the command runs, so any call that reads it reads its own record (observed drifting 489 → 400 → 883 purely from inspection commands). The tree-keyed record is safe because only commit-segment commands write it.
+
+- **Consequence for probes.** The skill's standing "put the probe in a script file" remedy no longer hides git verbs from the guard, so the routine `2 0 0` `no-push-main` probe self-blocks from inside a session. Per the skill's own rule that is the positive result, not a failure; the `2 0 0` line is retired from the report format in toolkit v4.0.4. Do not reach for a wrapper script or a runtime-assembled verb to "pass" it — those are the bypass class `deny-secret-reads` exists to prevent.
+
+- **The 24 h tree+env artifact acceptance fired for real** on the #147 merge: the artifact was 2.5 h old, well past the 3600 s TTL, sha and tree both matching HEAD, and the merge was allowed on tree identity across a reboot. The commit message for #147 says that arm was "not exercised by this sync" — it was exercised minutes later, by the merge.
 
 ### v4.0.2 — what changed here
 
