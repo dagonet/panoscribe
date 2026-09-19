@@ -695,6 +695,16 @@ case "$GC_TOOL" in
   *) exit 0 ;;          # unknown tool, or a payload with no command key at all
 esac
 
+# v4.0.3 item 12 -- widen GC_CMD to include the body of any script segment it
+# invokes (`bash|sh|source|. <path>`, depth 1), BEFORE the git-token
+# pre-filter just below AND the segment walk further down: both must see the
+# SAME text, or a script's `git merge`/`git push` would pass the pre-filter's
+# "no git token" fast exit before the walk that would have caught it ever
+# runs. See gc_script_body / gc_augmented_cmd in hooks/lib/git-cmd.sh for the
+# 16 KB cap and the depth-1/TOCTOU residuals. No-op for the mcp__* tools
+# (empty GC_CMD there).
+GC_CMD="$(gc_augmented_cmd "$CWD")"
+
 # v3.0.3 item 25 — EXIT BEFORE DOING ANY WORK ON A PAYLOAD THAT CANNOT BE GATED.
 #
 # The ~1.5 s this gate spends per call is WORK, not parse: measured, comments
@@ -1435,12 +1445,75 @@ fi
 # or the legacy fallback all flow through this same check (v4.0.1 addendum to
 # item 17): the legacy path is a REASSIGNMENT of $ARTIFACT above, not a
 # separate early exit, specifically so it cannot skip freshness.
+# a13_first_diff_label <old pipe-joined label=value text> <new ...> -- prints
+# the label (text before the first `=`) of the first segment that differs
+# between the two, comparing positionally (gc_gate_env -v always emits
+# pyvenv, dist, py, node in that fixed order, pipe-joined). Empty if none
+# differ. v4.0.3 item 13.
+a13_first_diff_label() {
+  local old="$1" new="$2" oldlines newlines n i oline nline
+  oldlines=$(printf '%s' "$old" | tr '|' '\n')
+  newlines=$(printf '%s' "$new" | tr '|' '\n')
+  n=$(printf '%s\n' "$oldlines" | wc -l)
+  i=1
+  while [ "$i" -le "$n" ]; do
+    oline=$(printf '%s\n' "$oldlines" | sed -n "${i}p")
+    nline=$(printf '%s\n' "$newlines" | sed -n "${i}p")
+    if [ "$oline" != "$nline" ]; then
+      printf '%s\n' "${oline%%=*}"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+}
+
 ARTIFACT_EPOCH=$(stat -c %Y "$ARTIFACT" 2>/dev/null || stat -f %m "$ARTIFACT" 2>/dev/null || echo 0)
 NOW_EPOCH=$(date +%s)
 AGE=$((NOW_EPOCH - ARTIFACT_EPOCH))
 if [ "$ARTIFACT_EPOCH" -eq 0 ] || [ "$AGE" -gt "$GC_GATE_TTL_S" ]; then
-  echo "BLOCKED: Gate artifact expired (${AGE}s old, max ${GC_GATE_TTL_S}s). Re-run 'bash hooks/run-gate.sh', then merge." >&2
-  exit 2
+  # v4.0.3 item 13 -- an artifact past the ordinary TTL is still accepted up
+  # to the prune window (GC_GATE_PRUNE_S, hooks/lib/git-cmd.sh: ONE expression
+  # derived from GC_GATE_TTL_S) when its tree equals HEAD^{tree} AND its
+  # environment fingerprint ("env", hooks/run-gate.sh) still matches the
+  # CURRENT one (gc_gate_env "$REPO_TOP"). A tree that has not moved is the
+  # stronger binding for the code; the tree is NOT the environment (reviewer:
+  # server/.venv can be reinstalled between two runs against an
+  # tree-identical checkout), hence the additional fingerprint requirement.
+  # FAILS CLOSED (advisor): if gc_gate_env cannot compute (no sha256 backend,
+  # or the artifact carries no "env" at all -- an older writer, or a sha-only
+  # artifact with no "tree") the extension does NOT apply; the ordinary
+  # 3600s-TTL block below fires as before.
+  A13_ALLOW=0
+  A13_LABEL=""
+  if [ "$ARTIFACT_EPOCH" -ne 0 ] && [ -n "$ARTIFACT_TREE" ] && [ "$ARTIFACT_TREE" = "$HEAD_TREE" ] && [ "$AGE" -le "$GC_GATE_PRUNE_S" ]; then
+    ARTIFACT_ENV=$(grep -o '"env"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"env"[[:space:]]*:[[:space:]]*"//;s/"$//')
+    if [ -n "$ARTIFACT_ENV" ]; then
+      CURRENT_ENV=$(gc_gate_env "$REPO_TOP" 2>/dev/null) || CURRENT_ENV=""
+      if [ -n "$CURRENT_ENV" ] && [ "$ARTIFACT_ENV" = "$CURRENT_ENV" ]; then
+        A13_ALLOW=1
+      elif [ -n "$CURRENT_ENV" ]; then
+        # Tree matched but the aggregate differs -- name WHICH contributor,
+        # using env_detail (the per-contributor breakdown; see run-gate.sh's
+        # header note on why this is an addition beyond the brief's "env"-only
+        # wording: a single aggregate hash cannot name a part on its own).
+        ARTIFACT_ENV_DETAIL=$(grep -o '"env_detail"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"env_detail"[[:space:]]*:[[:space:]]*"//;s/"$//')
+        if [ -n "$ARTIFACT_ENV_DETAIL" ]; then
+          CURRENT_DETAIL=$(gc_gate_env "$REPO_TOP" -v 2>/dev/null | tr '\n' '|')
+          A13_LABEL=$(a13_first_diff_label "$ARTIFACT_ENV_DETAIL" "$CURRENT_DETAIL")
+        fi
+      fi
+    fi
+  fi
+  if [ "$A13_ALLOW" -eq 1 ]; then
+    echo "NOTE: gate artifact accepted on tree identity: ${AGE}s exceeds the ${GC_GATE_TTL_S}s TTL, tree and environment unchanged" >&2
+  else
+    if [ -n "$A13_LABEL" ]; then
+      echo "BLOCKED: Gate artifact expired (${AGE}s old, max ${GC_GATE_TTL_S}s); tree unchanged, environment changed: $A13_LABEL" >&2
+    else
+      echo "BLOCKED: Gate artifact expired (${AGE}s old, max ${GC_GATE_TTL_S}s). Re-run 'bash hooks/run-gate.sh', then merge." >&2
+    fi
+    exit 2
+  fi
 fi
 
 # v4.0.1 (item 15): name which arm of the sha-or-tree check above actually

@@ -133,6 +133,19 @@ GC_TERMINAL_RC=78
 # scripts/verify-template-consistency.sh asserts the two copies agree.
 GC_GATE_TTL_S=3600
 
+# GC_GATE_PRUNE_S (v4.0.3, R4) -- ONE derived expression, defined once, for
+# every 24h-from-the-TTL window in this codebase: run-gate.sh's existing
+# last-pass.*.json prune, the new pre-commit-test.sh last-precommit*.json
+# prune (item 4), and the tree+env TTL extension (item 13). Never three
+# independently-typed "* 24" literals -- a change to GC_GATE_TTL_S must move
+# all three together, which only happens if there is exactly one expression
+# to move. Seconds; a caller needing minutes (`find -mmin`) divides by 60
+# itself, same as the pre-existing run-gate.sh line did before this constant
+# existed. hooks/run-gate.sh repeats this line (same standalone reason as
+# GC_GATE_TTL_S/gc_gate_dir above); scripts/verify-template-consistency.sh
+# asserts the two copies agree.
+GC_GATE_PRUNE_S=$(( GC_GATE_TTL_S * 24 ))
+
 # Fail CLOSED when the JSON reader is missing: without it GC_CMD would be empty
 # and every gate would allow every command.
 gc_json_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/json.sh"
@@ -429,6 +442,50 @@ gc_seg_quoted() {
       *)        printf '0\n' ;;
     esac
   done
+}
+
+# gc_script_body <segment> <cwd> -- when a segment runs a SCRIPT FILE
+# (`bash|sh|source|. <path> [args]`, wrappers already stripped), print the
+# first 16 KB of that file so the caller can feed it to the same matcher as
+# extra segments. Depth 1 only: a script that invokes another script is a
+# documented residual (v4.0.3 item 12). TOCTOU residual: the hook reads the
+# file, allows the command, and nothing stops the file changing before bash
+# runs it -- unfixable at this layer, stated so nobody believes the gate is
+# stronger than it is. `[ -f ]`, never `[ -r ]`: a directory is readable.
+gc_script_body() {
+  local seg="$1" cwd="$2" tok path=""
+  set -- $seg
+  case "$1" in bash|sh|source|.) ;; *) return 0 ;; esac
+  shift
+  for tok in "$@"; do case "$tok" in -*) continue ;; *) path="$tok"; break ;; esac; done
+  [ -n "$path" ] || return 0
+  case "$path" in /*|[A-Za-z]:*) ;; *) path="$cwd/$path" ;; esac
+  [ -f "$path" ] || return 0
+  head -c 16384 "$path" 2>/dev/null
+}
+
+# gc_augmented_cmd <cwd> -- GC_CMD, plus the body of every script segment
+# (gc_script_body, depth 1: a body is never itself re-scanned for further
+# script segments) appended after the segment that named it. Walks the CURRENT
+# gc_segments() output exactly once, over the UNMODIFIED $GC_CMD -- so the
+# result is the same text whether a caller feeds it straight back into
+# gc_segments/gc_seg_quoted (the two stay index-aligned because both read the
+# identical augmented string) or into a plain git-token grep (v4.0.3 item 12:
+# the pre-filter in gate-before-merge.sh/no-push-main.sh must see the same
+# text the segment walk does, or a script's `git merge`/`git push` passes the
+# "no git token" fast exit before the walk that would have caught it ever
+# runs).
+gc_augmented_cmd() {
+  local cwd="$1" out="$GC_CMD" seg body
+  while IFS= read -r seg; do
+    [ -n "$seg" ] || continue
+    body=$(gc_script_body "$seg" "$cwd")
+    [ -n "$body" ] && out="$out
+$body"
+  done <<GC_AUG_SEGS
+$(gc_segments)
+GC_AUG_SEGS
+  printf '%s' "$out"
 }
 
 # Prints the `cd <target>` argument of a segment, if the segment is a bare cd.
@@ -785,12 +842,121 @@ gc_current_branch() {
 # hooks/run-gate.sh repeats this function (same standalone reason as
 # GC_KEY_PRE/GC_TERMINAL_RC/GC_GATE_TTL_S above); scripts/verify-template-
 # consistency.sh asserts the two copies agree.
+#
+# v4.0.3 item 8 (R2, reviewer, measured on git 2.55): `gc_gate_dir
+# <non-repo target>` used to fail BOTH git calls, print the literal `/.gate`
+# (the MSYS root -- `C:\Program Files\Git\.gate` -- outside every repo), warn
+# `WARN: git < 2.31` (false on a current git) and let the fallback's own
+# `fatal:` leak beside it; `gc_gate_dir ""` resolved against the PROCESS cwd
+# and returned the CORRECT directory of the WRONG repo -- a plausible answer
+# for the wrong reason. FIX: `[ -n "$1" ] || return 1` FIRST, before any git
+# call -- an empty target must never reach `git -C ""`, which git reads as
+# "the cwd" and answers successfully. Then resolve the target to its
+# toplevel with `--show-toplevel`; only THAT call's failure means "unresolved"
+# (return 1, print nothing, no WARN). The `--path-format=absolute
+# --git-common-dir` probe runs against the resolved $top, and its OWN
+# failure (a toplevel that resolved but is running an old git) is the one
+# case that still gets the documented WARN + <toplevel>/.gate fallback.
 gc_gate_dir() {
-  local common
-  common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
+  local top common
+  [ -n "$1" ] || return 1
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1   # unresolved target: nothing
+  common=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
   if [ -n "$common" ]; then printf '%s/gate\n' "$common"; return 0; fi
   echo "WARN: git < 2.31: gate artifacts stay at <toplevel>/.gate (per-worktree)" >&2
-  printf '%s/.gate\n' "$(git -C "$1" rev-parse --show-toplevel)"
+  printf '%s/.gate\n' "$top"
+}
+
+# gc_sha256 <stdin -> lowercase hex sha256>. Never `sha256sum <path>` -- that
+# prints the PATH into the digest input, which would make a fingerprint
+# depend on the absolute path of the file being hashed (see gc_gate_env
+# below, whose whole point is a fingerprint that agrees across worktrees at
+# different absolute paths). Tries sha256sum (Linux, Git Bash), then
+# shasum -a 256 (macOS ships this, not sha256sum, by default), then openssl.
+# Prints nothing and returns 1 when none is on PATH -- callers must treat
+# that as "cannot compute", never as an empty-string hash that would
+# spuriously match another "cannot compute" (fail CLOSED, v4.0.3 item 13).
+gc_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  else
+    return 1
+  fi
+}
+
+# gc_gate_env <repo_top> [-v] -- v4.0.3 item 13: the environment fingerprint
+# the tree+env TTL extension in gate-before-merge.sh keys on. Concatenates
+# labelled contributors the server test suite's outcome can depend on, one
+# per line:
+#   pyvenv=<sha256 of server/.venv/pyvenv.cfg, or "absent">
+#   dist=<sha256 of the SORTED, newline-joined *.dist-info directory NAMES
+#         (basenames only) under the venv's site-packages, or "absent" -- a
+#         directory read that moves on any install, upgrade or removal, so
+#         `pip install -U mcp` into an existing venv changes the fingerprint>
+#   py=<venv python --version, or "absent">
+#   node=<node --version if node is on PATH, or "absent">
+# Default output: the sha256 hex of that text (this is what "env" in the
+# gate artifact stores). With a second argument "-v": the labelled lines
+# themselves, for a human or run-gate.sh's own per-contributor storage --
+# never re-derived from the aggregate hash, which is one-way by design.
+#
+# PATH-INDEPENDENT BY CONSTRUCTION (reviewer): hashes are computed via
+# gc_sha256 (stdin only, see above) and the dist-info listing uses basenames
+# only -- so two worktrees of the same repo, at different absolute paths,
+# with byte-identical venvs, fingerprint identically. Required: the gate
+# artifact directory is shared by every worktree (gc_gate_dir), and a merge
+# can happen from a different worktree than the one that minted the
+# artifact.
+#
+# FAILS CLOSED: if gc_sha256 has no backend at all, this returns 1 and
+# prints nothing -- callers must NOT treat that as an empty-string
+# fingerprint (two "cannot compute" states would then spuriously "match").
+gc_gate_env() {
+  local top="$1" verbose="${2:-}" venv sp pyver nodever pyvenv_h dist_h out _gge_cand
+  [ -n "$top" ] || return 1
+  venv="$top/server/.venv"
+
+  if [ -f "$venv/pyvenv.cfg" ]; then
+    pyvenv_h=$(gc_sha256 < "$venv/pyvenv.cfg") || return 1
+  else
+    pyvenv_h=absent
+  fi
+
+  sp=""
+  [ -d "$venv/Lib/site-packages" ] && sp="$venv/Lib/site-packages"
+  if [ -z "$sp" ]; then
+    for _gge_cand in "$venv"/lib/python*/site-packages; do
+      [ -d "$_gge_cand" ] && { sp="$_gge_cand"; break; }
+    done
+  fi
+  if [ -n "$sp" ]; then
+    dist_h=$( (cd "$sp" 2>/dev/null && ls -1d -- *.dist-info 2>/dev/null) | LC_ALL=C sort | gc_sha256) || return 1
+    [ -n "$dist_h" ] || dist_h=absent
+  else
+    dist_h=absent
+  fi
+
+  pyver=absent
+  if [ -x "$venv/bin/python" ]; then
+    pyver=$("$venv/bin/python" --version 2>&1)
+  elif [ -x "$venv/Scripts/python.exe" ]; then
+    pyver=$("$venv/Scripts/python.exe" --version 2>&1)
+  fi
+
+  nodever=absent
+  command -v node >/dev/null 2>&1 && nodever=$(node --version 2>&1)
+
+  out=$(printf 'pyvenv=%s\ndist=%s\npy=%s\nnode=%s\n' "$pyvenv_h" "$dist_h" "$pyver" "$nodever")
+
+  if [ "$verbose" = "-v" ]; then
+    printf '%s' "$out"
+  else
+    printf '%s' "$out" | gc_sha256
+  fi
 }
 
 # gc_is_placeholder <value> -- true for an unreplaced `{{...}}`.
