@@ -167,10 +167,11 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # matched_in_quoted as well.
   if [ "$1" = no-commit-segment ]; then
     _pn_noop="$_pn_gd/last-precommit-noop.$_pn_treeseg.json"
-    printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","kind":"no-commit-segment"}\n' \
+    printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","kind":"no-commit-segment","gate_dir":"%s"}\n' \
       "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "${#GC_CMD}" "$_pn_tool" \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$_pn_gd" \
       > "$_pn_noop.tmp" 2>/dev/null && mv -f "$_pn_noop.tmp" "$_pn_noop" 2>/dev/null || return 0
+    pct_prune "$_pn_gd"
     return 0
   fi
   # The COMMAND ITSELF is never recorded, only its length: this file lands in
@@ -182,11 +183,28 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # the shape `bash -c "git commit -m x"` -- as opposed to an unwrapped `git
   # commit -m x`; see gc_seg_quoted in hooks/lib/git-cmd.sh.
   _pn_art="$_pn_gd/last-precommit.$_pn_treeseg.json"
-  printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","matched_in_quoted":%s}\n' \
+  printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","matched_in_quoted":%s,"gate_dir":"%s"}\n' \
     "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "${#GC_CMD}" "$_pn_tool" \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$PCT_QUOTED" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$PCT_QUOTED" "$_pn_gd" \
     > "$_pn_art.tmp" 2>/dev/null && mv -f "$_pn_art.tmp" "$_pn_art" 2>/dev/null || return 0
+  pct_prune "$_pn_gd"
   return 0
+}
+
+# pct_prune <gate_dir> -- v4.0.3 item 4: last-precommit.<tree>.json and
+# last-precommit-noop.<tree>.json grew one file per tree forever (unlike
+# run-gate.sh's last-pass.*.json, which has pruned itself since v4.0.1).
+# Same derived window as that prune -- GC_GATE_PRUNE_S (hooks/lib/git-cmd.sh:
+# ONE expression, never a second literal) -- applied here on the WRITE path
+# only, right after each artifact is placed: a READ path (this hook has none
+# that inspects these files, but the discipline is stated so nobody adds
+# one) must never have side effects. `2>/dev/null || true`: this is a
+# diagnostic path, and must never grow stderr of its own (same rule pct_note
+# itself follows throughout).
+pct_prune() {
+  [ -n "$1" ] || return 0
+  _pp_min=$(( GC_GATE_PRUNE_S / 60 ))
+  find "$1" -maxdepth 1 \( -name 'last-precommit.*.json' -o -name 'last-precommit-noop.*.json' \) -mmin "+$_pp_min" -delete 2>/dev/null || true
 }
 
 gc_read_stdin
@@ -214,6 +232,15 @@ if gc_cmd_unreadable; then
 fi
 
 [ -n "$GC_CMD" ] || { pct_note empty-cmd -1; exit 0; }
+
+# v4.0.3 item 12 -- widen GC_CMD to include the body of any script segment it
+# invokes (`bash|sh|source|. <path>`, depth 1) BEFORE splitting into segments,
+# so a `git commit` inside such a script is gated exactly as if typed. See
+# gc_script_body / gc_augmented_cmd in hooks/lib/git-cmd.sh for the 16 KB cap
+# and the depth-1/TOCTOU residuals. cmd_len in the diagnostic artifact below
+# reflects the augmented length on this path -- accepted, it is a diagnostic
+# field, not a gate.
+GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
 
 # Find the repo of the first `git commit` in the command line (if any).
 base="$GC_CWD"

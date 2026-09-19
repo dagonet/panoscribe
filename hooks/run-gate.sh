@@ -128,14 +128,83 @@ GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
 # GC_GATE_TTL_S and gc_gate_dir, defined locally for the same standalone
 # reason as GC_KEY_PRE above (v4.0.1, item 17). The definitions and the
 # reasons live in hooks/lib/git-cmd.sh; scripts/verify-template-consistency.sh
-# asserts all three stay in step.
+# asserts all three stay in step. v4.0.3 item 8: gc_gate_dir refuses an
+# unresolved target instead of printing /.gate with a false git-version
+# warning -- see the header note on the git-cmd.sh copy.
 GC_GATE_TTL_S=3600
 gc_gate_dir() {
-  local common
-  common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
+  local top common
+  [ -n "$1" ] || return 1
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1   # unresolved target: nothing
+  common=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
   if [ -n "$common" ]; then printf '%s/gate\n' "$common"; return 0; fi
   echo "WARN: git < 2.31: gate artifacts stay at <toplevel>/.gate (per-worktree)" >&2
-  printf '%s/.gate\n' "$(git -C "$1" rev-parse --show-toplevel)"
+  printf '%s/.gate\n' "$top"
+}
+
+# GC_GATE_PRUNE_S (v4.0.3, R4) -- same standalone-copy reason as GC_GATE_TTL_S
+# and gc_gate_dir above. The definition and the reason live in
+# hooks/lib/git-cmd.sh; scripts/verify-template-consistency.sh asserts the
+# two copies agree.
+GC_GATE_PRUNE_S=$(( GC_GATE_TTL_S * 24 ))
+
+# gc_sha256 / gc_gate_env, defined locally for the same standalone reason as
+# GC_GATE_TTL_S/gc_gate_dir above (v4.0.3 item 13). Definitions and the
+# reasons live in hooks/lib/git-cmd.sh; scripts/verify-template-
+# consistency.sh asserts the copies agree.
+gc_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  else
+    return 1
+  fi
+}
+gc_gate_env() {
+  local top="$1" verbose="${2:-}" venv sp pyver nodever pyvenv_h dist_h out _gge_cand
+  [ -n "$top" ] || return 1
+  venv="$top/server/.venv"
+
+  if [ -f "$venv/pyvenv.cfg" ]; then
+    pyvenv_h=$(gc_sha256 < "$venv/pyvenv.cfg") || return 1
+  else
+    pyvenv_h=absent
+  fi
+
+  sp=""
+  [ -d "$venv/Lib/site-packages" ] && sp="$venv/Lib/site-packages"
+  if [ -z "$sp" ]; then
+    for _gge_cand in "$venv"/lib/python*/site-packages; do
+      [ -d "$_gge_cand" ] && { sp="$_gge_cand"; break; }
+    done
+  fi
+  if [ -n "$sp" ]; then
+    dist_h=$( (cd "$sp" 2>/dev/null && ls -1d -- *.dist-info 2>/dev/null) | LC_ALL=C sort | gc_sha256) || return 1
+    [ -n "$dist_h" ] || dist_h=absent
+  else
+    dist_h=absent
+  fi
+
+  pyver=absent
+  if [ -x "$venv/bin/python" ]; then
+    pyver=$("$venv/bin/python" --version 2>&1)
+  elif [ -x "$venv/Scripts/python.exe" ]; then
+    pyver=$("$venv/Scripts/python.exe" --version 2>&1)
+  fi
+
+  nodever=absent
+  command -v node >/dev/null 2>&1 && nodever=$(node --version 2>&1)
+
+  out=$(printf 'pyvenv=%s\ndist=%s\npy=%s\nnode=%s\n' "$pyvenv_h" "$dist_h" "$pyver" "$nodever")
+
+  if [ "$verbose" = "-v" ]; then
+    printf '%s' "$out"
+  else
+    printf '%s' "$out" | gc_sha256
+  fi
 }
 
 # Read Gate command from PROJECT_CONTEXT.md. Tolerates: an optional leading
@@ -164,6 +233,16 @@ esac
 HEAD_SHA=$(git -C "$CWD" rev-parse HEAD 2>/dev/null)
 BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
 ARTIFACT_DIR=$(gc_gate_dir "$CWD")
+# v4.0.3 item 8: gc_gate_dir now refuses (empty stdout, rc 1) rather than
+# printing a plausible-looking path for an unresolved target. REPO_TOP was
+# already validated above, so this is not expected to fire from this call
+# site in practice -- defensive, not reachable by a known live path. TERMINAL
+# (not 1): re-running from the same cwd cannot make the target resolve any
+# differently, same class as the "not inside a git repository" guard above.
+if [ -z "$ARTIFACT_DIR" ]; then
+  echo "GATE ERROR: gate directory unresolved" >&2
+  exit "$GC_TERMINAL_RC"
+fi
 # Sha-keyed filename, not a single fixed name (v4.0.1, item 17): the
 # directory above is now shared by every worktree of the repo, so a fixed
 # name would let two worktrees gating concurrently clobber each other's
@@ -321,21 +400,43 @@ if [ "$GATE_RC" -eq 0 ]; then
   # into place: `mv` is atomic within one filesystem, and the tmp file always
   # lands in the artifact's own directory. Readers (gate-before-merge.sh's
   # exact lookup and its tree scan) both skip `*.tmp` for this reason.
+  # v4.0.3 item 13 -- the environment fingerprint gate-before-merge.sh's
+  # tree+env TTL extension keys on (see gc_gate_env's header note above).
+  # ENV_HASH is what "env" stores (the aggregate the extension compares).
+  # ENV_DETAIL is an INTERFACE ADDITION beyond the original item 13 spec text
+  # (which named only the "env" key): the per-contributor labelled lines
+  # (gc_gate_env -v), pipe-joined so they fit one JSON string field, needed
+  # so gate-before-merge.sh can NAME which contributor changed
+  # ("environment changed: pyvenv") -- a single aggregate hash cannot say
+  # that on its own, since only the CURRENT contributors are recomputable at
+  # merge time; the OLD per-contributor values have to have been stored
+  # somewhere. Reported in the task report as a deviation from the brief's
+  # "artifact key env" (singular) wording.
+  # FAILS CLOSED (reviewer): gc_gate_env returns 1 with no output when it has
+  # no sha256 backend -- ENV_HASH/ENV_DETAIL then stay empty, so an artifact
+  # minted where the fingerprint could not be computed carries no `env` at
+  # all, which gate-before-merge.sh's extension already treats as "not
+  # eligible for the extension" (same as an older writer's artifact).
+  ENV_HASH=$(gc_gate_env "$REPO_TOP" 2>/dev/null) || ENV_HASH=""
+  ENV_DETAIL=""
+  [ -n "$ENV_HASH" ] && ENV_DETAIL=$(gc_gate_env "$REPO_TOP" -v 2>/dev/null | tr '\n' '|')
   ARTIFACT_TMP="$ARTIFACT.tmp"
-  printf '{"sha":"%s","tree":"%s","branch":"%s","ts":"%s","status":"pass"}\n' \
-    "$HEAD_SHA" "$TREE_HASH" "${BRANCH:-unknown}" "$TS" > "$ARTIFACT_TMP"
+  printf '{"sha":"%s","tree":"%s","branch":"%s","ts":"%s","status":"pass","env":"%s","env_detail":"%s"}\n' \
+    "$HEAD_SHA" "$TREE_HASH" "${BRANCH:-unknown}" "$TS" "$ENV_HASH" "$ENV_DETAIL" > "$ARTIFACT_TMP"
   mv -f "$ARTIFACT_TMP" "$ARTIFACT"
   echo "GATE PASS $HEAD_SHA"
   # Prune (v4.0.1 addendum to item 17): the directory is shared across every
   # worktree and never swept by a commit (it lives inside .git), so without
-  # this it grows one file per gate run forever. The prune window is DERIVED
-  # from GC_GATE_TTL_S (3600s = 1h), never set independently: 24h is always
-  # 24x the freshness window gate-before-merge.sh enforces, so pruning can
-  # never delete an artifact a merge would still honour. That relation is
-  # structural, not asserted with a runtime self-check -- a self-check that
-  # can never go red for any positive GC_GATE_TTL_S is not a check; if the
-  # derivation is ever replaced with an independent constant, add a real one.
-  prune_min=$(( GC_GATE_TTL_S * 24 / 60 ))
+  # this it grows one file per gate run forever. The prune window is
+  # GC_GATE_PRUNE_S (v4.0.3, R4 -- ONE expression derived from GC_GATE_TTL_S,
+  # defined once in hooks/lib/git-cmd.sh and repeated here for the same
+  # standalone reason as GC_GATE_TTL_S/gc_gate_dir): always 24x the freshness
+  # window gate-before-merge.sh enforces, so pruning can never delete an
+  # artifact a merge would still honour. That relation is structural, not
+  # asserted with a runtime self-check -- a self-check that can never go red
+  # for any positive GC_GATE_TTL_S is not a check; if the derivation is ever
+  # replaced with an independent constant, add a real one.
+  prune_min=$(( GC_GATE_PRUNE_S / 60 ))
   find "$ARTIFACT_DIR" -maxdepth 1 -name 'last-pass.*.json' -mmin "+$prune_min" -delete 2>/dev/null || true
   exit 0
 elif [ "$GATE_RC" -eq "$GC_TERMINAL_RC" ]; then

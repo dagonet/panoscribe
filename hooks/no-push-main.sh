@@ -46,6 +46,15 @@ fi
 
 [ -n "$GC_CMD" ] || exit 0
 
+# v4.0.3 item 12 -- widen GC_CMD to include the body of any script segment it
+# invokes (`bash|sh|source|. <path>`, depth 1), BEFORE the git-token
+# pre-filter just below AND the segment walk further down: both must see the
+# SAME text, or a script's `git push` would pass the pre-filter's "no git
+# token" fast exit before the walk that would have caught it ever runs. See
+# gc_script_body / gc_augmented_cmd in hooks/lib/git-cmd.sh for the 16 KB cap
+# and the depth-1/TOCTOU residuals.
+GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
+
 # v3.0.3 item 25 — exit before doing any work on a payload that cannot be gated.
 # See the long note on the same block in hooks/gate-before-merge.sh: the cost is
 # WORK (the segment walk and its git subprocesses), not parse, and the test is
