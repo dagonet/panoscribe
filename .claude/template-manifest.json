@@ -12,11 +12,14 @@
     "LINT_COMMAND": "uv run ruff check .",
     "TECH_STACK": "Python 3.11, uv"
   },
-  "manifest_version": 3,
-  "template_version": "v4.0.3",
-  "template_commit": "150627de1b418307dcb3b4d6672f867f04cde9bb",
-  "requires_server": ">=0.3.2",
+  "manifest_version": 4,
+  "template_version": "v4.1.0",
+  "template_commit": "038f247f3c7ef2f4dd9a9e4b7d6d8a9c6595a968",
+  "requires_server": ">=4.1.0",
   "files": {
+    ".claude/agent-grants.json": {
+      "ownership": "once"
+    },
     ".claude/agents/Explore.md": {
       "hash": "sha256:b15d97ecca3c854c53dd08f270802ceb04bbc050b47f74b8fcaee43ee91d8bf2",
       "ownership": "template"
@@ -45,6 +48,9 @@
       "hash": "sha256:3282d4f558f941ada1d1a81362e52d693e42f75ab88e05bf317d9255a5b79466",
       "ownership": "template"
     },
+    ".claude/project-instructions.md": {
+      "ownership": "once"
+    },
     ".claude/rules/project.md": {
       "ownership": "once"
     },
@@ -53,7 +59,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:37dcc09ce6f0e690d14cefecb4976f4027e208d3463571422b792ad6ef909a4e",
+      "hash": "sha256:66f45cfd6b0059a02ee145fbc2b3e92701457f32b3e3711a08918c24aa3f82a3",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -67,16 +73,15 @@
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:6ad4083cc88252cd546180ead5642a175aa5f49dffd498785fe0ca4fcc5a32b4",
+      "hash": "sha256:048a72457d37f2a5dd484bdc68b3adeb87f7c5c5ab459e02aa17332aad1e2438",
       "ownership": "template"
     },
     "CLAUDE.md": {
-      "hash": "sha256:eb82ebaf3fc9ae8ce12706e6df88ee9ce9f38c4e68eed889d41741d34652781c",
+      "hash": "sha256:dd92ecd686365145f4f117be942b01a9cf567dc916beb4d078eb1c4451ec5d8b",
       "ownership": "template"
     },
     "PROJECT_CONTEXT.md": {
-      "ownership": "once",
-      "reason": "Project-specific config"
+      "ownership": "once"
     },
     "PROJECT_STATE.md": {
       "ownership": "once"
@@ -92,6 +97,10 @@
       "hash": "sha256:c61025bc18233ac02ac3f65074d1a1ee3835bd0a2e670380453682f757f2c88f",
       "ownership": "template"
     },
+    "hooks/deny-claude-md-writes.sh": {
+      "hash": "sha256:1784d9be2589d544117677f1a4d21896318d077fd2c518fe82ca6df5e98dfa9c",
+      "ownership": "template"
+    },
     "hooks/deny-secret-reads.sh": {
       "hash": "sha256:31362b10cfafb369158ad44dcb51500e5f7f1381ec9280d2662b03bd5976deec",
       "ownership": "template"
@@ -101,7 +110,7 @@
       "ownership": "template"
     },
     "hooks/enforce-delegation.sh": {
-      "hash": "sha256:908ef9588f0ecd27b98b7ca9f87f92770712ed0504843cc5eaa5e6878e5c7b3c",
+      "hash": "sha256:b0f03febb975133dbd25acf69a2bc18de8c35e7c07fb2e81c6d716977ef03a95",
       "ownership": "template"
     },
     "hooks/gate-before-merge.sh": {
@@ -148,5 +157,7 @@
       "hash": "sha256:81cc8be76397f0e2c795761575003d188cfb292bb8c9657303f614f1c9298061",
       "ownership": "template"
     }
-  }
+  },
+  "instructions_file": ".claude/project-instructions.md",
+  "agent_grants": ".claude/agent-grants.json"
 }
