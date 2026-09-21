@@ -107,13 +107,13 @@ Three `keep-mine` resolutions were dropped by the migration. A dropped resolutio
 | `PROJECT_STATE.md` | `once` | **Stronger** |
 | `CLAUDE.md` | `template` | The only real one; resolved by **accepting the template** |
 
-`CLAUDE.md`'s two out-of-region deviations were both superseded by v4.0.0 (it ships the single-entry-point Quick Start and an equivalent Required-Skills sentence). The PROJECT-CUSTOM region is preserved by the region mechanism, independently of ownership class.
+`CLAUDE.md`'s two out-of-region deviations were both superseded by v4.0.0 (it ships the single-entry-point Quick Start and an equivalent Required-Skills sentence). The PROJECT-CUSTOM region is preserved by the region mechanism, independently of ownership class. **[Superseded by v4.1.0]** — for `CLAUDE.md` that region no longer exists; the region mechanism still applies to `AGENT_TEAM.md` and the seven agent files, which keep theirs.
 
 `CLAUDE.local.md` is now **project-owned** — dropped from manifest tracking as project-class, untouched on disk.
 
 **`once` cuts both ways.** A `once` file is never clobbered and, by the same mechanism, never re-diffed — so template-side *additions* never arrive. `PROJECT_CONTEXT.md` therefore keeps the `**Gate Command**` / `**Test Command**` spellings (the hooks still accept both) and will **not** receive the newly declared `**Gate-checked branches**`, `**PO write surface**` or `**Post-edit build**` keys without a hand edit. `**Gate-checked branches**` is the one with teeth: its absence is why `gate-before-merge.sh`'s gate-checked arm has never once fired here.
 
-**`.claude/rules/project.md` loads at launch.** A rules file with no `paths:` key is delivered at every session start at `CLAUDE.md` priority — only `paths:`-scoped ones are lazy. The migration wrote a diff of `CLAUDE.md`'s out-of-region hunks there on the opposite assumption; the body was replaced with an inert note in #141, and the always-on rules stay in `CLAUDE.md`'s PROJECT-CUSTOM region as the single source. Fixed upstream in toolkit v4.0.1.
+**`.claude/rules/project.md` loads at launch.** A rules file with no `paths:` key is delivered at every session start at `CLAUDE.md` priority — only `paths:`-scoped ones are lazy. The migration wrote a diff of `CLAUDE.md`'s out-of-region hunks there on the opposite assumption; the body was replaced with an inert note in #141, and the always-on rules stayed in `CLAUDE.md`'s PROJECT-CUSTOM region as the single source. Fixed upstream in toolkit v4.0.1. **[Superseded by v4.1.0]** — the single source is now `.claude/project-instructions.md`; `.claude/rules/project.md` was hand-repointed at it in #149, since a `once`-class file can never receive that correction by sync.
 
 The v3.0.0 consolidation retired three agents — **spawn the successor, not the retired name**:
 
@@ -125,7 +125,7 @@ The v3.0.0 consolidation retired three agents — **spawn the successor, not the
 
 Absorb, not rename — the survivors gained the skills, so no capability was lost. Seven agent files remain.
 
-**Deviation tracking is now the ownership class, not a hand-kept list.** Under manifest v3 the old "permanent deviations" list (`PROJECT_CONTEXT.md`, `CLAUDE.md`, `PROJECT_STATE.md`) is obsolete: `PROJECT_CONTEXT.md`, `PROJECT_STATE.md` and `VERIFICATION_PLAYBOOK.md` are `once` (kept by the class, no annotation needed), and `CLAUDE.md` is `template` with its project content held in the PROJECT-CUSTOM region. `hooks/run-gate.sh` left the old list back in PR #131 — the #98 pytest-cov preflight moved out to repo-root `preflight.sh`, wired through the **Gate Command** under the toolkit's terminal contract, so the hook is byte-identical to the template and auto-updates.
+**Deviation tracking is now the ownership class, not a hand-kept list.** Under manifest v3 the old "permanent deviations" list (`PROJECT_CONTEXT.md`, `CLAUDE.md`, `PROJECT_STATE.md`) is obsolete: `PROJECT_CONTEXT.md`, `PROJECT_STATE.md` and `VERIFICATION_PLAYBOOK.md` are `once` (kept by the class, no annotation needed), and `CLAUDE.md` is `template` with its project content held in the PROJECT-CUSTOM region **[Superseded by v4.1.0]** — `CLAUDE.md` is still `template`-class, but it now holds no project content at all: that content lives in `.claude/project-instructions.md`, and `hooks/deny-claude-md-writes.sh` refuses writes to `CLAUDE.md` outright. `hooks/run-gate.sh` left the old list back in PR #131 — the #98 pytest-cov preflight moved out to repo-root `preflight.sh`, wired through the **Gate Command** under the toolkit's terminal contract, so the hook is byte-identical to the template and auto-updates.
 
 `preflight.sh` itself stays project-owned at the repo root and is **not** manifest-tracked: it runs as the first command of the Gate Command precisely so it does not have to live inside `hooks/run-gate.sh`, which syncs verbatim and would force a hand-merge on every release.
 
