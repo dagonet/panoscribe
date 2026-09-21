@@ -11,9 +11,11 @@
 # work). Absent -> main thread -> enforce.
 #
 # PO write surface (main-thread Edit/Write allowed): docs/plans/,
-# PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/, CLAUDE.md, CLAUDE.local.md,
-# AGENT_TEAM.md, and any path OUTSIDE the repo root (scratchpad, ~/.claude
-# memory). Everything else (source code, tests, docs content) is agent work.
+# PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/, CLAUDE.md (pre-v4 manifests
+# only; under manifest v4 write .claude/project-instructions.md --
+# deny-claude-md-writes.sh enforces it), CLAUDE.local.md, AGENT_TEAM.md, and
+# any path OUTSIDE the repo root (scratchpad, ~/.claude memory). Everything
+# else (source code, tests, docs content) is agent work.
 #
 # v3.1: a project may extend this list without editing the hook -- the
 # PROJECT_CONTEXT.md **PO write surface** key names extra path prefixes,
@@ -73,7 +75,9 @@ if [ "${1:-}" = "--help" ]; then
 Usage: registered as a Claude Code PreToolUse hook (settings.json).
   Matcher "Edit|Write|NotebookEdit": denies main-thread edits outside the PO
   write surface (docs/plans/, PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/,
-  CLAUDE.md, CLAUDE.local.md, AGENT_TEAM.md, paths outside the repo, plus any
+  CLAUDE.md (pre-v4 manifests only; under manifest v4 write
+  .claude/project-instructions.md -- deny-claude-md-writes.sh enforces it),
+  CLAUDE.local.md, AGENT_TEAM.md, paths outside the repo, plus any
   prefixes named by PROJECT_CONTEXT.md's **PO write surface** key).
   Matcher "Bash": denies main-thread build/test-runner commands and
   hooks/run-gate.sh.
@@ -312,5 +316,5 @@ case "$FILE_PATH" in
     ;;
 esac
 
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"DELEGATE: PO never edits code. Spawn coder (code and docs), ops (env/files), tester (verification). PO write surface: docs/plans/, PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/, CLAUDE.md, AGENT_TEAM.md. Escape hatch: create .claude/delegation-off."}}\n'
+printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"DELEGATE: PO never edits code. Spawn coder (code and docs), ops (env/files), tester (verification). PO write surface: docs/plans/, PROJECT_STATE.md, PROJECT_CONTEXT.md, .claude/, CLAUDE.md (pre-v4 manifests only; under manifest v4 write .claude/project-instructions.md -- deny-claude-md-writes.sh enforces it), AGENT_TEAM.md. Escape hatch: create .claude/delegation-off."}}\n'
 exit 0

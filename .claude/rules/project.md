@@ -16,14 +16,21 @@ To scope it to files instead, add a frontmatter block at the very top:
       - "pyproject.toml"
     ---
 
-Always-on project rules belong in CLAUDE.md's PROJECT-CUSTOM region, not here;
-a rule in both places exists twice and drifts.
+Always-on project rules belong in `.claude/project-instructions.md` (imported at
+the end of CLAUDE.md), not here; a rule in both places exists twice and drifts.
 
 ---
 
 **panoscribe carries no rules here deliberately.** The always-on set lives in
-`CLAUDE.md`'s PROJECT-CUSTOM region — green-CI merge gate, verify-jobs-not-
+`.claude/project-instructions.md` — green-CI merge gate, verify-jobs-not-
 conclusion, gate artifact location, the `uv sync --extra dev --extra api`
 bootstrap note, and the compact rule. Add `paths:`-scoped conventions below this
 line if a rule should load only when a matching file is touched; put anything
-always-on in the region instead.
+always-on in `project-instructions.md` instead.
+
+> Both sentences above said `CLAUDE.md`'s PROJECT-CUSTOM region until the v4.1.0
+> sync. That region no longer exists, and `hooks/deny-claude-md-writes.sh` now
+> refuses writes to `CLAUDE.md` outright — so an always-on file was telling every
+> session to put rules somewhere nonexistent and write-denied. Upstream corrected
+> its own seed in v4.1.0; this file is `once`-class, so that correction could
+> never arrive on its own and had to be made by hand. `once` cuts both ways.

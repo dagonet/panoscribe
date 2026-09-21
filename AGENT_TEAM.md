@@ -44,7 +44,7 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 ### Product Owner (PO)
 
 - Primary interface with the human stakeholder; maintains/prioritizes the backlog. Spawns the **Architect** for new features; reviews/publishes specs; plans sprints; monitors progress, handles escalations; writes a session summary after each sprint.
-- **T1 delegated fixes**: trivial changes (< 10 lines, style/config, no logic) get ONE coder with the brief inline — no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
+- **T1 delegated fixes**: trivial changes (< 10 lines, style/config, no logic) get ONE coder with the brief inline — no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
 - **Never reviews code inline** — `code-reviewer` is spawned T2+; T1 relies on the coder's gate run.
 - **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **Explore** (haiku/`effort: low` — never pass `model` in the Agent call).
 - **Never runs builds or tests** — coders gate, tester verifies, `ops` handles env/tool work; PO verifies via `.gate/last-pass.json`.

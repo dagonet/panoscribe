@@ -1,8 +1,5 @@
 # Claude Code -- General Behavior
 
-> Project-specific hard rules live in the PROJECT-CUSTOM region below — read it first.
-> Rationale (toolkit repo): docs/design-rationale.md#claudemd
-
 ---
 
 # Session Bootstrap
@@ -29,7 +26,7 @@ Claude operates as **Product Owner (PO)** — plans sprints, spawns agents, sequ
 
 Table is a **maximum**; question turns get at most one agent; never re-spawn `Explore` on a named file; too big for one pass → `use a workflow`.
 
-**PO never does hands-on work.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `CLAUDE.md`, `AGENT_TEAM.md`. Non-code → `ops`. Exploration → `Explore`.
+**PO never does hands-on work.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md`. Non-code → `ops`. Exploration → `Explore`.
 
 | Task Domain | subagent_type | When |
 |---|---|---|
@@ -121,19 +118,8 @@ Discard freely: verbose tool output, dead-end reads, status chatter, merged-PR d
 
 ---
 
-<!-- Project-specific rules and plugin routing blocks (context-mode, …) belong inside the PROJECT-CUSTOM region below -->
-<!-- PROJECT-CUSTOM:BEGIN — sync-template preserves everything between these markers -->
-
-# Project Notes (panoscribe)
-
-**Green-CI merge gate (definition of done):** a PR may be merged ONLY after its head SHA shows a successful GitHub Actions run — check via `gh_workflow_list` / `github_workflow_run_wait` and require `conclusion=success` before merging. Local green is insufficient: platform-specific failures (e.g. Linux-only import errors) never surface on Windows. After merging, confirm main's push run is also green. If CI is red for an unrelated reason, fix CI first — never merge on top of red. The PO includes this gate in every dev spawn prompt's merge instructions and re-checks Actions status at every release.
-
-**Verify a run's jobs, not its conclusion:** a workflow run in which every job is skipped still reports `success`. After any publish/release dispatch, confirm at job level (`github_check_runs_for_sha`) that the specific job you needed actually ran.
-
-**Gate artifact location:** `hooks/gate-before-merge.sh` reads `.gate/last-pass.json` from the checkout it resolves as the repo root. Run `bash hooks/run-gate.sh` in the checkout you merge from — an artifact written inside an agent worktree is never seen by the hook and presents as an "artifact expired" error that re-running cannot clear.
-
-**Bootstrap is `uv sync --extra dev --extra api`** — test/dev tooling lives in `[project.optional-dependencies]`; bare `uv sync` skips `pytest-cov` and the gate fails with an opaque pytest argument error. Release sequence: `docs/release-process.md`. Right after a release, `uv` may serve a stale index for the new version — see `docs/troubleshooting.md`.
-
-**Compact — also preserve:** team configuration (team name, active teammates and their roles).
-
-<!-- PROJECT-CUSTOM:END -->
+<!-- Project-specific rules and plugin routing blocks (context-mode, …) belong in .claude/project-instructions.md, never here -->
+Project-specific instructions live in the imported file below; where the two conflict, that file wins.
+<!-- Editing note: write to .claude/project-instructions.md, never to this file -- the sync owns it,
+     an editing hook refuses Edit/Write here, and the next sync overwrites it. -->
+@.claude/project-instructions.md

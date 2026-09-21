@@ -15,9 +15,9 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.0.3** (`150627de`), synced 2026-09-19 (PR #147). Manifest is **v3** (three-class ownership). `template_verify` post_commit: **18 PASS, 0 FAIL, 0 SKIP, 6 INFO**.
+**claude-code-toolkit v4.1.0** (`038f247f`), synced 2026-09-21 — **recorded in the same PR as the sync**. Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`.
 
-> **Record the sync in the same PR as the sync.** This line has now gone stale three times — after #142/#143, #144/#145, and #147/#148 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside every one of its checks. Nothing but this habit closes the gap, and writing the habit down has not been enough on its own.
+> **Record the sync in the same PR as the sync.** This line went stale three times — after #142/#143, #144/#145, and #147/#148 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside every one of its checks. Writing the habit down was not enough on its own; **v4.1.0 is the first sync where the record ships in the same commit**, which is the only thing that has ever actually closed it.
 
 Sync history since v3.0.0:
 
@@ -34,6 +34,34 @@ Sync history since v3.0.0:
 | v4.0.2 | `39135e78` | #145 | `require-skills-block.sh` fails closed on an Agent payload with no prompt; `post-edit-build.sh` treats `None` as `none`; adopted the v4.0.2 `project.md` seed |
 | — | — | #146 | Brought this file up to v4.0.2 |
 | v4.0.3 | `150627de` | #147 | Guard hooks read a script argument's first 16 KB; expired gate artifact accepted within 24 h on tree + environment identity |
+| v4.1.0 | `038f247f` | — | Manifest v3 → v4; `CLAUDE.md` becomes template-owned and byte-identical; PROJECT-CUSTOM region moves to `.claude/project-instructions.md`; `agent-grants.json`; new `deny-claude-md-writes.sh` hook. Sync **and** record in one PR |
+
+### v4.1.0 — manifest v3 → v4, and where project content lives now
+
+`CLAUDE.md` is now **template-owned and byte-identical to the rendered template**, for everyone including the PO. It is no longer an editable file. The 1692-byte PROJECT-CUSTOM region moved verbatim into **`.claude/project-instructions.md`** (`once`-class, ours permanently, imported by `CLAUDE.md`'s last line `@.claude/project-instructions.md`). Delivery is at **session start** — a new or edited version is picked up at the NEXT session start, not the current one.
+
+**`hooks/deny-claude-md-writes.sh` is the mechanism that replaces discipline.** Measured here on the installed hook, 12 synthetic payloads under Git Bash: root `CLAUDE.md` via all four editing tools → deny (2); `docs/CLAUDE.md`, `CLAUDE.local.md`, `.claude/project-instructions.md`, a missing `file_path`, and a `Bash` payload → allow (0); **garbage stdin and empty stdin → deny (2)**, so it fails closed. An unparseable manifest or a missing JSON parser also exits 2. *"Survives `bypassPermissions`" is upstream's claim and is NOT measured here* — it is the load-bearing half of the argument, so it is recorded as unverified rather than restated as fact. **Stated non-goal, confirmed against the code:** it dispatches on `tool_name` only, so a `Bash` payload carrying `sed -i s/a/b/ CLAUDE.md` exits 0. The backstop is the next sync's `claude_md_identical` FAIL plus overwrite — a hand-edit is loud and self-healing instead of a permanent silent deviation, which is exactly the failure this project had under the v2 keep-mine model.
+
+**`.claude/rules/project.md` had to be hand-corrected, and that is the `once`-class trap firing for real.** Both its "always-on rules belong in ..." sentences still named `CLAUDE.md`'s PROJECT-CUSTOM region — a region this release deletes, in a file `deny-claude-md-writes.sh` now refuses writes to. The file is **unscoped**, so it loads at EVERY session start at `CLAUDE.md` priority: every future session would have been handed an always-on instruction pointing somewhere nonexistent and write-denied. Upstream corrected its own seed in v4.1.0 (`templates/python/.claude/rules/project.md:19` now names `.claude/project-instructions.md`), but the file is `once`-class, so **that correction can never arrive by sync** — it had to be made by hand, and this PR was the only moment it would have been noticed. Found by the `code-reviewer` pass, which is the first one a template-sync PR has had in five releases.
+
+**`project_md_seed_current` reported INFO "seed is current" while our seed was demonstrably stale** — line 19 differed from the shipped seed in exactly the way R-G was written to surface. R-G predicts an un-migrated consumer reads "older"; we read "current" *after* migrating, with a stale line. A false green on the one check pointed at this drift. Reported upstream.
+
+**Defect #17 (upstream v4.1.1) was avoided here by SEQUENCING, not by remediation.** `migrate_v3_to_v4` stores current-template hashes for template-owned files it does not write, so a consumer who migrates first sees `.claude/settings.json`, `AGENT_TEAM.md` and `hooks/enforce-delegation.sh` reported as `LOCAL_EDITED` with `template_changed: false` — genuine template updates wearing a local-edit label, and "keep mine" on that label would freeze v4.0.3 content for the enforcement wiring. The skill's own v3-window rule avoids it: **"sync everything else, migrate, then `CLAUDE.md` applies."** Applying those three while still honestly labelled `TEMPLATE_UPDATED` meant the migration stored hashes over a disk that already held that content. Verified by hash equality before migrating, not assumed:
+
+| path | apply result | previewed v4 manifest | post-migration status |
+|---|---|---|---|
+| `.claude/settings.json` | `66f45cfd…` | `66f45cfd…` | IDENTICAL |
+| `AGENT_TEAM.md` | `048a7245…` | `048a7245…` | IDENTICAL |
+| `hooks/enforce-delegation.sh` | `b0f03feb…` | `b0f03feb…` | IDENTICAL |
+
+`local_edited` was **0** immediately after `migrated: true`. Upstream's remediation (re-apply all three with `backup_dir` in I2 order) is for a consumer who migrated first; the ordering fix is strictly better and costs nothing.
+
+**The migration refusal paths did not apply**, both checked before writing: `out_of_region_diff` was empty (our `CLAUDE.md` was byte-identical to the synced template outside the region) and `.claude/project-instructions.md` did not exist. Either one would have refused with nothing written.
+
+- **`region.sh --body` emits one more trailing newline than the migration's stored body.** A byte-compare of the captured region against `project-instructions.md` fails by exactly one `\n` on a *correct* migration — the extractor's own trailing newline, not project content. Every content byte survived; all five paragraphs plus the team-config line verified present. Same off-by-one family as `region_bytes` reporting 1693 where `--body` reports 1692.
+- **`migration_required` is a v2-only field and reads `false` on a current server.** Measured here on 4.1.0 @ `038f247` *in the same call* where `template_verify` FAILed `status_clean` with `MIGRATION_REQUIRED`. Two fields, one response, opposite answers. `registered_tools` containing `template_migrate_manifest` is likewise necessary but not sufficient — v4.0.x already registered it. The only honest step-0 gate is `server_commit` == toolkit HEAD, then `template_verify`.
+- **The `2 0 0` probe self-blocked again**, this time via `gate-before-merge.sh` rather than `no-push-main`: `Gate artifact expired (156461s old, max 3600s)`. Past both the TTL and the 24 h tree+env window, so it correctly refused instead of accepting on tree identity. Per the skill's own rule that is the positive result. Arm (a) — `bash -n` over all 17 scripts, 0 failures — is the arm that still carries information.
+- **`PROJECT_CONTEXT.md` lost its `"reason": "Project-specific config"` annotation** in the v3 → v4 rewrite, reported in no field: `unknown_keys`, `unknown_file_keys` and `superseded_keys_dropped` were all empty. Harmless here (descriptive prose, not a resolution), but it is a silent drop and is reported upstream.
 
 ### v4.0.3 — what changed here
 

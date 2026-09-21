@@ -65,6 +65,15 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-claude-md-writes.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/deny-claude-md-writes.sh -- CLAUDE.md protection offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
+          }
+        ]
+      },
+      {
         "matcher": "Read",
         "hooks": [
           {
