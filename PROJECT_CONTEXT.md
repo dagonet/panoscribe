@@ -39,7 +39,7 @@
 
 - **Source Root**: src/
 - **Test Root**: tests/
-- **Worktree Base**: g:/git/.worktrees
+- **Worktree Base**: g:/git/.worktrees/panoscribe
 - **Log Path**: logs/
 
 ## Docker
