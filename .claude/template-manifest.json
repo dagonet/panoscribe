@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.1.0",
-  "template_commit": "038f247f3c7ef2f4dd9a9e4b7d6d8a9c6595a968",
+  "template_version": "v4.1.1",
+  "template_commit": "eef427793e83f0d64da54be80f5e97a95f4e678e",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -81,7 +81,8 @@
       "ownership": "template"
     },
     "PROJECT_CONTEXT.md": {
-      "ownership": "once"
+      "ownership": "once",
+      "reason": "Project-specific config"
     },
     "PROJECT_STATE.md": {
       "ownership": "once"
@@ -98,7 +99,7 @@
       "ownership": "template"
     },
     "hooks/deny-claude-md-writes.sh": {
-      "hash": "sha256:1784d9be2589d544117677f1a4d21896318d077fd2c518fe82ca6df5e98dfa9c",
+      "hash": "sha256:8150b140fabc68365452d5ed92069eca21ac5d94dca3c6693caa55cc6a1a4f3c",
       "ownership": "template"
     },
     "hooks/deny-secret-reads.sh": {
@@ -114,11 +115,11 @@
       "ownership": "template"
     },
     "hooks/gate-before-merge.sh": {
-      "hash": "sha256:93115ce553c6e56ad8f83a31d8099724d5392a8ac0f2d9b93c69e392f397e9cd",
+      "hash": "sha256:19347b1e842cfbee61e231ac6dbcdadb2b92dab0bbcad50677ea3a3d91db39c3",
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:1fa1d12cdee03a9528a2cf1498aa54d2bfa2aa63b94e44f70bafd1638cb2e58c",
+      "hash": "sha256:99c1e8e83f45c810c303101cb31ffcd8f0176a0fb2905d4e6ab5fc8317e01f06",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
@@ -154,7 +155,7 @@
       "ownership": "template"
     },
     "hooks/run-gate.sh": {
-      "hash": "sha256:81cc8be76397f0e2c795761575003d188cfb292bb8c9657303f614f1c9298061",
+      "hash": "sha256:d89e746b2f22b7cc58f78fffa80ede83e464bd4c7110bedd4b5bff21d97fa0de",
       "ownership": "template"
     }
   },

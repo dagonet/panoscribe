@@ -164,35 +164,43 @@ gc_sha256() {
   fi
 }
 gc_gate_env() {
-  local top="$1" verbose="${2:-}" venv sp pyver nodever pyvenv_h dist_h out _gge_cand
+  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe
   [ -n "$top" ] || return 1
   venv="$top/server/.venv"
 
+  # v4.1.1 (#15). `dist` and `py` now come from the SAME interpreter, chosen
+  # once: the venv's own python when the venv is PRESENT (pyvenv.cfg exists --
+  # a present-but-broken venv, interpreter missing, does NOT fall back to a
+  # system python3/python; that is a real problem on this repo, not something
+  # to paper over), else whatever python3/python resolves on PATH. Previously
+  # `dist` came from listing <venv>/{Lib,lib/python*}/site-packages directly,
+  # so a consumer with system Python and no in-repo venv always read
+  # pyvenv=absent|dist=absent|py=absent -- the one contributor that moves on
+  # a dependency change was blind on exactly the repos whose gate is python.
   if [ -f "$venv/pyvenv.cfg" ]; then
     pyvenv_h=$(gc_sha256 < "$venv/pyvenv.cfg") || return 1
+    if [ -x "$venv/bin/python" ]; then
+      py_exe="$venv/bin/python"
+    elif [ -x "$venv/Scripts/python.exe" ]; then
+      py_exe="$venv/Scripts/python.exe"
+    else
+      py_exe=""
+    fi
   else
     pyvenv_h=absent
+    py_exe=$(command -v python3 2>/dev/null)
+    [ -n "$py_exe" ] || py_exe=$(command -v python 2>/dev/null)
   fi
 
-  sp=""
-  [ -d "$venv/Lib/site-packages" ] && sp="$venv/Lib/site-packages"
-  if [ -z "$sp" ]; then
-    for _gge_cand in "$venv"/lib/python*/site-packages; do
-      [ -d "$_gge_cand" ] && { sp="$_gge_cand"; break; }
-    done
-  fi
-  if [ -n "$sp" ]; then
-    dist_h=$( (cd "$sp" 2>/dev/null && ls -1d -- *.dist-info 2>/dev/null) | LC_ALL=C sort | gc_sha256) || return 1
+  if [ -n "$py_exe" ]; then
+    dist_h=$("$py_exe" -c 'import site,json,os
+print("\n".join(sorted(n for p in site.getsitepackages() for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null | gc_sha256) || dist_h=""
     [ -n "$dist_h" ] || dist_h=absent
+    pyver=$("$py_exe" --version 2>&1)
+    [ -n "$pyver" ] || pyver=absent
   else
     dist_h=absent
-  fi
-
-  pyver=absent
-  if [ -x "$venv/bin/python" ]; then
-    pyver=$("$venv/bin/python" --version 2>&1)
-  elif [ -x "$venv/Scripts/python.exe" ]; then
-    pyver=$("$venv/Scripts/python.exe" --version 2>&1)
+    pyver=absent
   fi
 
   nodever=absent

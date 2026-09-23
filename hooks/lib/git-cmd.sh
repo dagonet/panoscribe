@@ -444,20 +444,82 @@ gc_seg_quoted() {
   done
 }
 
-# gc_script_body <segment> <cwd> -- when a segment runs a SCRIPT FILE
-# (`bash|sh|source|. <path> [args]`, wrappers already stripped), print the
-# first 16 KB of that file so the caller can feed it to the same matcher as
-# extra segments. Depth 1 only: a script that invokes another script is a
-# documented residual (v4.0.3 item 12). TOCTOU residual: the hook reads the
-# file, allows the command, and nothing stops the file changing before bash
-# runs it -- unfixable at this layer, stated so nobody believes the gate is
-# stronger than it is. `[ -f ]`, never `[ -r ]`: a directory is readable.
+# gc_seg_raw -- sibling of gc_segments/gc_seg_quoted, additive (no caller of
+# either breaks). Prints the RAW segment text, quotes intact, one per line,
+# same order and count as gc_segments' own output -- built by re-splitting
+# the UNSTRIPPED $GC_CMD on the identical delimiters (removing quote
+# characters never changes where && ; | fall, so segment boundaries line up
+# -- the same index-alignment argument gc_seg_quoted's own docstring makes at
+# :419-429). gc_script_body (v4.1.1, #11) scans THIS form: a wrapped-script
+# scan that only ever saw quote-stripped text cannot tell an interpreter word
+# from the same word sitting inside somebody else's quoted argument.
+gc_seg_raw() {
+  printf '%s\n' "$GC_CMD" | tr '|;' '\n\n' | sed 's/&&/\n/g'
+}
+
+# gc_script_body <raw_segment> <cwd> -- when a segment runs a SCRIPT FILE
+# (`bash|sh|source|. <path> [args]`, a wrapper -- `command`, `env`, `exec`,
+# `nohup`, `/usr/bin/env`, `nice -n 10`, `timeout -s KILL 5`, whatever the
+# next one is -- optionally in front of it), print the first 16 KB of that
+# file so the caller can feed it to the same matcher as extra segments.
+# Depth 1 only: a script that invokes another script is a documented residual
+# (v4.0.3 item 12). TOCTOU residual: the hook reads the file, allows the
+# command, and nothing stops the file changing before bash runs it --
+# unfixable at this layer, stated so nobody believes the gate is stronger
+# than it is. `[ -f ]`, never `[ -r ]`: a directory is readable.
+#
+# v4.1.1 (#11). <raw_segment> is gc_seg_raw's form (quotes intact), not
+# gc_segments' stripped form -- the caller passes RAW now; this function
+# strips quotes itself, per token, as it goes. Precondition established here,
+# not documented as someone else's job: no wrapper enumeration (one would
+# miss the next wrapper), just a bounded leading-run scan --
+#   - the FIRST token whose raw form contains a quote character (`"` or `'`)
+#     STOPS the scan with nothing found: an interpreter word is never itself
+#     inside quotes, so a quote seen before a match means whatever follows
+#     belongs to someone else's argument, not this segment's own head --
+#     `git commit -m "run bash x.sh"`, `gh pr merge --body "see bash
+#     notes.sh"`, `echo "run bash x.sh"` and `npm run lint -- "bash x.sh"`
+#     all stop here, one to three tokens in, well before the "bash" that
+#     happens to sit inside their own quoted string.
+#   - EVERY token before that (VAR=value, `-i`/`-n 10`/`-s KILL`-shaped
+#     flags and their values, bare wrapper words, absolute-path wrappers
+#     like `/usr/bin/env`) is skipped -- basename-matched against
+#     `bash|sh|source|.` and, on no match, simply passed over.
+#   - `bash`/`sh` match at ANY position in the run. `.`/`source` match ONLY
+#     at position 1 (the segment's own head): both are shell BUILTINS, not
+#     PATH executables, so wrapping them through env/nice/timeout/nohup/
+#     command -- all of which execve a real binary -- does not actually
+#     invoke them. This is also what keeps `find . -name p.sh -exec bash {}
+#     \;`'s own `.` (a find OPERAND, not an interpreter) from being misread
+#     as a match before the scan ever reaches the real `bash` later in the
+#     same segment -- that fixture still resolves via `bash`, with the
+#     placeholder `{}` then failing the file test (a documented residual,
+#     not a hole in the quote-stop).
+# A quoted INTERPRETER head (`"bash" probe.sh`) is a residual in the other
+# direction: the quote-stop fires on the very first token, before it is ever
+# basename-compared, so this is not read even though gc_segments' own quote
+# stripping would have made $1 literally `bash` under the old $1-anchor code.
 gc_script_body() {
-  local seg="$1" cwd="$2" tok path=""
+  local seg="$1" cwd="$2" tok clean base path="" pos=1
   set -- $seg
-  case "$1" in bash|sh|source|.) ;; *) return 0 ;; esac
+  while [ $# -gt 0 ]; do
+    tok="$1"
+    case "$tok" in *[\"\']*) return 0 ;; esac
+    clean=$(printf '%s' "$tok" | tr -d "\"'")
+    base=${clean##*/}
+    case "$base" in
+      bash|sh) break ;;
+      .|source) [ "$pos" = 1 ] && break ;;
+    esac
+    shift
+    pos=$((pos + 1))
+  done
+  [ $# -gt 0 ] || return 0
   shift
-  for tok in "$@"; do case "$tok" in -*) continue ;; *) path="$tok"; break ;; esac; done
+  for tok in "$@"; do
+    clean=$(printf '%s' "$tok" | tr -d "\"'")
+    case "$clean" in -*) continue ;; *) path="$clean"; break ;; esac
+  done
   [ -n "$path" ] || return 0
   case "$path" in /*|[A-Za-z]:*) ;; *) path="$cwd/$path" ;; esac
   [ -f "$path" ] || return 0
@@ -466,15 +528,16 @@ gc_script_body() {
 
 # gc_augmented_cmd <cwd> -- GC_CMD, plus the body of every script segment
 # (gc_script_body, depth 1: a body is never itself re-scanned for further
-# script segments) appended after the segment that named it. Walks the CURRENT
-# gc_segments() output exactly once, over the UNMODIFIED $GC_CMD -- so the
-# result is the same text whether a caller feeds it straight back into
-# gc_segments/gc_seg_quoted (the two stay index-aligned because both read the
-# identical augmented string) or into a plain git-token grep (v4.0.3 item 12:
-# the pre-filter in gate-before-merge.sh/no-push-main.sh must see the same
-# text the segment walk does, or a script's `git merge`/`git push` passes the
-# "no git token" fast exit before the walk that would have caught it ever
-# runs).
+# script segments) appended after the segment that named it. Walks
+# gc_seg_raw's output exactly once (v4.1.1: was gc_segments -- gc_script_body
+# now needs the quote-intact form; see its own docstring), over the
+# UNMODIFIED $GC_CMD -- so the result is the same text whether a caller feeds
+# it straight back into gc_segments/gc_seg_quoted/gc_seg_raw (all three stay
+# index-aligned because they read the identical augmented string) or into a
+# plain git-token grep (v4.0.3 item 12: the pre-filter in
+# gate-before-merge.sh/no-push-main.sh must see the same text the segment
+# walk does, or a script's `git merge`/`git push` passes the "no git token"
+# fast exit before the walk that would have caught it ever runs).
 gc_augmented_cmd() {
   local cwd="$1" out="$GC_CMD" seg body
   while IFS= read -r seg; do
@@ -483,7 +546,7 @@ gc_augmented_cmd() {
     [ -n "$body" ] && out="$out
 $body"
   done <<GC_AUG_SEGS
-$(gc_segments)
+$(gc_seg_raw)
 GC_AUG_SEGS
   printf '%s' "$out"
 }
@@ -894,15 +957,29 @@ gc_sha256() {
 # per line:
 #   pyvenv=<sha256 of server/.venv/pyvenv.cfg, or "absent">
 #   dist=<sha256 of the SORTED, newline-joined *.dist-info directory NAMES
-#         (basenames only) under the venv's site-packages, or "absent" -- a
-#         directory read that moves on any install, upgrade or removal, so
-#         `pip install -U mcp` into an existing venv changes the fingerprint>
-#   py=<venv python --version, or "absent">
+#         (basenames only) reported by `site.getsitepackages()` under the
+#         INTERPRETER THE GATE RUNS, or "absent" -- v4.1.1 (#15): the venv's
+#         own python when server/.venv is present (a present-but-broken venv
+#         does not fall back), else python3/python on PATH when it is not.
+#         Was site-packages under the venv ONLY, which read "absent" on any
+#         consumer with system Python and no in-repo venv -- the one
+#         contributor that moves on a dependency change was blind on exactly
+#         the repos whose gate is python. A directory read that moves on any
+#         install, upgrade or removal, so `pip install -U mcp` changes it>
+#   py=<--version of that SAME interpreter, or "absent">
 #   node=<node --version if node is on PATH, or "absent">
 # Default output: the sha256 hex of that text (this is what "env" in the
 # gate artifact stores). With a second argument "-v": the labelled lines
 # themselves, for a human or run-gate.sh's own per-contributor storage --
 # never re-derived from the aggregate hash, which is one-way by design.
+#
+# POLARITY (v4.1.1 #15, spec docs/plans/2026-09-21-v4.1.1-design.md §4.3):
+# gate-before-merge.sh's tree+env TTL extension VOIDS outright the moment
+# EITHER side's env_detail contains an `=absent` contributor -- a
+# cannot-determine value must never sit inside a matching aggregate (two
+# "absent"s hash equal and would otherwise read as "unchanged"). Enforced in
+# gate-before-merge.sh, not here; this function only ever reports what it
+# measured, honestly, including "absent".
 #
 # PATH-INDEPENDENT BY CONSTRUCTION (reviewer): hashes are computed via
 # gc_sha256 (stdin only, see above) and the dist-info listing uses basenames
@@ -916,35 +993,43 @@ gc_sha256() {
 # prints nothing -- callers must NOT treat that as an empty-string
 # fingerprint (two "cannot compute" states would then spuriously "match").
 gc_gate_env() {
-  local top="$1" verbose="${2:-}" venv sp pyver nodever pyvenv_h dist_h out _gge_cand
+  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe
   [ -n "$top" ] || return 1
   venv="$top/server/.venv"
 
+  # v4.1.1 (#15). `dist` and `py` now come from the SAME interpreter, chosen
+  # once: the venv's own python when the venv is PRESENT (pyvenv.cfg exists --
+  # a present-but-broken venv, interpreter missing, does NOT fall back to a
+  # system python3/python; that is a real problem on this repo, not something
+  # to paper over), else whatever python3/python resolves on PATH. Previously
+  # `dist` came from listing <venv>/{Lib,lib/python*}/site-packages directly,
+  # so a consumer with system Python and no in-repo venv always read
+  # pyvenv=absent|dist=absent|py=absent -- the one contributor that moves on
+  # a dependency change was blind on exactly the repos whose gate is python.
   if [ -f "$venv/pyvenv.cfg" ]; then
     pyvenv_h=$(gc_sha256 < "$venv/pyvenv.cfg") || return 1
+    if [ -x "$venv/bin/python" ]; then
+      py_exe="$venv/bin/python"
+    elif [ -x "$venv/Scripts/python.exe" ]; then
+      py_exe="$venv/Scripts/python.exe"
+    else
+      py_exe=""
+    fi
   else
     pyvenv_h=absent
+    py_exe=$(command -v python3 2>/dev/null)
+    [ -n "$py_exe" ] || py_exe=$(command -v python 2>/dev/null)
   fi
 
-  sp=""
-  [ -d "$venv/Lib/site-packages" ] && sp="$venv/Lib/site-packages"
-  if [ -z "$sp" ]; then
-    for _gge_cand in "$venv"/lib/python*/site-packages; do
-      [ -d "$_gge_cand" ] && { sp="$_gge_cand"; break; }
-    done
-  fi
-  if [ -n "$sp" ]; then
-    dist_h=$( (cd "$sp" 2>/dev/null && ls -1d -- *.dist-info 2>/dev/null) | LC_ALL=C sort | gc_sha256) || return 1
+  if [ -n "$py_exe" ]; then
+    dist_h=$("$py_exe" -c 'import site,json,os
+print("\n".join(sorted(n for p in site.getsitepackages() for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null | gc_sha256) || dist_h=""
     [ -n "$dist_h" ] || dist_h=absent
+    pyver=$("$py_exe" --version 2>&1)
+    [ -n "$pyver" ] || pyver=absent
   else
     dist_h=absent
-  fi
-
-  pyver=absent
-  if [ -x "$venv/bin/python" ]; then
-    pyver=$("$venv/bin/python" --version 2>&1)
-  elif [ -x "$venv/Scripts/python.exe" ]; then
-    pyver=$("$venv/Scripts/python.exe" --version 2>&1)
+    pyver=absent
   fi
 
   nodever=absent
