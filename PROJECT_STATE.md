@@ -15,7 +15,7 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.1.0** (`038f247f`), synced 2026-09-21 — **recorded in the same PR as the sync**. Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`.
+**claude-code-toolkit v4.1.1** (`eef42779`), synced 2026-09-23 — **recorded in the same PR as the sync**. Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 7 INFO**.
 
 > **Record the sync in the same PR as the sync.** This line went stale three times — after #142/#143, #144/#145, and #147/#148 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside every one of its checks. Writing the habit down was not enough on its own; **v4.1.0 is the first sync where the record ships in the same commit**, which is the only thing that has ever actually closed it.
 
@@ -34,7 +34,22 @@ Sync history since v3.0.0:
 | v4.0.2 | `39135e78` | #145 | `require-skills-block.sh` fails closed on an Agent payload with no prompt; `post-edit-build.sh` treats `None` as `none`; adopted the v4.0.2 `project.md` seed |
 | — | — | #146 | Brought this file up to v4.0.2 |
 | v4.0.3 | `150627de` | #147 | Guard hooks read a script argument's first 16 KB; expired gate artifact accepted within 24 h on tree + environment identity |
-| v4.1.0 | `038f247f` | — | Manifest v3 → v4; `CLAUDE.md` becomes template-owned and byte-identical; PROJECT-CUSTOM region moves to `.claude/project-instructions.md`; `agent-grants.json`; new `deny-claude-md-writes.sh` hook. Sync **and** record in one PR |
+| v4.1.0 | `038f247f` | #149 | Manifest v3 → v4; `CLAUDE.md` becomes template-owned and byte-identical; PROJECT-CUSTOM region moves to `.claude/project-instructions.md`; `agent-grants.json`; new `deny-claude-md-writes.sh` hook. Sync **and** record in one PR |
+| — | — | #150 | Marked three `PROJECT_STATE.md` statements superseded by v4.1.0 |
+| v4.1.1 | `eef42779` | — | v4.1.0 rollout patch: four enforcement scripts updated; the `#20` dropped-`reason` repair applied by hand |
+
+### v4.1.1 — the rollout patch, and one repair that no sync could do
+
+Four enforcement scripts updated, nothing else: `hooks/lib/git-cmd.sh`, `hooks/run-gate.sh`, `hooks/gate-before-merge.sh`, `hooks/deny-claude-md-writes.sh`. `settings.json` was IDENTICAL, so no hook was added, removed or re-matched and the model-bump rule did not fire — but all four change enforcement *behaviour*, which is worth saying out loud even when the mechanical rule stays quiet.
+
+**The `#20` repair, applied by hand, because a migration is a one-time transform.** We migrated to v4 under v4.1.0, before the fix, so `migrate_v3_to_v4` rebuilt entries instead of transforming them and `PROJECT_CONTEXT.md` lost its `"reason": "Project-specific config"` annotation. Re-running the migration cannot undo it (`template_migrate_manifest` on a v4 manifest is the idempotent no-op), so the value was restored by hand from `<backup_dir>/template-manifest.json.pre-migration`. Scope was exactly one entry: `deletedAcknowledged` was absent entirely (so the blanked-hash arm never applied) and no entry carried a blanked hash. `classes_and_hashes` PASSes with the restored key, so a descriptive annotation on a `once` entry is tolerated.
+
+**`manifest_migration` replaces the frozen `migration_required`.** The load response now carries `{"from": 4, "to": 4, "required": false}` — computed against the current template — where the old field answered only the v2→v3 question and was silent about everything since. Read the new one; the old is removed in v4.2.
+
+- **A probe that measures its own plumbing reports `0 0 0` on a perfectly live gate.** Our first run of the step-3 positive control returned `0 0 0`, the skill's own signature for *enforcement is GONE*. It was the instrument. The probe read `echo "... [$(basename "$PAYLOAD")] exit=$?"` — the command substitution runs during expansion of that same argument list and overwrites `$?` before `$?` is expanded, so every arm reported `basename`'s status, which is always 0. Re-run with `rc=$?` captured on its own line: **`2 0 0`**. The shipped example uses a plain `[$PAYLOAD]` and is correct — the defect was introduced by prettifying the output. **Uniformity across arms that are supposed to differ is the tell**, exactly as v4.1.1 says; a single exit code never is.
+- **The v4.1.1 data-file probe shape works.** Payloads in their own files under the temp root, probe script carrying no git verb: it ran to completion instead of self-blocking the way the v4.0.3-era probe did. That is `#11` confirmed on a real consumer, not a fixture.
+- **`project_md_seed_current`'s new third arm false-positives on prose that explains the retirement.** It fired here with *"header references PROJECT-CUSTOM, a region v4.1.0 removed"* — on the historical note added in #149 that says the region was retired. Our guidance sentences were already correctly repointed. Measured two-sided by changing ONLY the note and leaving the guidance untouched: with the literal token present → INFO *"header references PROJECT-CUSTOM"*; with it reworded → INFO *"seed is current"*. So the arm keys on the bare token anywhere in the header, not on where the guidance actually points, and its remedy told us to do what was already done. Same class as a sweep firing on documentation of the thing it searches for. Reported upstream.
+- **`enforce-delegation.sh` falsely denies a multi-line `git add --`** when the path list is backslash-continued and a continued line begins with `hooks/run-gate.sh` — the hook splits on newlines before joining continuations, so that segment does not start with `git`. Keep the whole `git add --` list on ONE line. Fix lands in v4.1.2. (Measured by another consumer at `eef4277`, not here; we followed the workaround rather than reproducing it.)
 
 ### v4.1.0 — manifest v3 → v4, and where project content lives now
 

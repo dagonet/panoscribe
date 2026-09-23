@@ -1467,6 +1467,31 @@ a13_first_diff_label() {
   done
 }
 
+# a13_first_absent_label <pipe-joined label=value text> -- prints the label
+# (text before the first `=`) of the first segment whose value is literally
+# "absent", or nothing when none is. v4.1.1 (#15): checked on BOTH the
+# artifact's stored env_detail and the freshly-computed current one, before
+# the aggregate-hash comparison below ever runs -- a cannot-determine
+# contributor must void the extension even when it happens to sit inside a
+# MATCHING aggregate (two "absent" values for the same contributor hash
+# equal, and would otherwise read as "unchanged").
+a13_first_absent_label() {
+  local detail="$1" lines n i line
+  lines=$(printf '%s' "$detail" | tr '|' '\n')
+  n=$(printf '%s\n' "$lines" | wc -l)
+  i=1
+  while [ "$i" -le "$n" ]; do
+    line=$(printf '%s\n' "$lines" | sed -n "${i}p")
+    case "$line" in
+      *=absent)
+        printf '%s\n' "${line%%=*}"
+        return 0
+        ;;
+    esac
+    i=$((i + 1))
+  done
+}
+
 ARTIFACT_EPOCH=$(stat -c %Y "$ARTIFACT" 2>/dev/null || stat -f %m "$ARTIFACT" 2>/dev/null || echo 0)
 NOW_EPOCH=$(date +%s)
 AGE=$((NOW_EPOCH - ARTIFACT_EPOCH))
@@ -1489,17 +1514,28 @@ if [ "$ARTIFACT_EPOCH" -eq 0 ] || [ "$AGE" -gt "$GC_GATE_TTL_S" ]; then
     ARTIFACT_ENV=$(grep -o '"env"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"env"[[:space:]]*:[[:space:]]*"//;s/"$//')
     if [ -n "$ARTIFACT_ENV" ]; then
       CURRENT_ENV=$(gc_gate_env "$REPO_TOP" 2>/dev/null) || CURRENT_ENV=""
-      if [ -n "$CURRENT_ENV" ] && [ "$ARTIFACT_ENV" = "$CURRENT_ENV" ]; then
-        A13_ALLOW=1
-      elif [ -n "$CURRENT_ENV" ]; then
-        # Tree matched but the aggregate differs -- name WHICH contributor,
-        # using env_detail (the per-contributor breakdown; see run-gate.sh's
-        # header note on why this is an addition beyond the brief's "env"-only
-        # wording: a single aggregate hash cannot name a part on its own).
+      if [ -n "$CURRENT_ENV" ]; then
         ARTIFACT_ENV_DETAIL=$(grep -o '"env_detail"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARTIFACT" | head -1 | sed 's/.*"env_detail"[[:space:]]*:[[:space:]]*"//;s/"$//')
-        if [ -n "$ARTIFACT_ENV_DETAIL" ]; then
-          CURRENT_DETAIL=$(gc_gate_env "$REPO_TOP" -v 2>/dev/null | tr '\n' '|')
-          A13_LABEL=$(a13_first_diff_label "$ARTIFACT_ENV_DETAIL" "$CURRENT_DETAIL")
+        CURRENT_DETAIL=$(gc_gate_env "$REPO_TOP" -v 2>/dev/null | tr '\n' '|')
+        # v4.1.1 (#15): ANY contributor reading "absent" on EITHER side voids
+        # the extension outright -- checked BEFORE the aggregate comparison,
+        # so a matching aggregate built from two "absent" values on the same
+        # contributor never masks it. Polarity from the spec (§4.3): names no
+        # language, a node-only consumer earns the extension back by adding
+        # contributors that do not read absent.
+        A13_ABSENT=""
+        [ -n "$ARTIFACT_ENV_DETAIL" ] && A13_ABSENT=$(a13_first_absent_label "$ARTIFACT_ENV_DETAIL")
+        [ -n "$A13_ABSENT" ] || A13_ABSENT=$(a13_first_absent_label "$CURRENT_DETAIL")
+        if [ -n "$A13_ABSENT" ]; then
+          A13_LABEL="${A13_ABSENT}=absent (cannot-determine voids the tree+env extension)"
+        elif [ "$ARTIFACT_ENV" = "$CURRENT_ENV" ]; then
+          A13_ALLOW=1
+        else
+          # Tree matched but the aggregate differs -- name WHICH contributor,
+          # using env_detail (the per-contributor breakdown; see run-gate.sh's
+          # header note on why this is an addition beyond the brief's "env"-
+          # only wording: a single aggregate hash cannot name a part alone).
+          [ -n "$ARTIFACT_ENV_DETAIL" ] && A13_LABEL=$(a13_first_diff_label "$ARTIFACT_ENV_DETAIL" "$CURRENT_DETAIL")
         fi
       fi
     fi
