@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -113,6 +114,28 @@ app = typer.Typer(
 )
 
 _console = Console()
+
+
+def _configure_console_streams() -> None:
+    """Make stdout/stderr tolerate characters their encoding cannot represent.
+
+    Redirected Windows streams use the locale code page (cp1252), which cannot
+    encode ``→`` or emoji; rich and the logging handler would raise
+    ``UnicodeEncodeError``. Switching the error handler to ``replace`` degrades
+    the glyph to ``?`` instead. UTF-8 streams are left untouched. Both write
+    paths resolve ``sys.stdout``/``sys.stderr`` lazily, so this only has to run
+    before the first write.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        encoding = (getattr(stream, "encoding", None) or "").lower().replace("_", "-")
+        if encoding in ("utf-8", "utf8"):
+            continue
+        reconfigure(errors="replace")
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -180,6 +203,7 @@ def main(
     ),
 ) -> None:
     """panoscribe — video transcription CLI."""
+    _configure_console_streams()
     config = PanoScribeConfig()
     _setup_logging(config.log_level)
     ctx.ensure_object(dict)
