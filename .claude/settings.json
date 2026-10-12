@@ -97,10 +97,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/require-skills-block.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\""
-          },
-          {
-            "type": "command",
             "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/model-floor.sh\"; [ -r \"$f\" ] || exit 0; exec bash \"$f\""
           }
         ]
@@ -191,15 +187,14 @@
             "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/verify-hooks.sh\""
           }
         ]
-      }
-    ],
-    "PreCompact": [
+      },
       {
-        "matcher": "auto",
+        "matcher": "compact",
         "hooks": [
           {
             "type": "command",
-            "command": "echo '=== PRE-COMPACTION STATE ===' && (cat docs/plans/*.md 2>/dev/null | head -50 || echo 'No plan files') && echo '---' && (git worktree list 2>/dev/null || true) && echo '---' && (git branch --sort=-committerdate 2>/dev/null | head -10 || true)"
+            "timeout": 10,
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/now-brief.sh\"; [ -r \"$f\" ] || exit 0; exec bash \"$f\""
           }
         ]
       }

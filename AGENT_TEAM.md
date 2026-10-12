@@ -50,7 +50,7 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 - **Never runs builds or tests** — coders gate, tester verifies, `ops` handles env/tool work; PO verifies via the gate artifact.
 - Closes tasks after merge; does **NOT** block the merge pipeline.
 - **Open Brain context mediation**: search before spawning, include findings, capture insights after (*Open Brain Context for Agents*).
-- **Spawn-prompt skill injection**: look up `subagent_type` in the Spawn-Prompt Binding Table and include a `## Required Skills` block verbatim (`hooks/require-skills-block.sh` enforces this). Omit for `code-reviewer`.
+- **Keep `PROJECT_STATE.md` → `## Now` current** in both modes: goal, current step, next step, ≤ 1 KB; update it when the step changes. `hooks/now-brief.sh` re-shows it after compaction.
 
 ## Model & Effort Policy
 
@@ -94,8 +94,8 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 |------|----------|--------|--------------------|
 | **T1 Trivial** | < 10 lines, style/config, no logic | 1 coder (solo) | No new tests. Coder runs the gate before merging. |
 | **T2 Simple** | 1-2 files, < 50 lines, clear root cause | coder + code-reviewer | Tests if logic changed. Coder runs the gate; reviewer approves. |
-| **T3 Standard** | Multi-file, < 200 lines, needs tests | Dev + reviewer + tester | **TDD required.** Failing tests first. Coverage >= 80%. |
-| **T4 Complex** | Architectural, > 200 lines, new entities | Architect + dev + reviewer + tester, or **"use a workflow"** if too big for one pass | **Full BDD/TDD.** Scenarios from AC, failing tests first, coverage >= 80%, architect reviews test strategy. |
+| **T3 Standard** | Multi-file, < 200 lines, needs tests | Dev + reviewer + tester | **TDD required.** Failing tests first. |
+| **T4 Complex** | Architectural, > 200 lines, new entities | Architect + dev + reviewer + tester, or **"use a workflow"** if too big for one pass | **Full BDD/TDD.** Scenarios from AC, failing tests first, architect reviews test strategy. |
 
 ### Tier Selection Guidelines
 
@@ -108,21 +108,14 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 
 ### Tiered Definition of Done
 
+Every tier: existing tests pass, build clean and formatted, no `TODO`/`FIXME`/`HACK` in changed files, post-rebase verification, PR squash-merged, worktree cleaned up, task closed by the PO (see Mode Table).
+
 | Checkpoint | T1 | T2 | T3 | T4 |
-|-----------|----|----|----|----|
-| Acceptance criteria met | PO | PO | Tester | Tester |
-| BDD scenarios exist | — | — | — | Yes |
+|---|---|---|---|---|
+| Acceptance criteria verified by | PO | PO | Tester | Tester |
 | New tests for changed logic | — | if logic changed | Yes | Yes |
-| All existing tests pass | Yes | Yes | Yes | Yes |
-| Code reviewer approved | — | PO reviews | Yes | Yes |
-| Coverage >= 80% changed files | — | — | Yes | Yes |
-| Architect guidance followed | — | — | — | Yes |
-| Post-rebase verification | — | Yes | Yes | Yes |
-| Build clean + formatted | Yes | Yes | Yes | Yes |
-| PR squash-merged | — | Yes | Yes | Yes |
-| Worktree cleaned up | — | Yes | Yes | Yes |
-| No `TODO`/`FIXME`/`HACK` in changed files | Yes | Yes | Yes | Yes |
-| Task closed (see Mode Table) | PO | PO | PO | PO |
+| Code reviewer approved | — | Yes | Yes | Yes |
+| BDD scenarios / architect guidance followed | — | — | — | Yes |
 
 ### Lean Dev Prompt Templates
 
@@ -149,18 +142,10 @@ Task #{n}: issue #{issue}. Worktree: {path}, branch: feature/issue-{issue}.
 ## Definition of done
 {tests to pass} + `bash hooks/run-gate.sh` green, then PR.
 
-## Required Skills
-- {skill} — {why}
-
 Context: the GitHub issue (reference only). Workflow: implement -> gate -> commit -> push -> create PR -> report the PR URL.
 ```
 
 **plan-files mode (T2-T3):** same shape as above, except the Task line reads `Task: {title}. Worktree: {path}, branch: {branch}.` (no issue number), plus `Architect guidance: {summary or "none"}` and `Context: {plan_file_path} if one exists (reference only)`.
-
-```
-## Required Skills
-- {skill} — {why}
-```
 
 **PO responsibility (plan-files mode):** inline the acceptance criteria and file list directly in the dev spawn prompt — the dev should not need to read the plan file. The path is additional context only.
 
@@ -272,69 +257,9 @@ An agent that has to go looking for any of the five is under-briefed — a promp
 
 ---
 
-## Superpowers Skills Integration
+## Skills on demand
 
-[superpowers](https://github.com/anthropics/claude-plugins-official/tree/main/superpowers) handles implementation mechanics; AGENT_TEAM.md owns quality gates (tier, workstream, review, test, merge).
-
-### Spawn-Prompt Binding Table
-
-Include a `## Required Skills` block in every spawn prompt, listing the skills below for the target subagent type — invoked via the Skill tool before task work starts. **Mechanically enforced** by `hooks/require-skills-block.sh` (PreToolUse on `Task`) — a spawn without the block exits 2.
-
-| subagent_type | Required Skills |
-|---|---|
-| `coder` / any `<lang>-coder` (hook matches the shape, not a list) | `karpathy-guidelines`, `test-driven-development`, `verification-before-completion`, `receiving-code-review` |
-| `code-reviewer` | *(none)* |
-| `tester` — absorbed `test-writer` | `systematic-debugging`, `verification-before-completion`, `test-driven-development` |
-| `architect` — absorbed `requirements-engineer` | `writing-plans`, `brainstorming` |
-| `ops` | *(none — pass-through)* |
-| `Explore` | *(none — pass-through; custom Explore agent, haiku, effort low)* |
-
-**Reference-only** (not injected): `using-git-worktrees`, `finishing-a-development-branch`, `dispatching-parallel-agents`, `subagent-driven-development`
-
-**v3.0.0 consolidation** — `test-writer`/`requirements-engineer`/`doc-generator` were ABSORBED into `tester`/`architect`/`coder`; survivors keep their name so a stale reference fails loudly at spawn time.
-
-### Copy-paste snippets
-
-Use verbatim; append task-specific instructions below each.
-
-**Report agents (code-reviewer, architect, tester, ops) — always add:**
-
-```markdown
-CRITICAL: your final message IS the deliverable — status, files changed, commands run + output summary, open concerns.
-If the task grows past its stated scope, stop and report what is done plus the blocker instead of expanding scope.
-```
-
-**Coder (and `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`)** — the Report-agents CRITICAL block above, plus:
-
-```markdown
-## Required Skills
-Invoke these via the Skill tool before beginning task work:
-- karpathy-guidelines
-- superpowers:test-driven-development
-- superpowers:verification-before-completion
-- superpowers:receiving-code-review
-```
-
-**Tester (absorbed `test-writer`):**
-
-```markdown
-## Required Skills
-Invoke these via the Skill tool before beginning task work:
-- superpowers:systematic-debugging
-- superpowers:verification-before-completion
-- superpowers:test-driven-development
-```
-
-**Architect (absorbed `requirements-engineer`):**
-
-```markdown
-## Required Skills
-Invoke these via the Skill tool before beginning task work:
-- superpowers:writing-plans
-- superpowers:brainstorming
-```
-
-**Code-reviewer:** omit the block (passes through). **Docs** are a `coder` spawn (`doc-generator` absorbed in v3.0.0) — use the coder block.
+[superpowers](https://github.com/anthropics/claude-plugins-official/tree/main/superpowers) handles implementation mechanics; this file owns the quality gates. Each agent opens skills from the `## Skills` table in its own definition. The PO injects no skills block; to require a skill for one task, write it under **Constraints** in the brief (T3/T4: "TDD (`superpowers:test-driven-development`): failing test first"). Reference-only for the PO: `using-git-worktrees`, `finishing-a-development-branch`, `dispatching-parallel-agents`, `subagent-driven-development`.
 
 ---
 
