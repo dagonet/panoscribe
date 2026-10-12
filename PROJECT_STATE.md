@@ -3,8 +3,8 @@
 ## Now
 
 - **Goal:** Keep panoscribe current and stable between sprints; no feature work is active (issue #83 and its follow-ups #84/#85 are on hold by the user's call).
-- **Current step:** Idle. Main carries the toolkit v4.6.0 sync (#166) and #163's GPU-stack bump, and the main venv is re-synced to that lock. The Linux session's fix for issue #164 (cp1252 crash on redirected output, PR #165) passed the real-Windows check at 5312840 and awaits the Linux PO's merge.
-- **Next step:** After PR #165 merges, fast-forward the main checkout. Nothing else is queued until the user resumes #83.
+- **Current step:** Idle. Main carries the toolkit v4.6.0 sync (#166), #163's GPU-stack bump (main venv re-synced) and #165, the fix for issue #164 (cp1252 crash on redirected output), which passed the real-Windows check at 5312840.
+- **Next step:** Nothing queued until the user resumes #83.
 
 ## Current Sprint
 
