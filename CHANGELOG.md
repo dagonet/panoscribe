@@ -5,6 +5,34 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-10-13
+
+### Fixed
+
+- **CLI no longer exits 1 after writing the transcript on non-UTF-8
+  consoles** (#164, #165) — on Windows, when stdout was redirected to a file
+  or pipe, the cp1252 stream used `errors='surrogateescape'` and could not
+  encode characters such as `→` or emoji, so the run failed after the
+  transcript had already been written. Non-UTF-8 console streams without a
+  substituting error handler now use `backslashreplace`, so such characters
+  print as escapes like `→`. UTF-8 consoles are unchanged.
+
+### Security
+
+- **Dependency bumps for known advisories** (#162, #163) — found with
+  `pip-audit`; no source changes.
+  - Direct dependencies, with raised minimum versions in the published
+    package metadata: `yt-dlp` 2026.3.17 → 2026.8.19 (now
+    `yt-dlp>=2026.7.4`) and `pydantic-settings` 2.13.1 → 2.15.0 (now
+    `pydantic-settings>=2.14.2`).
+  - Transitive dependencies, fixed in the lockfile only: `pillow` 12.2.0 →
+    12.3.0, `urllib3` 2.6.3 → 2.8.0, `fsspec` 2026.3.0 → 2026.9.0, `anyio`
+    4.13.0 → 4.14.2, `idna` 3.11 → 3.20, `protobuf` 3.20.2 → 7.36.2 and
+    `setuptools` 82.0.1 → 84.0.0. These apply to lockfile/`uv` installs;
+    `pip` users get them by upgrading those packages.
+  - The GPU stack (`protobuf` via `onnxruntime-gpu`, `setuptools` via
+    `ctranslate2`) was verified on a real RTX 4090.
+
 ## [0.8.0] - 2026-08-28
 
 ### Changed
