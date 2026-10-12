@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.4.2",
-  "template_commit": "9dd3b8b955b8306d6f0f4bacfeeaba44401faa4f",
+  "template_version": "v4.6.0",
+  "template_commit": "6aabbdd0e9ee1bd4e02649dc88da106da4d6f2c8",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -25,7 +25,7 @@
       "ownership": "template"
     },
     ".claude/agents/architect.md": {
-      "hash": "sha256:1716fc33d15d297b15516522c4f5f456e0a5382143b92e439b3a538a4ff5a8e4",
+      "hash": "sha256:b137cfdaf25918f77a721291f2aa6a01b35650894862486c67dda98b57c370ff",
       "ownership": "template"
     },
     ".claude/agents/code-reviewer.md": {
@@ -33,7 +33,7 @@
       "ownership": "template"
     },
     ".claude/agents/coder.md": {
-      "hash": "sha256:7dd606030b37ae966f41bf7758dd41668e7e60f70f5bea99ae6614f5aa0be973",
+      "hash": "sha256:63a7d72c32c0211826a651acbb6a9abc1273ef51906d1e0a21573bc4e8dc6574",
       "ownership": "template"
     },
     ".claude/agents/ops.md": {
@@ -41,11 +41,11 @@
       "ownership": "template"
     },
     ".claude/agents/python-coder.md": {
-      "hash": "sha256:4a8e686d5b18d802c69705668de1e353aa7e4dbecbc075ad412eda35d9a460a8",
+      "hash": "sha256:95f39ca8b7535b802e119cceecd266137ac8ef962e23ab09123c9c5bbf726b90",
       "ownership": "template"
     },
     ".claude/agents/tester.md": {
-      "hash": "sha256:3282d4f558f941ada1d1a81362e52d693e42f75ab88e05bf317d9255a5b79466",
+      "hash": "sha256:409cf0cbb51f325766ec576ce2b2489d79e3e2e16c2cbcfaa5f6c23a78ded35a",
       "ownership": "template"
     },
     ".claude/project-instructions.md": {
@@ -59,7 +59,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:83177773183fadc15c5f3961736e35ffc36bb2731925c27d24be99a37adbffc2",
+      "hash": "sha256:c06fc257b5441b2dca1a378ae6af59694dee7d4c5de8f307b25ff784a2357b9e",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -73,11 +73,11 @@
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:7aecc636dd7e8fc4fd605287b217f53dc56d91d25761e84708e2f870c080142f",
+      "hash": "sha256:6bb539bef3ff65199076659ea17ff34edf09df71a3f3660577c6c8c94b59393b",
       "ownership": "template"
     },
     "CLAUDE.md": {
-      "hash": "sha256:dd92ecd686365145f4f117be942b01a9cf567dc916beb4d078eb1c4451ec5d8b",
+      "hash": "sha256:7ea1a2709be590f1d2a3020442c59a7e915174feb938f64fda6677b06b555e4f",
       "ownership": "template"
     },
     "PROJECT_CONTEXT.md": {
@@ -95,7 +95,7 @@
       "ownership": "template"
     },
     "hooks/bash-output-guard.sh": {
-      "hash": "sha256:9aa4eb1cc92379c7c853c43ceaedf880f635b49c57f2548a372891fcf538c3ad",
+      "hash": "sha256:7b149bb2cefd37074a48edc3f8c5ff0d183caf802e2abad3ccd181a6d6952a31",
       "ownership": "template"
     },
     "hooks/deny-claude-md-writes.sh": {
@@ -111,7 +111,7 @@
       "ownership": "template"
     },
     "hooks/enforce-agent-contract.sh": {
-      "hash": "sha256:8a4478a8a47f2bac05eef78edc6843444ca05aa5b23d45cf068043cd821b7a4a",
+      "hash": "sha256:ffbb1ade122874317160966d5b3f140b93e56a1a6310594d2f8b69cc23093dde",
       "ownership": "template"
     },
     "hooks/enforce-delegation.sh": {
@@ -146,6 +146,10 @@
       "hash": "sha256:f8172639bc5a92a29ebee1661bdbeead900561146d9195dbd1dbe9d76d916903",
       "ownership": "template"
     },
+    "hooks/now-brief.sh": {
+      "hash": "sha256:03222a107bead085905b03f28ed3ad0d3fde0e6abe417a133839084944e629df",
+      "ownership": "template"
+    },
     "hooks/post-edit-build.sh": {
       "hash": "sha256:5f9d6ba0a671821f519fd9156bd4a34e455f1011950fce7cfe36ad1380f8846a",
       "ownership": "template"
@@ -159,7 +163,7 @@
       "ownership": "template"
     },
     "hooks/require-skills-block.sh": {
-      "hash": "sha256:a789f3aaf4ac382bf189515b963b21bab005712984c616ee34b0d5163922b0a5",
+      "hash": "sha256:219485867df17b2b5b65ada5d642256ec674b5bf1a83178aa2b7abbe2514357a",
       "ownership": "template"
     },
     "hooks/retro-brief.sh": {

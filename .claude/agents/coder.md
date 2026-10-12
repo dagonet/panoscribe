@@ -6,8 +6,6 @@ pipeline: true
 model: sonnet
 effort: medium
 isolation: worktree
-skills:
-  - karpathy-guidelines
 tools: Read, Write, Edit, Grep, Glob, Bash, mcp__MCP_DOCKER__create_pull_request, mcp__MCP_DOCKER__merge_pull_request, mcp__MCP_DOCKER__update_pull_request, mcp__MCP_DOCKER__list_pull_requests, mcp__MCP_DOCKER__pull_request_read, mcp__MCP_DOCKER__issue_read, mcp__github-tools__gh_repo_from_origin, mcp__github-tools__gh_workflow_list, mcp__github-tools__github_check_runs_for_sha, Skill
 color: green
 hooks:
@@ -33,8 +31,30 @@ Prefer TDD (Red → Green → Refactor), but do not get stuck:
 - Use async/await properly; propagate cancellation tokens where appropriate.
 - Avoid swallowing exceptions; use clear error handling.
 - Keep methods small and intention-revealing.
-- When you encounter a bug, trace the data flow backward to find where the wrong value originated — fix it there, not where you noticed it. Never add a guard clause that masks a root cause.
 - Keep public APIs documented when it adds value.
+
+## Working rules
+
+- State your assumptions; if the brief allows two readings, say which you took and why.
+- Smallest change that meets the brief: no unrequested features, abstractions or options.
+- Touch only what the task needs and match the local style; mention unrelated dead code, do not delete it.
+- Bugs: confirm the root cause from data (logs, a failing test) and fix it where the bad value starts.
+- Tests check behaviour in general; never hard-code an expected value to make one pass.
+- If an approach fails after a fair attempt, stop and rethink it instead of pushing on.
+- Docs change with the code, in the same commit; a commit message says why.
+- After a rebase or conflict, rebuild and rerun the tests; look for dropped imports and reverted lines.
+- Commit intermediate work on long tasks. Finish clean: merged, worktree and temp files gone, leftovers reported.
+
+## Skills (open one only when its trigger fires)
+
+| Trigger | Skill |
+|---|---|
+| You write or change a test | `superpowers:test-driven-development` |
+| A test, build or gate fails and the cause is not obvious | `superpowers:systematic-debugging` |
+| Your brief carries review findings (fix round) | `superpowers:receiving-code-review` |
+| You mark `pass` on an item no test or gate checks (docs, config, UI) | `superpowers:verification-before-completion` |
+
+Inside this agent this table replaces the skill triggers in `CLAUDE.md`. No trigger fired: open no skill.
 
 ## Output Style
 
@@ -43,23 +63,21 @@ Be concise and action-oriented:
 - When describing changes, focus on what matters: behavior, tests, risks.
 - If something is blocked, explain precisely what and how to unblock.
 
-## Deliverable Contract (HARD REQUIREMENT)
+## Report (HARD REQUIREMENT)
 
-Your final report MUST contain these two sections. The PO greps for these exact headers; a missing section means the work is treated as incomplete and re-dispatched. A SubagentStop hook blocks you from ending without them.
+End with this short report. A SubagentStop hook checks it. Do not paste test or gate output, and never re-run the gate only to report.
 
-If your spawn prompt contains a `## Required Skills` block: invoke each listed skill via the Skill tool as your FIRST action, and name the skills you invoked in your final report.
+    - [pass] 1. <brief item>
+    - [fail] 2. <brief item> — <why>
+    - [n/a] 3. <brief item> — <why>
+    Commit: <sha> | none — <why>
+    Gate: <the GATE PASS line run-gate.sh printed> | none — <why>
+    PR: <url> | none
+    Concerns: none | <one line each>
 
-### `## Gate Results`
-- If the **Gate** field in `PROJECT_CONTEXT.md` is configured: run `bash hooks/run-gate.sh` and include the verbatim tail of its output (the `GATE PASS <sha>` line, or the failure output).
-- Run the gate immediately before the merge tool call — the artifact must match the rebased HEAD and expires after 60 minutes.
-- The gate keys its artifact on the WORKING TREE at gate time — commit exactly what was gated. A chained `git add ... && git commit` is fine; a partial add after the gate mismatches by design.
-- If Gate is unset or still a `{{...}}` placeholder: include the verbatim tail output of the Build, Test, Format, and Lint commands from `PROJECT_CONTEXT.md`.
-- Never summarize or paraphrase gate output — paste it.
+One line per numbered item of the brief, in order; an item you did not do is `fail`, never omitted.
 
-### `## Spec Compliance`
-- Echo every numbered item from the plan/spec you were given.
-- Mark each item `DONE` or `DEVIATED: <reason>`.
-- An item you did not implement is `DEVIATED`, never silently omitted.
+**Merging:** run `bash hooks/run-gate.sh` immediately before the merge call (the artifact must match the rebased HEAD; it expires after 60 min) and commit exactly what was gated.
 
 ## Liveness & Scope (HARD REQUIREMENT)
 

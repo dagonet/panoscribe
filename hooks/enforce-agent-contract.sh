@@ -9,7 +9,7 @@
 #                          (coder, code-reviewer, and the five language coders)
 #   - pipeline: notify  -- PIPELINE echo ONLY, then exit 0, no verdict
 #                          (tester, architect -- architect has no Bash and
-#                          cannot always produce a "## Gate Results" report)
+#                          cannot always produce a coder report)
 # Anything else -- the key absent, an unrecognised value, appearing only in
 # the agent file's BODY rather than its frontmatter block, or an agent_type
 # containing a path separator or `..` -- is ineligible: no echo, exit 0. A
@@ -19,7 +19,9 @@
 #
 # Blocks (exit 2) a `pipeline: true` agent from ending WITHOUT its required
 # deliverable:
-#   - coder types:    final message must contain "## Gate Results" AND "## Spec Compliance"
+#   - coder types:    the SHORT report (v4.5.0): a '- [pass|fail|n/a] <item>' line,
+#                     'Commit: <sha>|none', 'Gate: ...', 'Concerns: ...'; the LEGACY
+#                     "## Gate Results" + "## Spec Compliance" still passes through v4.x
 #   - code-reviewer:  final message must BE the single word "clean" (strict equality)
 #                     or contain a severity-tagged findings list ("**Severity**")
 # The stderr is fed back to the agent, which continues and produces the report.
@@ -139,13 +141,29 @@ case "$AGENT_TYPE" in
     fi
     ;;
   *)
+    # v4.5 B2: the SHORT form -- four line kinds, case-insensitive, with list
+    # markers, **bold** keys and backticks tolerated (the gate-field-grep
+    # lesson). The LEGACY form -- both section headings -- still passes without
+    # a prod through v4.x: consumer-owned pipeline agents (mm-runner) report in
+    # it and are never synced. LEGACY acceptance ends at v5.0.
     gaps=""
-    printf '%s' "$LAST_TEXT" | grep -q '## Gate Results'     || gaps="'## Gate Results'"
-    printf '%s' "$LAST_TEXT" | grep -q '## Spec Compliance'  || gaps="${gaps:+$gaps and }'## Spec Compliance'"
+    b2_has() { printf '%s\n' "$LAST_TEXT" | grep -qiE "$1"; }
+    b2_key='^[[:space:]]*([-*][[:space:]]+)?(\*\*)?'
+    b2_has '^[[:space:]]*[-*][[:space:]]+\[(pass|fail|n/a)\][[:space:]]+[^[:space:]]' \
+      || gaps="a '- [pass|fail|n/a] <n>. <item>' line"
+    b2_has "${b2_key}Commit(\*\*)?:(\*\*)?[[:space:]]*(\`?[0-9a-f]{7,40}\`?|none)" \
+      || gaps="${gaps:+$gaps, }a 'Commit: <sha>|none' line"
+    b2_has "${b2_key}Gate(\*\*)?:(\*\*)?[[:space:]]*[^[:space:]]" \
+      || gaps="${gaps:+$gaps, }a 'Gate:' line"
+    b2_has "${b2_key}Concerns(\*\*)?:(\*\*)?[[:space:]]*[^[:space:]]" \
+      || gaps="${gaps:+$gaps, }a 'Concerns:' line"
     if [ -z "$gaps" ]; then
       ok=1
+    elif printf '%s' "$LAST_TEXT" | grep -q '## Gate Results' \
+         && printf '%s' "$LAST_TEXT" | grep -q '## Spec Compliance'; then
+      ok=1
     else
-      missing="the required section(s) $gaps"
+      missing="$gaps"
     fi
     ;;
 esac
@@ -174,6 +192,6 @@ fi
 if [ "$AGENT_TYPE" = "code-reviewer" ]; then
   echo "CONTRACT VIOLATION: your final message must be either a severity-tagged findings list (each finding: **Severity**: critical|warning|suggestion + file:line locator) or the single word: clean. Post your review result now — do not end without it." >&2
 else
-  echo "CONTRACT VIOLATION: your final report is missing $missing. Produce it now: run 'bash hooks/run-gate.sh' and paste the verbatim tail under '## Gate Results' (or the Build/Test/Format/Lint outputs if no Gate is configured), then echo every numbered spec item under '## Spec Compliance' as DONE or DEVIATED: <reason>." >&2
+  echo "CONTRACT VIOLATION: your final report is missing $missing. End with the short report: one '- [pass|fail|n/a] <n>. <item>' line per brief item, then 'Commit: <sha>|none — <why>', 'Gate: <GATE PASS line>|none — <why>', 'Concerns: none|<lines>'. Do not paste test or gate output and do not re-run the gate to report." >&2
 fi
 exit 2
