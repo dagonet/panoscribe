@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import logging
 import os
 import sys
@@ -121,19 +122,23 @@ def _configure_console_streams() -> None:
 
     Redirected Windows streams use the locale code page (cp1252), which cannot
     encode ``→`` or emoji; rich and the logging handler would raise
-    ``UnicodeEncodeError``. Switching the error handler to ``replace`` degrades
-    the glyph to ``?`` instead. UTF-8 streams are left untouched. Both write
+    ``UnicodeEncodeError``. Switching a strict error handler to
+    ``backslashreplace`` (Python's own stderr default) degrades the glyph to an
+    escape sequence instead. UTF-8 streams and streams with a non-strict
+    handler (real stderr, ``PYTHONIOENCODING``) are left untouched. Both write
     paths resolve ``sys.stdout``/``sys.stderr`` lazily, so this only has to run
     before the first write.
     """
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
+        if reconfigure is None or getattr(stream, "errors", None) != "strict":
             continue
-        encoding = (getattr(stream, "encoding", None) or "").lower().replace("_", "-")
-        if encoding in ("utf-8", "utf8"):
-            continue
-        reconfigure(errors="replace")
+        try:
+            is_utf8 = codecs.lookup(getattr(stream, "encoding", None) or "").name == "utf-8"
+        except LookupError:
+            is_utf8 = False
+        if not is_utf8:
+            reconfigure(errors="backslashreplace")
 
 
 logger = logging.getLogger(__name__)
