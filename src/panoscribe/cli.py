@@ -117,21 +117,28 @@ app = typer.Typer(
 _console = Console()
 
 
+_SUBSTITUTING_HANDLERS = frozenset(
+    {"backslashreplace", "replace", "namereplace", "xmlcharrefreplace", "ignore"}
+)
+
+
 def _configure_console_streams() -> None:
     """Make stdout/stderr tolerate characters their encoding cannot represent.
 
     Redirected Windows streams use the locale code page (cp1252), which cannot
     encode ``→`` or emoji; rich and the logging handler would raise
-    ``UnicodeEncodeError``. Switching a strict error handler to
-    ``backslashreplace`` (Python's own stderr default) degrades the glyph to an
-    escape sequence instead. UTF-8 streams and streams with a non-strict
-    handler (real stderr, ``PYTHONIOENCODING``) are left untouched. Both write
-    paths resolve ``sys.stdout``/``sys.stderr`` lazily, so this only has to run
-    before the first write.
+    ``UnicodeEncodeError``. Redirected Windows stdout is cp1252 with
+    ``surrogateescape``, which does not substitute either, so any handler that
+    cannot substitute arbitrary characters (``strict``, ``surrogateescape``,
+    ``surrogatepass``) is switched to ``backslashreplace`` (Python's own stderr
+    default), degrading the glyph to an escape sequence. UTF-8 streams and
+    handlers that already substitute (real stderr, ``PYTHONIOENCODING``) are
+    left untouched. Both write paths resolve ``sys.stdout``/``sys.stderr``
+    lazily, so this only has to run before the first write.
     """
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None or getattr(stream, "errors", None) != "strict":
+        if reconfigure is None or getattr(stream, "errors", None) in _SUBSTITUTING_HANDLERS:
             continue
         try:
             is_utf8 = codecs.lookup(getattr(stream, "encoding", None) or "").name == "utf-8"

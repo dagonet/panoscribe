@@ -19,8 +19,14 @@ def _cp1252_stream(raw: io.BytesIO, errors: str = "strict") -> io.TextIOWrapper:
     return io.TextIOWrapper(raw, encoding="cp1252", errors=errors, write_through=True)
 
 
-def test_transcribe_survives_cp1252_console_streams(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("stdout_errors", ["surrogateescape", "strict"])
+def test_transcribe_survives_cp1252_console_streams(
+    tmp_path: Path, monkeypatch, stdout_errors: str
+) -> None:
     """Redirected Windows stdout/stderr use cp1252 and cannot encode ``→``/emoji.
+
+    Real redirected Windows stdout is cp1252 with ``surrogateescape`` (not
+    ``strict``); stderr is cp1252 with ``backslashreplace``.
 
     Both the rich console ("Wrote N segment(s)") and the logging handler used
     to raise ``UnicodeEncodeError`` after the transcript was already written.
@@ -30,7 +36,7 @@ def test_transcribe_survives_cp1252_console_streams(tmp_path: Path, monkeypatch)
     monkeypatch.setenv("PANO_LOG_LEVEL", "INFO")  # the INFO log line must reach the handler
     output = tmp_path / "out.json"
     raw_out, raw_err = io.BytesIO(), io.BytesIO()
-    monkeypatch.setattr(sys, "stdout", _cp1252_stream(raw_out))
+    monkeypatch.setattr(sys, "stdout", _cp1252_stream(raw_out, errors=stdout_errors))
     # Real Python stderr already uses backslashreplace; mirror that.
     monkeypatch.setattr(sys, "stderr", _cp1252_stream(raw_err, errors="backslashreplace"))
     root = logging.getLogger()
@@ -72,13 +78,26 @@ def test_configure_console_streams_leaves_utf8_untouched(monkeypatch) -> None:
     assert (out.errors, err.errors) == ("strict", "strict")
 
 
-def test_configure_console_streams_only_touches_strict_streams(monkeypatch) -> None:
-    strict = _cp1252_stream(io.BytesIO())
-    chosen = _cp1252_stream(io.BytesIO(), errors="ignore")
-    monkeypatch.setattr(sys, "stdout", strict)
-    monkeypatch.setattr(sys, "stderr", chosen)
+@pytest.mark.parametrize("errors", ["strict", "surrogateescape", "surrogatepass"])
+def test_configure_console_streams_fixes_non_substituting_handlers(
+    monkeypatch, errors: str
+) -> None:
+    stream = _cp1252_stream(io.BytesIO(), errors=errors)
+    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.setattr(sys, "stderr", _cp1252_stream(io.BytesIO(), errors="backslashreplace"))
     _configure_console_streams()
-    assert (strict.errors, chosen.errors) == ("backslashreplace", "ignore")
+    assert stream.errors == "backslashreplace"
+
+
+@pytest.mark.parametrize(
+    "errors", ["backslashreplace", "replace", "namereplace", "xmlcharrefreplace", "ignore"]
+)
+def test_configure_console_streams_leaves_substituting_handlers(monkeypatch, errors: str) -> None:
+    stream = _cp1252_stream(io.BytesIO(), errors=errors)
+    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.setattr(sys, "stderr", _cp1252_stream(io.BytesIO(), errors="backslashreplace"))
+    _configure_console_streams()
+    assert stream.errors == errors
 
 
 def test_configure_console_streams_tolerates_streams_without_reconfigure(monkeypatch) -> None:
