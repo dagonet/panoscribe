@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   encode characters such as `→` or emoji, so the run failed after the
   transcript had already been written. Non-UTF-8 console streams without a
   substituting error handler now use `backslashreplace`, so such characters
-  print as escapes like `→`. UTF-8 consoles are unchanged.
+  print as escapes like `\u2192`. UTF-8 consoles are unchanged.
 
 ### Security
 
