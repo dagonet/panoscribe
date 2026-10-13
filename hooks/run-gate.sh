@@ -164,9 +164,16 @@ gc_sha256() {
   fi
 }
 gc_gate_env() {
-  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe pyvenv_pfx
+  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe pyvenv_pfx pp_exe pp_out pp_h
   [ -n "$top" ] || return 1
+  # v4.6.1: two venv candidates, in order -- server/.venv (this repo, consumers
+  # with a server/), then <repo>/.venv (`uv run` consumers). Only the presence
+  # of pyvenv.cfg is checked -- no pyproject or uv.lock is read.
+  # The FIRST one with a pyvenv.cfg wins and is treated exactly as server/.venv
+  # always was; with neither, venv stays at the first candidate (no pyvenv.cfg
+  # there) and the PATH-python `sys:` fallback below applies unchanged.
   venv="$top/server/.venv"
+  [ -f "$venv/pyvenv.cfg" ] || { [ -f "$top/.venv/pyvenv.cfg" ] && venv="$top/.venv"; }
 
   # v4.1.1 (#15). `dist` and `py` now come from the SAME interpreter, chosen
   # once: the venv's own python when the venv is PRESENT (pyvenv.cfg exists --
@@ -215,8 +222,14 @@ gc_gate_env() {
   fi
 
   if [ -n "$py_exe" ]; then
-    dist_h=$("$py_exe" -c 'import site,json,os
-print("\n".join(sorted(n for p in site.getsitepackages() for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null | gc_sha256) || dist_h=""
+    # v4.6.1: skip site dirs that do not exist (Debian/Ubuntu list
+    # /usr/lib/python3.N/dist-packages even when absent; os.listdir on it killed
+    # the run and the EMPTY output was hashed, so dist never moved), and a run
+    # that fails is `absent` (void), never the hash of empty output.
+    # pipefail in the subshell: the hash is of the interpreter's raw output exactly
+    # as before (existing artifacts stay valid), but a failing run fails the pipeline.
+    dist_h=$(set -o pipefail; "$py_exe" -c 'import site,os
+print("\n".join(sorted(n for p in site.getsitepackages() if os.path.isdir(p) for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null | gc_sha256) || dist_h=""
     [ -n "$dist_h" ] || dist_h=absent
     pyver=$("$py_exe" --version 2>&1)
     [ -n "$pyver" ] || pyver=absent
@@ -228,7 +241,27 @@ print("\n".join(sorted(n for p in site.getsitepackages() for n in os.listdir(p) 
   nodever=absent
   command -v node >/dev/null 2>&1 && nodever=$(node --version 2>&1)
 
+  # v4.6.1: the root .venv was chosen, but the Gate may run PATH python, not that
+  # venv (a stray or old .venv). Then ALSO fingerprint the PATH interpreter, one
+  # combined hash of its prefix, version and dist-info names, so a PATH-python
+  # upgrade or package change still moves the fingerprint. `absent` when none
+  # resolves or the run fails -- the void rule then fires. Emitted ONLY in this
+  # case: every other repo's output is unchanged.
+  pp_h=""
+  if [ "$venv" = "$top/.venv" ] && [ -f "$venv/pyvenv.cfg" ]; then
+    pp_h=absent
+    pp_exe=$(command -v python3 2>/dev/null)
+    [ -n "$pp_exe" ] || pp_exe=$(command -v python 2>/dev/null)
+    if [ -n "$pp_exe" ] && pp_out=$("$pp_exe" -c 'import sys,site,os
+print(sys.prefix); print(sys.version)
+print("\n".join(sorted(n for p in site.getsitepackages() if os.path.isdir(p) for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null) && [ -n "$pp_out" ]; then
+      pp_h=$(printf '%s\n' "$pp_out" | gc_sha256) || pp_h=""
+      [ -n "$pp_h" ] || pp_h=absent
+    fi
+  fi
+
   out=$(printf 'pyvenv=%s\ndist=%s\npy=%s\nnode=%s\n' "$pyvenv_h" "$dist_h" "$pyver" "$nodever")
+  [ -z "$pp_h" ] || out=$(printf '%s\npathpy=%s' "$out" "$pp_h")
 
   if [ "$verbose" = "-v" ]; then
     printf '%s' "$out"

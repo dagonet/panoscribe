@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.6.0",
-  "template_commit": "6aabbdd0e9ee1bd4e02649dc88da106da4d6f2c8",
+  "template_version": "v4.6.1",
+  "template_commit": "0db0056bd46563f4b87792fbade1b696eeb24de1",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -131,7 +131,7 @@
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:8f2ce0109c9dd7d22eb6c1b2b80cdeb55aa0c401b21ff77787ae823a334fab7a",
+      "hash": "sha256:50264be4fab3542ceced666b795d3dbd9ac87626eae0009205529d701a112d8a",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
@@ -175,7 +175,7 @@
       "ownership": "template"
     },
     "hooks/run-gate.sh": {
-      "hash": "sha256:515d72ca0711c7fa7295fef8ac7754f811adc1c9dcb7ac9acdf3ad0cbcda4b04",
+      "hash": "sha256:16b8bec464f89b63945d10eed2aa3b78f1f7ef1b5ded7de3f9a3a5b9a22c27f8",
       "ownership": "template"
     },
     "hooks/verify-hooks.sh": {
