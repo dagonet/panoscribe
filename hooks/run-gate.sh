@@ -117,6 +117,18 @@ if [ -z "$REPO_TOP" ]; then
   exit "$GC_TERMINAL_RC"
 fi
 
+# v4.6.2: this script gates the CWD's repository, not the checkout it lives in.
+# Run as `bash <worktree>/hooks/run-gate.sh` from another checkout, it gates that
+# other checkout -- easy to misread as gating the worktree. Warn only; never
+# change behaviour. Silent when the script's directory is not inside a git work
+# tree (the user-level copy in ~/.claude/hooks, a plugin cache copy).
+# GIT_DIR/GIT_WORK_TREE are unset for this one call: an exported GIT_DIR would
+# make the script's own directory resolve to the cwd's repository.
+RG_SELF_TOP=$(unset GIT_DIR GIT_WORK_TREE; git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$RG_SELF_TOP" ] && [ "$RG_SELF_TOP" != "$REPO_TOP" ]; then
+  echo "WARN: run-gate.sh from $RG_SELF_TOP is gating $REPO_TOP (the current directory's repository); to gate $RG_SELF_TOP, run it from inside $RG_SELF_TOP." >&2
+fi
+
 # GC_KEY_PRE, defined locally: this script is deliberately standalone (it must
 # run with no JSON parser on PATH, which sourcing hooks/lib/git-cmd.sh would
 # forbid), so it repeats the constant rather than importing it. The definition
@@ -227,7 +239,7 @@ gc_gate_env() {
     # the run and the EMPTY output was hashed, so dist never moved), and a run
     # that fails is `absent` (void), never the hash of empty output.
     # pipefail in the subshell: the hash is of the interpreter's raw output exactly
-    # as before (existing artifacts stay valid), but a failing run fails the pipeline.
+    # as before (artifacts stay valid where the old run succeeded; on Debian/Ubuntu, where it hashed empty output, they void once -- see the v4.6.1 CHANGELOG), but a failing run fails the pipeline.
     dist_h=$(set -o pipefail; "$py_exe" -c 'import site,os
 print("\n".join(sorted(n for p in site.getsitepackages() if os.path.isdir(p) for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null | gc_sha256) || dist_h=""
     [ -n "$dist_h" ] || dist_h=absent

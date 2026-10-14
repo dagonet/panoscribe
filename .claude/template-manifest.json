@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.6.1",
-  "template_commit": "0db0056bd46563f4b87792fbade1b696eeb24de1",
+  "template_version": "v4.6.2",
+  "template_commit": "47207c9bda19a2c47aeb7ad25d8f0a772cc8bdcc",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -131,7 +131,7 @@
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:50264be4fab3542ceced666b795d3dbd9ac87626eae0009205529d701a112d8a",
+      "hash": "sha256:8c3cd1ca5c8245b7a26b0a9508fc0951943eb5c5a1d9bee3d1437aafbc7d61df",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
@@ -162,10 +162,6 @@
       "hash": "sha256:0cd3f394c1100422b0f86f571e2f865159eea85beb2f4f933af6b00970ab453c",
       "ownership": "template"
     },
-    "hooks/require-skills-block.sh": {
-      "hash": "sha256:219485867df17b2b5b65ada5d642256ec674b5bf1a83178aa2b7abbe2514357a",
-      "ownership": "template"
-    },
     "hooks/retro-brief.sh": {
       "hash": "sha256:a194662e50eccd9a4d191664bb60ecae079432397274273030afa4cd0f7f7ffd",
       "ownership": "template"
@@ -175,7 +171,7 @@
       "ownership": "template"
     },
     "hooks/run-gate.sh": {
-      "hash": "sha256:16b8bec464f89b63945d10eed2aa3b78f1f7ef1b5ded7de3f9a3a5b9a22c27f8",
+      "hash": "sha256:bf199cd6b8ea08144eeca4b2f7f8adcc9d74c817b654fa727244d18ff5ad8d85",
       "ownership": "template"
     },
     "hooks/verify-hooks.sh": {

@@ -1487,7 +1487,7 @@ gc_gate_env() {
     # the run and the EMPTY output was hashed, so dist never moved), and a run
     # that fails is `absent` (void), never the hash of empty output.
     # pipefail in the subshell: the hash is of the interpreter's raw output exactly
-    # as before (existing artifacts stay valid), but a failing run fails the pipeline.
+    # as before (artifacts stay valid where the old run succeeded; on Debian/Ubuntu, where it hashed empty output, they void once -- see the v4.6.1 CHANGELOG), but a failing run fails the pipeline.
     dist_h=$(set -o pipefail; "$py_exe" -c 'import site,os
 print("\n".join(sorted(n for p in site.getsitepackages() if os.path.isdir(p) for n in os.listdir(p) if n.endswith(".dist-info"))))' 2>/dev/null | gc_sha256) || dist_h=""
     [ -n "$dist_h" ] || dist_h=absent
