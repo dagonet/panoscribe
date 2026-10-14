@@ -3,7 +3,7 @@
 ## Now
 
 - **Goal:** The project is ON HOLD until further notice (user, 2026-10-12): no feature work; #83/#84/#85 stay parked; issue #77 stays open.
-- **Current step:** Idle. v0.8.1 is released (2026-10-13; PyPI + GitHub Release): the #164 Windows redirect fix and all 9 pip-audit fixes. Toolkit synced to v4.6.1 (#169).
+- **Current step:** Idle. v0.8.1 is released (2026-10-13; PyPI + GitHub Release): the #164 Windows redirect fix and all 9 pip-audit fixes. Toolkit synced to v4.6.2 (#170).
 - **Next step:** Nothing until the user lifts the hold.
 
 ## Current Sprint
@@ -21,7 +21,9 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.6.1** (`0db0056b`), synced 2026-10-13 (#169): `hooks/lib/git-cmd.sh` and `hooks/run-gate.sh` only — the gate's environment fingerprint now handles a repo-root uv `.venv`, so gate artifacts minted before it were void once. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 8 INFO** (same `retired_rule_names` INFO as below).
+**claude-code-toolkit v4.6.2** (`47207c9b`), synced 2026-10-14 (#170): `hooks/require-skills-block.sh` deleted (the v4.5.0 stub, retired; user approved), `hooks/run-gate.sh` now warns on stderr when run from one checkout while gating another (it always gates the current directory's repository), `hooks/lib/git-cmd.sh` comment-only. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 8 INFO**.
+
+From v4.6.1 (`0db0056b`, synced 2026-10-13, #169): `hooks/lib/git-cmd.sh` and `hooks/run-gate.sh` only — the gate's environment fingerprint now handles a repo-root uv `.venv`, so gate artifacts minted before it were void once. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 8 INFO** (same `retired_rule_names` INFO as below).
 
 From v4.6.0 (`6aabbdd0`, synced 2026-10-12) — recorded in the same PR as the sync, in its own commit (since v4.5.2 the sync commit is sync-only; project docs go in a separate commit). v4.5.0 retired the `## Required Skills` spawn mandate: each agent opens its skills from its own `## Skills` table, so a brief names a skill only when the task needs it; `require-skills-block.sh` is a no-op stub, no longer registered, and is deleted next release. v4.5.0 also added `hooks/now-brief.sh` (SessionStart, `compact`): after a compaction it prints this file's `## Now` block, cut at the first `#` line and capped at 1,024 bytes — keep that block short and free of sub-headings. v4.5.0 also gave the coders a short report contract, enforced by `enforce-agent-contract.sh`: `- [pass|fail|n/a]` lines plus `Commit:`, `Gate:` and `Concerns:`; the legacy `## Gate Results` + `## Spec Compliance` form is still accepted through v4.x. The coders dropped the `karpathy-guidelines` preload for their own `## Working rules`. v4.5.2: `bash-output-guard.sh` logs to a per-user directory (mode 700, logs 0600). v4.6.0: `/sync-template` stops at load when the running template-sync server is older than the toolkit checkout — after a toolkit pull, restart the session before syncing. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 8 INFO**; the INFO line `retired_rule_names` names this file because it mentions `require-skills-block` (this section, the sync history and the v4.0.2 notes) — historical mentions, not instructions, and they stay as written.
 
@@ -51,6 +53,7 @@ Sync history since v3.0.0:
 | v4.1.1 | `eef42779` | #151 | v4.1.0 rollout patch: four enforcement scripts updated; the `#20` dropped-`reason` repair applied by hand |
 | — | — | #152–#154 | Worktree base moved under `g:/git/.worktrees/panoscribe`; `dist` artifact retention 3 days; `.claude/worktrees/` gitignored; always-on gate-artifact rule corrected |
 | v4.2.0 | `d95cf57c` | #155 | Carries v4.1.2's nine template changes (8 hook scripts + `AGENT_TEAM.md`): backslash-continuation join, whole-line comment strip before the verb scan, filesystem case-fold probe, byte-measured `cmd_len`, widened gate fingerprint. No conflicts, no local edits, no migration; the hand-restored `reason` annotation survived finalize |
+| v4.6.2 | `47207c9b` | #170 | Two updates (`hooks/run-gate.sh` cross-checkout warning, `hooks/lib/git-cmd.sh` comment) and one deletion (`hooks/require-skills-block.sh`, TEMPLATE_DELETED, unreferenced, NOMARKERS; user approved). No conflicts, no local edits, no new files, no migration, `settings.json` unchanged. Skill body v4.6.2, server 4.6.2 at the checkout's HEAD |
 | v4.6.1 | `0db0056b` | #169 | Two updates: `hooks/lib/git-cmd.sh`, `hooks/run-gate.sh` (gate env fingerprint fix for a repo-root `.venv`). No conflicts, no local edits, no new or deleted files, no migration, `settings.json` unchanged. Fresh session (skill body v4.6.1), server 4.6.1 at the checkout's HEAD |
 | v4.6.0 | `6aabbdd0` | #166 | Carries v4.5.0–v4.6.0: 10 updates (`bash-output-guard.sh`, `enforce-agent-contract.sh`, `require-skills-block.sh` → stub, `architect`/`coder`/`python-coder`/`tester` agents, `settings.json` without the `require-skills-block` and `PreCompact` entries and with the `compact` group, `CLAUDE.md`, `AGENT_TEAM.md`) and 1 new file (`hooks/now-brief.sh`). No conflicts, no local edits, no deleted files, no migration. Skill body v4.6.0 and server 4.6.0 (commit equal to the checkout's HEAD) confirmed at load. `## Now` block added by hand in a separate commit |
 | v4.4.2 | `9dd3b8b9` | #160 | One update: `hooks/git-pre-push.sh` (installer texts no longer carry the push verb on a code line; a `core.hooksPath` equal to the default hooks dir counts as unset). No conflicts, no local edits, no new or deleted files, `settings.json` unchanged |
