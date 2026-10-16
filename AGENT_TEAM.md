@@ -24,16 +24,16 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 
 ## CRITICAL: Sub-Agent Tool Limitations
 
-**A sub-agent only has the tools its `tools:` frontmatter lists** — a platform limitation, not a config error. Git needs `Bash`; GitHub writes need the matching `mcp__MCP_DOCKER__*` tool. **`.claude/agents/<name>.md` is the source of truth — read the target agent's `tools:` line before putting an operation in its spawn prompt.**
+**A sub-agent only has the tools its `tools:` frontmatter lists** — a platform limitation, not a config error. Git needs `Bash`; GitHub writes need the matching `mcp__MCP_DOCKER__*` tool. **The agent file is the source of truth (`cct:<name>` = the cct plugin's `agents/<name>.md`; a project's own agents live in `.claude/agents/`) — read the target agent's `tools:` line before putting an operation in its spawn prompt.**
 
 ### Agents that can do their own git + GitHub I/O:
-`coder`/`<lang>-coder` (`Bash` + PR tools); `code-reviewer` (`Bash`, review-write); `tester` (`Bash`, issue-comment).
+`cct:coder`/`cct:<lang>-coder` (`Bash` + PR tools); `cct:code-reviewer` (`Bash`, review-write); `cct:tester` (`Bash`, issue-comment).
 
 ### Agents without `Bash`:
-`architect` — cannot commit, push, create PRs, merge, or post comments.
+`cct:architect` — cannot commit, push, create PRs, merge, or post comments.
 
 ### The rule that covers every tool, not just `Bash`
-`Explore`/`code-reviewer` hold neither `Edit` nor `Write`. `Explore`/`architect`/`ops` hold no GitHub MCP tool. `isolation: worktree` (`coder`, `tester`, `<lang>-coder`) means those agents cannot reach the main checkout for a sync.
+`cct:Explore`/`cct:code-reviewer` hold neither `Edit` nor `Write`. `cct:Explore`/`cct:architect`/`cct:ops` hold no GitHub MCP tool. `isolation: worktree` (`cct:coder`, `cct:tester`, `cct:<lang>-coder`) means those agents cannot reach the main checkout for a sync.
 
 **PO responsibility:** if an agent lacks a needed tool, it returns the work product and the PO performs the git/GitHub I/O.
 
@@ -44,18 +44,18 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 ### Product Owner (PO)
 
 - Primary interface with the human stakeholder; maintains/prioritizes the backlog. Spawns the **Architect** for new features; reviews/publishes specs; plans sprints; monitors progress, handles escalations; writes a session summary after each sprint.
-- **T1 delegated fixes** (see Tiered Sprint Model) — brief inline, no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
-- **Never reviews code inline** — `code-reviewer` is spawned T2+; T1 relies on the coder's gate run.
-- **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **Explore** (see Model & Effort Policy).
-- **Never runs builds or tests** — coders gate, tester verifies, `ops` handles env/tool work; PO verifies via the gate artifact.
+- **T1 delegated fixes** (see Tiered Sprint Model) — brief inline, no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by the cct plugin's `enforce-delegation` hook.
+- **Never reviews code inline** — `cct:code-reviewer` is spawned T2+; T1 relies on the coder's gate run.
+- **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **`cct:Explore`** (see Model & Effort Policy).
+- **Never runs builds or tests** — coders gate, tester verifies, `cct:ops` handles env/tool work; PO verifies via the gate artifact.
 - Closes tasks after merge; does **NOT** block the merge pipeline.
 - **Open Brain context mediation**: search before spawning, include findings, capture insights after (*Open Brain Context for Agents*).
-- **Keep `PROJECT_STATE.md` → `## Now` current** in both modes: goal, current step, next step, ≤ 1 KB; update it when the step changes. `hooks/now-brief.sh` re-shows it after compaction.
+- **Keep `PROJECT_STATE.md` → `## Now` current** in both modes: goal, current step, next step, ≤ 1 KB; update it when the step changes. The plugin's `now-brief` hook re-shows it after compaction.
 
 ## Model & Effort Policy
 
-- Orchestrator = session model via `/model`: `fable` for T3/T4, `opus` for T1/T2. Workers run `sonnet`; `architect`/`code-reviewer` run `opus` at `effort: xhigh`; `Explore` runs `haiku` at `effort: low`.
-- Session effort is deliberately **unset**; raise it per role via the agent file's `effort:`, or `/effort` for one session. Typed agents own their `model`; a type without one (general-purpose, built-ins) gets the project default via `hooks/model-floor.sh` unless you pass one.
+- Orchestrator = session model via `/model`: `fable` for T3/T4, `opus` for T1/T2. Workers run `sonnet`; `cct:architect`/`cct:code-reviewer` run `opus` at `effort: xhigh`; `cct:Explore` runs `haiku` at `effort: low`.
+- Session effort is deliberately **unset**; raise it per role via the agent file's `effort:`, or `/effort` for one session. Typed agents own their `model`; a type without one (general-purpose, built-ins) gets the project default via the plugin's `model-floor` hook unless you pass one.
 - Aliases only, never a pinned `claude-*` id.
 - Wrong answer despite full context -> bigger model. Skipped files/steps -> raise `effort`.
 
@@ -100,7 +100,7 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 ### Tier Selection Guidelines
 
 - **Lowest defensible tier wins**; justify escalation, not restraint. The tier table is a **cap**, not a menu.
-- **Single file/symbol => T1.** Question-shaped turns spawn at most one `Explore`/`ops`, never a team. Never spawn `Explore` on an already-named file — hand the dev the path.
+- **Single file/symbol => T1.** Question-shaped turns spawn at most one `cct:Explore`/`cct:ops`, never a team. Never spawn `cct:Explore` on an already-named file — hand the dev the path.
 - **Same-file rule**: 2+ fixes touching one file go to a **single dev agent**, regardless of tier.
 - **Style/config-only**: T1 unless it affects data binding or behavior. Known-root-cause bug fix: T2 single-file, T3 multi-file/needs tests. New features/refactors: T3 minimum, T4 if architectural.
 - **Tester**: T3 runs existing tests + log checks, no new cases; T4 full verification incl. new cases; T1-T2 skip it — the coder's gate run covers it.
@@ -140,7 +140,7 @@ Task #{n}: issue #{issue}. Worktree: {path}, branch: feature/issue-{issue}.
 - {file} — {what to change}   (out of scope: {paths})
 
 ## Definition of done
-{tests to pass} + `bash hooks/run-gate.sh` green, then PR.
+{tests to pass} + `cct-gate` green, then PR.
 
 Context: the GitHub issue (reference only). Workflow: implement -> gate -> commit -> push -> create PR -> report the PR URL.
 ```
@@ -183,7 +183,7 @@ See `PROJECT_CONTEXT.md` for the worktree base path; see Mode Behavior Table for
 
 ## Merge Protocol
 
-After review and testing pass, the developer executes the merge — git/GitHub MCP tools are listed explicitly in its `tools:` frontmatter (`coder`, `<lang>-coder`, `general-purpose`).
+After review and testing pass, the developer executes the merge — git/GitHub MCP tools are listed explicitly in its `tools:` frontmatter (`cct:coder`, `cct:<lang>-coder`, `general-purpose`).
 
 ### Steps (Developer-executed)
 
@@ -194,9 +194,9 @@ After review and testing pass, the developer executes the merge — git/GitHub M
    message the PO to (a) guide, (b) defer, or (c) re-spawn architect.
 3. Verify CI via gh_workflow_list after push (open the PR first — a bare branch
    push produces no run); fix before merging if it fails.
-4. Run the gate on the rebased head: `bash hooks/run-gate.sh` writes
+4. Run the gate on the rebased head: `cct-gate` writes
    the gate artifact for the current HEAD — the ONLY accepted green;
-   commit exactly what was gated. `hooks/gate-before-merge.sh` hard-blocks
+   commit exactly what was gated. The plugin's `gate-before-merge` hook blocks
    merge tools without a fresh, matching artifact (< 60 min) unless
    PROJECT_CONTEXT.md's **Gate** field is unset.
 5. Squash-merge via GitHub MCP; verify it succeeded.
@@ -213,7 +213,7 @@ After review and testing pass, the developer executes the merge — git/GitHub M
 
 ### Task Brief Upfront
 
-Current models need the whole task in the prompt, not a staged planning ritual. Every spawn states: **Goal** (1-2 sentences), **Constraints**, **Acceptance criteria**, **Files in scope** (in and explicitly out), **Definition of done** (tests + `bash hooks/run-gate.sh`).
+Current models need the whole task in the prompt, not a staged planning ritual. Every spawn states: **Goal** (1-2 sentences), **Constraints**, **Acceptance criteria**, **Files in scope** (in and explicitly out), **Definition of done** (tests + `cct-gate`).
 
 An agent that has to go looking for any of the five is under-briefed — a prompt defect, not an agent failure.
 
@@ -252,8 +252,8 @@ An agent that has to go looking for any of the five is under-briefed — a promp
   3. Verify actual state via `git log`/`git status`/`list_pull_requests` — never trust the agent's last claim.
   4. Count it as one strike toward the 3-cycle escalation, re-dispatch with a TIGHTER brief. **Never self-perform the failed agent's work.**
   5. **Dead-coder merge handoff**: a pushed branch with an open PR gets a FRESH coder (PR URL, branch, worktree path) to rebase, re-gate, and merge — the PO never finishes merges by hand.
-  6. **Report agents**: their report IS the deliverable — none means a failed run, re-dispatch citing the mandate. `hooks/enforce-agent-contract.sh` catches coder/reviewer cases mechanically.
-  7. Repeated failures of the same shape are recorded by `hooks/retro-ledger.sh` and replayed at next session start — fix the cause, not the symptom.
+  6. **Report agents**: their report IS the deliverable — none means a failed run, re-dispatch citing the mandate. The plugin's `enforce-agent-contract` hook catches coder/reviewer cases mechanically.
+  7. Repeated failures of the same shape are recorded by the plugin's `retro-ledger` hook and replayed at next session start — fix the cause, not the symptom.
 
 ---
 

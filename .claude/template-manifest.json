@@ -13,41 +13,10 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.6.2",
-  "template_commit": "47207c9bda19a2c47aeb7ad25d8f0a772cc8bdcc",
+  "template_version": "v5.1.0",
+  "template_commit": "03424bd23d5949fcdb3b572522ab6e9d61b8b170",
   "requires_server": ">=4.1.0",
   "files": {
-    ".claude/agent-grants.json": {
-      "ownership": "once"
-    },
-    ".claude/agents/Explore.md": {
-      "hash": "sha256:b15d97ecca3c854c53dd08f270802ceb04bbc050b47f74b8fcaee43ee91d8bf2",
-      "ownership": "template"
-    },
-    ".claude/agents/architect.md": {
-      "hash": "sha256:b137cfdaf25918f77a721291f2aa6a01b35650894862486c67dda98b57c370ff",
-      "ownership": "template"
-    },
-    ".claude/agents/code-reviewer.md": {
-      "hash": "sha256:73e5e396c854b9331ce1276a8dcd55ad21bed6c85ca12444b71cbfb0732d5b00",
-      "ownership": "template"
-    },
-    ".claude/agents/coder.md": {
-      "hash": "sha256:63a7d72c32c0211826a651acbb6a9abc1273ef51906d1e0a21573bc4e8dc6574",
-      "ownership": "template"
-    },
-    ".claude/agents/ops.md": {
-      "hash": "sha256:ec4e7d0f27dbbe718f093933da25941eaab265a638e51f5b106568f0745c82dc",
-      "ownership": "template"
-    },
-    ".claude/agents/python-coder.md": {
-      "hash": "sha256:95f39ca8b7535b802e119cceecd266137ac8ef962e23ab09123c9c5bbf726b90",
-      "ownership": "template"
-    },
-    ".claude/agents/tester.md": {
-      "hash": "sha256:409cf0cbb51f325766ec576ce2b2489d79e3e2e16c2cbcfaa5f6c23a78ded35a",
-      "ownership": "template"
-    },
     ".claude/project-instructions.md": {
       "ownership": "once"
     },
@@ -59,7 +28,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:c06fc257b5441b2dca1a378ae6af59694dee7d4c5de8f307b25ff784a2357b9e",
+      "hash": "sha256:1bc495d0db7591ed66285d3c0ad3ead6b0029b35df7ae7006600daf7ad4c7c31",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -73,11 +42,11 @@
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:6bb539bef3ff65199076659ea17ff34edf09df71a3f3660577c6c8c94b59393b",
+      "hash": "sha256:80b2f23a73b0660a1662e0676ca51dbaef9c943f840bac0cd5035e7931c0ed43",
       "ownership": "template"
     },
     "CLAUDE.md": {
-      "hash": "sha256:7ea1a2709be590f1d2a3020442c59a7e915174feb938f64fda6677b06b555e4f",
+      "hash": "sha256:ebab9f4760b208fe7d0e5d7a5ecb23d722bf4da9d0351107b904f890b94e4d9e",
       "ownership": "template"
     },
     "PROJECT_CONTEXT.md": {
@@ -90,95 +59,26 @@
     "VERIFICATION_PLAYBOOK.md": {
       "ownership": "once"
     },
-    "hooks/agent-budget-warn.sh": {
-      "hash": "sha256:dabd89fdba03b6c1ec3d0f3e30b4a4ddb554b8a2407ab8198ca8672c160dcc0d",
-      "ownership": "template"
-    },
-    "hooks/bash-output-guard.sh": {
-      "hash": "sha256:7b149bb2cefd37074a48edc3f8c5ff0d183caf802e2abad3ccd181a6d6952a31",
-      "ownership": "template"
-    },
-    "hooks/deny-claude-md-writes.sh": {
-      "hash": "sha256:cc9f6b70b3039a058261ec1bdce9d8e304e3270e4684a7b688b3e19e3854314e",
-      "ownership": "template"
-    },
-    "hooks/deny-hang-shapes.sh": {
-      "hash": "sha256:7bd4dea848bb998c308790983cb2c273b29d8da2e9b21a88246f95556cd87ce3",
-      "ownership": "template"
-    },
-    "hooks/deny-secret-reads.sh": {
-      "hash": "sha256:3633facbde83473589c2aeb2fc1e6d55f7bc51cf18dfbcf606e1f3e9cb1cba60",
-      "ownership": "template"
-    },
-    "hooks/enforce-agent-contract.sh": {
-      "hash": "sha256:ffbb1ade122874317160966d5b3f140b93e56a1a6310594d2f8b69cc23093dde",
-      "ownership": "template"
-    },
-    "hooks/enforce-delegation.sh": {
-      "hash": "sha256:e44ff185a542b21a0846ff54bc9cb7806cfd636cb28fac02adb8e8eb03aef028",
-      "ownership": "template"
-    },
-    "hooks/gate-before-merge.sh": {
-      "hash": "sha256:13a90a6d755de4a0362faac729d53772e4b2196e2ab4665f69eb8bc36b116845",
-      "ownership": "template"
-    },
     "hooks/git-pre-push.sh": {
-      "hash": "sha256:745ac0e924a473fe076db57d1cfe5ebbe0e1b5260d0a8967e4b68889b53ffbd1",
-      "ownership": "template"
-    },
-    "hooks/lib/agent-model.sh": {
-      "hash": "sha256:e6f2f773e895a3f40cc48c887f36edcc9f59905596455a52e489b767604e28f5",
+      "hash": "sha256:e478c9edd4174c08b1be1b520e5d8c6d6925408df10e7bfcf2b47efa1ef93cdb",
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:8c3cd1ca5c8245b7a26b0a9508fc0951943eb5c5a1d9bee3d1437aafbc7d61df",
+      "hash": "sha256:b7d124be1f21531b0368c1fa4271a0b9a4d1bfe04a515718e7f9b5e6afeb1a69",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
       "hash": "sha256:98e960b432d226294608c1b9b00c3d8a7d2cb5f182d7173e4130e0a201abd94e",
       "ownership": "template"
-    },
-    "hooks/model-floor.sh": {
-      "hash": "sha256:3c4a5e4342c7a7b45133642a61dfa6cdb596d30c4d4143f247b63737a013cea9",
-      "ownership": "template"
-    },
-    "hooks/no-push-main.sh": {
-      "hash": "sha256:f8172639bc5a92a29ebee1661bdbeead900561146d9195dbd1dbe9d76d916903",
-      "ownership": "template"
-    },
-    "hooks/now-brief.sh": {
-      "hash": "sha256:03222a107bead085905b03f28ed3ad0d3fde0e6abe417a133839084944e629df",
-      "ownership": "template"
-    },
-    "hooks/post-edit-build.sh": {
-      "hash": "sha256:5f9d6ba0a671821f519fd9156bd4a34e455f1011950fce7cfe36ad1380f8846a",
-      "ownership": "template"
-    },
-    "hooks/pre-commit-test.sh": {
-      "hash": "sha256:2b15c5456d51789f091c03d076054ac31205d5ec2ca39bca408fcc0f75c7c14b",
-      "ownership": "template"
-    },
-    "hooks/read-size-gate.sh": {
-      "hash": "sha256:0cd3f394c1100422b0f86f571e2f865159eea85beb2f4f933af6b00970ab453c",
-      "ownership": "template"
-    },
-    "hooks/retro-brief.sh": {
-      "hash": "sha256:a194662e50eccd9a4d191664bb60ecae079432397274273030afa4cd0f7f7ffd",
-      "ownership": "template"
-    },
-    "hooks/retro-ledger.sh": {
-      "hash": "sha256:2593baafe3b1834e4299de8a698cddbe19a45aa089b5528b335b3a6b6ed69648",
-      "ownership": "template"
-    },
-    "hooks/run-gate.sh": {
-      "hash": "sha256:bf199cd6b8ea08144eeca4b2f7f8adcc9d74c817b654fa727244d18ff5ad8d85",
-      "ownership": "template"
-    },
-    "hooks/verify-hooks.sh": {
-      "hash": "sha256:7f4b6ba5c96d15e44de81045401935921ec45bb0ee72b0e0605c3945de6e093a",
-      "ownership": "template"
     }
   },
   "instructions_file": ".claude/project-instructions.md",
-  "agent_grants": ".claude/agent-grants.json"
+  "agent_grants": ".claude/agent-grants.json",
+  "pending_once_notes": [
+    {
+      "file": "PROJECT_CONTEXT.md",
+      "from_commit": "47207c9bda19a2c47aeb7ad25d8f0a772cc8bdcc",
+      "to_commit": "03424bd23d5949fcdb3b572522ab6e9d61b8b170"
+    }
+  ]
 }

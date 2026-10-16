@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bash hooks/run-gate.sh*)",
+      "Bash(cct-gate*)",
       "Read",
       "Edit",
       "Write",
@@ -34,167 +34,16 @@
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true
+    "code-review@claude-plugins-official": true,
+    "cct@dagonet": true
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\"",
-            "timeout": 3360
-          },
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/no-push-main.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\""
-          },
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Read|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-secret-reads.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- secrets protection offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-claude-md-writes.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- CLAUDE.md protection offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/read-size-gate.sh\"; [ -r \"$f\" ] || { echo \"WARN: $f missing -- Read size gate offline. Check that hooks/ exists at the project root.\" >&2; exit 0; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__MCP_DOCKER__merge_pull_request|mcp__github-tools__github_pr_auto_merge",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/gate-before-merge.sh\"; [ -r \"$f\" ] || { echo \"HOOK SCRIPT MISSING: $f -- enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 2; }; command -v bash >/dev/null 2>&1 || { echo \"HOOK BLOCKED: bash not found on PATH -- $f cannot run\" >&2; exit 2; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/model-floor.sh\"; [ -r \"$f\" ] || exit 0; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh\"; [ -r \"$f\" ] || { echo \"WARN: $f missing -- delegation enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 0; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh\"; [ -r \"$f\" ] || { echo \"WARN: $f missing -- delegation enforcement offline. Check that hooks/ exists at the project root.\" >&2; exit 0; }; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-hang-shapes.sh\"; [ -r \"$f\" ] || exit 0; exec bash \"$f\""
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/agent-budget-warn.sh\"; [ -r \"$f\" ] || { echo \"WARN: $f missing -- tool-call budget offline. Check that hooks/ exists at the project root.\" >&2; exit 0; }; exec bash \"$f\""
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/bash-output-guard.sh\""
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/post-edit-build.sh\""
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-agent-contract.sh\""
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/retro-ledger.sh\""
-          }
-        ]
-      }
-    ],
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/retro-brief.sh\""
-          },
-          {
-            "type": "command",
-            "command": "exec bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/verify-hooks.sh\""
-          }
-        ]
-      },
-      {
-        "matcher": "compact",
-        "hooks": [
-          {
-            "type": "command",
-            "timeout": 10,
-            "command": "f=\"${CLAUDE_PROJECT_DIR:-.}/hooks/now-brief.sh\"; [ -r \"$f\" ] || exit 0; exec bash \"$f\""
+            "command": "s=$(cat | grep -o '\"session_id\" *: *\"[^\"]*\"' | head -1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/'); case $s in ''|*[!A-Za-z0-9-]*) s= ;; esac; d=\"${TMPDIR:-/tmp}/cct-$(id -u)\"; o=; case $(uname -s) in MINGW*|MSYS*|CYGWIN*) o=1 ;; *) [ -O \"$d\" ] && o=1 ;; esac; [ -n \"$s\" ] && [ -n \"$o\" ] && [ -f \"$d/$s\" ] && exit 0; echo 'BLOCKED: the cct plugin is not active in this session. Install it with /plugin marketplace add dagonet/claude-code-toolkit and /plugin install cct@dagonet, then restart the session.' >&2; exit 2"
           }
         ]
       }
