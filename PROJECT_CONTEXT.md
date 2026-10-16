@@ -31,7 +31,7 @@
      project build on every keystroke-level write. `none` is a true no-op for
      this key (unlike Gate). -->
 - **Post-edit build**: none
-<!-- Declaring BOTH means the Test runs on commit and the Gate does not, so no artifact is minted and every merge needs a separate `bash hooks/run-gate.sh`. Worth it only above roughly gate_seconds / (gate_seconds - test_seconds) commits per PR — measure yours. Below that, declare the Gate alone and leave the Test field empty: a literal `none` IS an opt-out here (fixed since v3.0.3) -- pre-commit-test.sh treats a trimmed, case-insensitive `none` as absent and falls through to the Gate, the same as leaving the field out. -->
+<!-- Declaring BOTH means the Test runs on commit and the Gate does not, so no artifact is minted and every merge needs a separate `cct-gate`. Worth it only above roughly gate_seconds / (gate_seconds - test_seconds) commits per PR — measure yours. Below that, declare the Gate alone and leave the Test field empty: a literal `none` IS an opt-out here (fixed since v3.0.3) -- pre-commit-test.sh treats a trimmed, case-insensitive `none` as absent and falls through to the Gate, the same as leaving the field out. -->
 <!-- Join Gate command steps with `&&`, never `;` — `;` discards an earlier step's failure status, so `<real gate> ; <anything>` exits 0 and the gate mints a pass artifact on a failing suite. -->
 - **Python Version**: 3.11
 
