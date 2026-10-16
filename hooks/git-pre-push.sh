@@ -108,7 +108,7 @@ if [ "${1:-}" = --install ]; then gpp_install "${2:-.}"; exit $?; fi
 
 gpp_lib="$(dirname "$0")/lib/git-cmd.sh"
 if [ ! -f "$gpp_lib" ]; then
-  echo "BLOCKED: pre-push: $gpp_lib missing -- the protected branches cannot be read, push refused. Run /sync-template (hooks/lib/git-cmd.sh), or push deliberately with the --no-verify flag (git then skips this hook)." >&2
+  echo "BLOCKED: pre-push: $gpp_lib missing -- the protected branches cannot be read, push refused. Run /cct:sync-template (hooks/lib/git-cmd.sh), or push deliberately with the --no-verify flag (git then skips this hook)." >&2
   exit 1
 fi
 . "$gpp_lib"

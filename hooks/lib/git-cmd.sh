@@ -81,7 +81,7 @@
 # exists to catch. The distinction is the direction of the call: 127 arriving
 # FROM the harness means our script was not launched; 127 arriving from a child
 # we launched ourselves is that child's answer. See the verdict table in
-# user-level-reference/skills/sync-template/SKILL.md step 4.
+# skills/sync-template/SKILL.md step 4.
 #
 # WHY 78 EXISTS (v2.2.5, consumer report). `run-gate.sh`'s RUN_GATE_ACTIVE guard
 # fires correctly when a project's **Gate** value is `bash hooks/run-gate.sh`,
@@ -154,7 +154,7 @@ case "$gc_json_lib" in
   *) gc_json_lib="./json.sh" ;;
 esac
 if [ ! -f "$gc_json_lib" ]; then
-  echo "BLOCKED: $gc_json_lib missing — run /sync-template step 6b (hooks/lib/json.sh)" >&2
+  echo "BLOCKED: $gc_json_lib missing — run /cct:sync-template step 6b (hooks/lib/json.sh)" >&2
   exit 2
 fi
 . "$gc_json_lib"
@@ -1352,6 +1352,13 @@ gc_gate_dir() {
   if [ -n "$common" ]; then printf '%s/gate\n' "$common"; return 0; fi
   echo "WARN: git < 2.31: gate artifacts stay at <toplevel>/.gate (per-worktree)" >&2
   printf '%s/.gate\n' "$top"
+}
+
+# v5.0: the gate command to print in block messages -- cct-gate from the plugin, else the in-repo script.
+# hooks/run-gate.sh repeats this function (same standalone reason as gc_gate_dir above);
+# scripts/verify-template-consistency.sh asserts the two copies agree.
+gc_gate_cmd() {
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then printf 'cct-gate'; else printf 'bash hooks/run-gate.sh'; fi
 }
 
 # gc_sha256 <stdin -> lowercase hex sha256>. Never `sha256sum <path>` -- that
