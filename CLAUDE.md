@@ -10,7 +10,7 @@ At the start of every session:
 3. Read `PROJECT_CONTEXT.md` — build commands and workflow config.
 4. **Check Open Brain** — `thoughts_search`/`thoughts_recent` for context; `thoughts_capture` without asking. Prefer `wiki_get` for synthesis; fall back to `thoughts_search` if stale.
 5. Present current state (MEMORY.md); check `git status`/`git worktree list` and resolve anything stale before new work.
-6. **Act on the RETRO brief** (`hooks/retro-brief.sh`) — fix or delegate each entry before new work.
+6. **Act on the RETRO brief** (printed at session start) — fix or delegate each entry before new work.
 7. **Write the task brief** — goal, constraints, acceptance criteria, files in scope, definition of done — then spawn a coder to implement.
 
 ## Workflow TL;DR
@@ -52,6 +52,9 @@ These are not optional. If the trigger fires, invoke the named skill BEFORE gene
 - BEFORE claiming work complete or opening a PR → invoke `superpowers:verification-before-completion`.
 
 **Strong triggers, plugin defaults, and meta skills:** see the same section in `~/.claude/CLAUDE.md`.
+
+- Specs and plans go in `docs/plans/`, not superpowers' default.
+- writing-plans: choose **Subagent-driven**, not **Native** (main-session implementing breaks the PO rule).
 
 **When spawning agents:** each agent opens its skills on demand from its own `## Skills` table; name a skill in the brief only when the task requires it.
 

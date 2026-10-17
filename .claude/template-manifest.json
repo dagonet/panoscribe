@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v5.1.0",
-  "template_commit": "03424bd23d5949fcdb3b572522ab6e9d61b8b170",
+  "template_version": "v5.1.2",
+  "template_commit": "f4b10381eabeb13ba3b6f525f027d6e6b053a3fb",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/project-instructions.md": {
@@ -46,7 +46,7 @@
       "ownership": "template"
     },
     "CLAUDE.md": {
-      "hash": "sha256:ebab9f4760b208fe7d0e5d7a5ecb23d722bf4da9d0351107b904f890b94e4d9e",
+      "hash": "sha256:4734d80e994b359cd7bc6a6ab6cee97e6060974100a807d60230a1f7127b5ad8",
       "ownership": "template"
     },
     "PROJECT_CONTEXT.md": {
@@ -73,12 +73,5 @@
     }
   },
   "instructions_file": ".claude/project-instructions.md",
-  "agent_grants": ".claude/agent-grants.json",
-  "pending_once_notes": [
-    {
-      "file": "PROJECT_CONTEXT.md",
-      "from_commit": "47207c9bda19a2c47aeb7ad25d8f0a772cc8bdcc",
-      "to_commit": "03424bd23d5949fcdb3b572522ab6e9d61b8b170"
-    }
-  ]
+  "agent_grants": ".claude/agent-grants.json"
 }
