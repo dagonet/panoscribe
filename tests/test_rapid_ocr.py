@@ -183,6 +183,27 @@ def test_init_params_for_cpu_device(tmp_path: Path) -> None:
     assert params["EngineConfig.onnxruntime.use_cuda"] is False
 
 
+def test_ensure_loaded_substitutes_latin_with_iso_code(tmp_path: Path) -> None:
+    """PP-OCRv6 compat: when detected language resolves to LATIN, the concrete
+    ISO code (e.g. 'de') is passed as Rec.lang_type instead of 'latin'."""
+    config = _make_config(ocr_language="auto")
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video, detected_language="de")
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert params["Rec.lang_type"] == "de"
+
+
 def test_ensure_loaded_probes_cuda_when_device_is_cuda(tmp_path: Path) -> None:
     config = _make_config(ocr_device="cuda")
     video = tmp_path / "v.mp4"
@@ -796,8 +817,8 @@ def test_server_det_forces_ch_det_lang(tmp_path: Path, override_kwargs: dict[str
 
 
 def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
-    """With no model knobs, Det.lang_type stays EN for latin-script languages
-    (existing behaviour unchanged)."""
+    """With no model knobs and a Latin-script language, Det.lang_type receives
+    the ISO code (PP-OCRv6 compat) and CH override does NOT fire."""
     config = _make_config(ocr_language="de")
     video = tmp_path / "v.mp4"
     video.write_bytes(b"fake")
@@ -813,7 +834,7 @@ def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
 
     _, kwargs = mock_rapid_cls.call_args
     params = kwargs["params"]
-    assert params["Det.lang_type"] is LangRec.EN, "CH override must NOT fire when knobs are None"
+    assert params["Det.lang_type"] == "de", "CH override must NOT fire when knobs are None"
 
 
 # ── Sprint 13: ocr_det_lang override (reaches the multilingual det model) ──────

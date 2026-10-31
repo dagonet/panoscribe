@@ -500,6 +500,19 @@ def test_model_knobs_normalize_case(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.ocr_rec_ocr_version == "PP-OCRv4"
 
 
+def test_model_knobs_accept_ppocrv6(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PP-OCRv6 (default in rapidocr >=3.10) is accepted and normalised."""
+    _strip_pano_env(monkeypatch)
+
+    cfg = PanoScribeConfig(
+        ocr_det_ocr_version="pp-ocrv6",
+        ocr_rec_ocr_version="PP-OCRv6",
+    )
+
+    assert cfg.ocr_det_ocr_version == "PP-OCRv6"
+    assert cfg.ocr_rec_ocr_version == "PP-OCRv6"
+
+
 def test_model_knobs_env_round_trip_and_empty_string(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
