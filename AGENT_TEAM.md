@@ -140,7 +140,7 @@ Task #{n}: issue #{issue}. Worktree: {path}, branch: feature/issue-{issue}.
 - {file} — {what to change}   (out of scope: {paths})
 
 ## Definition of done
-{tests to pass} + `cct-gate` green, then PR.
+{tests to pass} + `cct-gate` green (it gates the current directory, or the work tree given as its one argument: `cct-gate <absolute worktree path>`), then PR.
 
 Context: the GitHub issue (reference only). Workflow: implement -> gate -> commit -> push -> create PR -> report the PR URL.
 ```
@@ -177,6 +177,11 @@ See `PROJECT_CONTEXT.md` for the worktree base path; see Mode Behavior Table for
 - Completion cleanup (remove worktree, delete branch) is Merge Protocol step 6.
 - `isolation: worktree` cuts from **`origin/main`**, not local `main` or the session branch — a worktree coder lags until an unlanded session PR lands. PO check: `git rev-list --count <base>..<session-branch>` = 0, and `git cat-file -e <base>:<path>` succeeds for every file the brief names. Untracked files are never in the worktree — hand the coder an absolute path.
 
+**Inside an isolated worktree, the harness refuses commands it cannot show are confined to that worktree** (measured: 59 refusals in one day). An agent therefore:
+- writes literal absolute paths in `git`, `sed`, `find` and `npm` commands, with no shell variables and no brace expansion (`$W`, `{a,b}`) — put a longer sequence in a script file and run `bash <path>`;
+- never points `git -C` at the shared checkout — run git from the worktree itself;
+- creates another worktree from its own worktree, `git worktree add <abs path> -b <branch>`, not via `-C`; to gate a worktree, pass its path to `cct-gate`.
+
 **Background jobs outlive the agent that spawned them:** A backgrounded job is not scoped to the agent that started it — a `sleep`-and-act cleanup deleted a live lock an hour after its agent handed back (MM-Agent, 2026-09-22), and a stopped gate's children outlived `TaskStop`, kill denied to the noticing agent (this toolkit, same day). Rules: cleanup belongs in the agent's OWN final turn or is handed to a NAMED successor; a successor that finds a resource already released SAYS so instead of claiming it; the noticing agent may be denied the kill, so report the pid and command line — never assume it stopped.
 
 ---
@@ -194,8 +199,9 @@ After review and testing pass, the developer executes the merge — git/GitHub M
    message the PO to (a) guide, (b) defer, or (c) re-spawn architect.
 3. Verify CI via gh_workflow_list after push (open the PR first — a bare branch
    push produces no run); fix before merging if it fails.
-4. Run the gate on the rebased head: `cct-gate` writes
-   the gate artifact for the current HEAD — the ONLY accepted green;
+4. Run the gate on the rebased head: `cct-gate` (or `cct-gate <absolute worktree path>`
+   from any directory, so no wrapper script is needed) writes
+   the gate artifact for the work tree's HEAD (the current directory, or the one given) — the ONLY accepted green;
    commit exactly what was gated. The plugin's `gate-before-merge` hook blocks
    merge tools without a fresh, matching artifact (< 60 min) unless
    PROJECT_CONTEXT.md's **Gate** field is unset.
@@ -216,6 +222,8 @@ After review and testing pass, the developer executes the merge — git/GitHub M
 Current models need the whole task in the prompt, not a staged planning ritual. Every spawn states: **Goal** (1-2 sentences), **Constraints**, **Acceptance criteria**, **Files in scope** (in and explicitly out), **Definition of done** (tests + `cct-gate`).
 
 An agent that has to go looking for any of the five is under-briefed — a prompt defect, not an agent failure.
+
+**Agent budget:** one agent has about 120 tool calls. Split a large docs restructure into tasks of at most ~80 tool calls each, one file group per task.
 
 **Plan files are optional** — write one in `docs/plans/` when work spans sessions or several workstreams need a shared reference; nothing blocks a spawn on one, and no hook parses a literal in it.
 

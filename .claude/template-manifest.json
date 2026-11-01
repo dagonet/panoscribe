@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v5.1.2",
-  "template_commit": "f4b10381eabeb13ba3b6f525f027d6e6b053a3fb",
+  "template_version": "v5.2.1",
+  "template_commit": "d40dda49bd2a4db813d3393e9aaed4fae9df118e",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/project-instructions.md": {
@@ -35,14 +35,14 @@
       "ownership": "once"
     },
     ".gitattributes": {
-      "hash": "sha256:34bd2148694c89cd5747d07a7afacd315ac76a9cef7402d189030894fe08a701",
+      "hash": "sha256:39f2bddb0d9ed2a760b5adbab58b78b8d18ed95779ad44cdfa5fc14d18d79a6b",
       "ownership": "template"
     },
     ".gitignore": {
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:80b2f23a73b0660a1662e0676ca51dbaef9c943f840bac0cd5035e7931c0ed43",
+      "hash": "sha256:21450c4db2cf841072f7b0f7c4cae9cb7603d5ec10c8ba5316838867cce31187",
       "ownership": "template"
     },
     "CLAUDE.md": {
