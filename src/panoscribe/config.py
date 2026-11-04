@@ -33,6 +33,7 @@ _VALID_DET_LANGS: frozenset[str] = frozenset({"en", "ch", "multi"})  # rapidocr 
 _OCR_VERSION_CANONICAL: dict[str, str] = {
     "pp-ocrv4": "PP-OCRv4",
     "pp-ocrv5": "PP-OCRv5",
+    "pp-ocrv6": "PP-OCRv6",
 }
 
 

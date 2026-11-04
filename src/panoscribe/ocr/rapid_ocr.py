@@ -229,6 +229,21 @@ class RapidOCREngine:
                 self._config.ocr_language, detected_language=detected_language
             )
 
+            # PP-OCRv6 (default in rapidocr >=3.10) replaced the grouped
+            # "latin" rec lang with per-language ISO 639-1 codes (de, fr, …).
+            # Substitute the concrete code so model-route lookup succeeds.
+            if lang == LangRec.LATIN:
+                iso = (
+                    detected_language
+                    if self._config.ocr_language == "auto"
+                    else self._config.ocr_language
+                )
+                if iso and iso in _ISO_TO_LANGREC:
+                    lang = iso  # type: ignore[assignment]
+                    logger.info(
+                        "Using ISO code %r for rec model (PP-OCRv6 compat)", iso
+                    )
+
             use_cuda = self._config.ocr_device == "cuda"
             logger.info(
                 "Loading RapidOCR on %s — first run may download ~15 MB of ONNX models",
