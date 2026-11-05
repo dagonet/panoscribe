@@ -188,6 +188,11 @@ def _normalise_language(value: object, fallback: str | None) -> str:
         logger.warning(
             "Remote ASR reported an unrecognised language (%.40r); using the fallback", text
         )
+    elif value is not None:
+        logger.warning(
+            "Remote ASR reported an unrecognised language (a %s, not text); using the fallback",
+            type(value).__name__,
+        )
     if fallback and fallback.strip():
         return fallback.strip().lower()
     return _DEFAULT_LANGUAGE
@@ -476,6 +481,13 @@ class RemoteTranscriber:
             "timestamps, such as a whisper-1 style model."
         )
 
+    def _malformed(self) -> PanoScribeError:
+        return PanoScribeError(
+            f"The model {self._model!r} returned malformed segments (a negative or reversed "
+            "timestamp, or text that is missing or not a string), so the result cannot be "
+            "trusted. Nothing was repaired or dropped."
+        )
+
     def _parse_segments(
         self, body: dict[str, object]
     ) -> list[tuple[float, float, str, float | None]]:
@@ -485,7 +497,11 @@ class RemoteTranscriber:
             raise self._no_timestamps()
         if not raw:
             text = body.get("text")
-            if isinstance(text, str) and text.strip():
+            if text is None:
+                return []  # silence
+            if not isinstance(text, str):
+                raise self._malformed()
+            if text.strip():
                 raise self._no_timestamps()
             return []  # silence
         parsed: list[tuple[float, float, str, float | None]] = []
@@ -493,19 +509,22 @@ class RemoteTranscriber:
             if not isinstance(item, dict):
                 raise self._no_timestamps()
             start, end = item.get("start"), item.get("end")
-            if not (_is_time(start) and _is_time(end)):
+            if not (_is_finite_number(start) and _is_finite_number(end)):
                 raise self._no_timestamps()
+            # Bad values are never clamped or dropped: they would invent timing.
             text_value = item.get("text")
-            text = text_value.strip() if isinstance(text_value, str) else ""
+            if start < 0 or end < start or not isinstance(text_value, str):  # type: ignore[operator]
+                raise self._malformed()
+            text = text_value.strip()
             if not text:
                 continue
             logprob = item.get("avg_logprob")
             parsed.append(
                 (
-                    float(start),
-                    float(end),
+                    float(start),  # type: ignore[arg-type]
+                    float(end),  # type: ignore[arg-type]
                     text,
-                    float(logprob) if _is_number(logprob) else None,
+                    float(logprob) if _is_finite_number(logprob) else None,  # type: ignore[arg-type]
                 )
             )
         return parsed
@@ -524,9 +543,11 @@ def _retry_delay(attempt: int, retry_after: str | None) -> float:
     return min(step * (1.0 + random.random()), _BACKOFF_CAP_S)
 
 
-def _is_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _is_time(value: object) -> bool:
-    return _is_number(value) and math.isfinite(value)  # type: ignore[arg-type]
+def _is_finite_number(value: object) -> bool:
+    """True for a real, finite int or float (not a bool, NaN, infinity or a huge int)."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:  # an integer too large for a float
+        return False

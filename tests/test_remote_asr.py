@@ -796,6 +796,127 @@ def test_timeout_setting_reaches_the_request(wav: Path) -> None:
     assert seen == [{"connect": 10.0, "read": 123.0, "write": 123.0, "pool": 123.0}]
 
 
+# ── Segment validation, numbers, language ────────────────────────
+
+
+def _raw_handler(content: bytes) -> Handler:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=content)
+
+    return handler
+
+
+@pytest.mark.parametrize(
+    "segment",
+    [
+        {"start": -0.5, "end": 1.0, "text": "x"},
+        {"start": 2.0, "end": 1.0, "text": "x"},
+        {"start": 0.0, "end": 1.0},
+        {"start": 0.0, "end": 1.0, "text": None},
+        {"start": 0.0, "end": 1.0, "text": 123},
+        {"start": 0.0, "end": 1.0, "text": ["x"]},
+    ],
+)
+def test_malformed_segment_fails_the_run_and_is_not_repaired(
+    wav: Path, segment: dict[str, object]
+) -> None:
+    body = {"language": "en", "segments": [{"start": 0.0, "end": 1.0, "text": "ok"}, segment]}
+
+    with pytest.raises(PanoScribeError, match="malformed segments") as info:
+        _engine(_json_handler(body)).transcribe(wav)
+
+    assert "whisper-1" in str(info.value)
+    assert "no segment timestamps" not in str(info.value)
+
+
+def test_zero_length_segment_is_allowed(wav: Path) -> None:
+    body = {"language": "en", "segments": [{"start": 1.0, "end": 1.0, "text": "x"}]}
+
+    segments, _ = _engine(_json_handler(body)).transcribe(wav)
+
+    assert [(s.start, s.end) for s in segments] == [(1.0, 1.0)]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"segments": []},
+        {"segments": [], "text": None},
+        {"segments": [], "text": ""},
+        {"segments": [], "text": "  \n"},
+    ],
+)
+def test_empty_segments_with_blank_or_missing_text_is_silence(
+    wav: Path, body: dict[str, object]
+) -> None:
+    assert _engine(_json_handler(body)).transcribe(wav) == ([], "en")
+
+
+@pytest.mark.parametrize("text", [123, 1.5, True, ["hi"], {"a": 1}])
+def test_empty_segments_with_non_string_text_is_malformed(wav: Path, text: object) -> None:
+    with pytest.raises(PanoScribeError, match="malformed segments"):
+        _engine(_json_handler({"segments": [], "text": text})).transcribe(wav)
+
+
+def test_huge_integer_time_is_not_a_time(wav: Path) -> None:
+    content = b'{"segments": [{"start": 1' + b"0" * 400 + b', "end": 2, "text": "x"}]}'
+
+    with pytest.raises(PanoScribeError, match="whisper-1") as info:
+        _engine(_raw_handler(content)).transcribe(wav)
+
+    assert not isinstance(info.value.__context__, OverflowError)
+
+
+@pytest.mark.parametrize(
+    "literal", [b"NaN", b"Infinity", b"-Infinity", b"1e999", b"1" + b"0" * 400, b'"abc"', b"true"]
+)
+def test_unusable_logprob_becomes_none(wav: Path, literal: bytes) -> None:
+    content = (
+        b'{"language": "en", "segments": [{"start": 0, "end": 1, "text": "x", "avg_logprob": '
+        + literal
+        + b"}]}"
+    )
+
+    segments, _ = _engine(_raw_handler(content)).transcribe(wav)
+
+    assert [s.text for s in segments] == ["x"]
+    assert segments[0].asr_logprob is None
+
+
+@pytest.mark.parametrize("value", [123, ["en"], True, {"a": 1}])
+def test_non_text_language_warns_and_falls_back(
+    wav: Path, caplog: pytest.LogCaptureFixture, value: object
+) -> None:
+    body = {"language": value, "segments": [{"start": 0, "end": 1, "text": "x"}]}
+
+    with caplog.at_level(logging.WARNING, logger="panoscribe.asr.remote"):
+        _, language = _engine(_json_handler(body), _cfg(whisper_language="fr")).transcribe(wav)
+
+    assert language == "fr"
+    assert "unrecognised language" in caplog.text
+
+
+def test_missing_language_stays_silent(wav: Path, caplog: pytest.LogCaptureFixture) -> None:
+    body = {"segments": [{"start": 0, "end": 1, "text": "x"}]}
+
+    with caplog.at_level(logging.WARNING, logger="panoscribe.asr.remote"):
+        _, language = _engine(_json_handler(body), _cfg(whisper_language="fr")).transcribe(wav)
+
+    assert language == "fr"
+    assert "unrecognised language" not in caplog.text
+
+
+def test_configured_language_used_when_no_chunk_reports_one(tmp_path: Path) -> None:
+    src = _write_wav(tmp_path / "audio.wav", 40.0)
+    silent = {"language": "de", "segments": [], "text": ""}
+
+    segments, language = _engine(
+        _json_handler(silent), _cfg(whisper_language="fr", asr_remote_max_upload_mb=0.7)
+    ).transcribe(src)
+
+    assert (segments, language) == ([], "fr")
+
+
 @pytest.mark.parametrize(
     ("url", "trust_env"),
     [

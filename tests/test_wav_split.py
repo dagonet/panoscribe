@@ -162,3 +162,51 @@ def test_stereo_input_is_split_with_whole_frames(tmp_path: Path) -> None:
     assert len(chunks) == 3
     assert all(c.path.stat().st_size <= limit for c in chunks)
     assert b"".join(_read_frames(c.path) for c in chunks) == _read_frames(src)
+
+
+def test_quieter_point_before_the_search_window_is_not_chosen(tmp_path: Path) -> None:
+    # A silent second at 2-3 s is far quieter than anything else, but the first
+    # cut may only look at the last 10 s a chunk can cover (8-18 s).
+    src = _wav(tmp_path / "a.wav", [(2, 9000), (1, 0), (27, 9000)])
+
+    chunks = split_wav(src, max_bytes=MAX, out_dir=tmp_path / "c")
+
+    assert len(chunks) >= 2
+    assert 8.0 <= chunks[1].start_s <= 18.0
+
+
+def test_header_with_a_list_chunk_before_data(tmp_path: Path) -> None:
+    """ffmpeg writes a 78-byte header (LIST/INFO before ``data``), not 44."""
+    pcm = b"".join(struct.pack("<hh", amp, -amp) * (RATE // 2) for amp in range(100, 3100, 100))
+    fmt = struct.pack("<HHIIHH", 1, 1, RATE, RATE * 2, 2, 16)
+    info = b"INFO" + b"ISFT" + struct.pack("<I", 14) + b"Lavf58.76.100\x00"
+    header = (
+        b"RIFF"
+        + struct.pack("<I", 4 + 8 + len(fmt) + 8 + len(info) + 8 + len(pcm))
+        + b"WAVE"
+        + b"fmt "
+        + struct.pack("<I", len(fmt))
+        + fmt
+        + b"LIST"
+        + struct.pack("<I", len(info))
+        + info
+        + b"data"
+        + struct.pack("<I", len(pcm))
+    )
+    assert len(header) == 78
+    src = tmp_path / "ffmpeg.wav"
+    src.write_bytes(header + pcm)
+
+    chunks = split_wav(src, max_bytes=MAX, out_dir=tmp_path / "c")
+
+    assert len(chunks) >= 2
+    assert all(c.path.stat().st_size <= MAX for c in chunks)
+    assert b"".join(_read_frames(c.path) for c in chunks) == pcm
+
+
+def test_wav_shorter_than_its_header_declares_raises_clearly(tmp_path: Path) -> None:
+    src = _wav(tmp_path / "a.wav", [(60, 9000)])
+    src.write_bytes(src.read_bytes()[: 44 + 20 * 32_000])
+
+    with pytest.raises(PanoScribeError, match="before its declared length"):
+        split_wav(src, max_bytes=MAX, out_dir=tmp_path / "c")

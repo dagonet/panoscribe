@@ -114,7 +114,10 @@ def _quietest_cut(reader: wave.Wave_read, earliest: int, latest: int, window: in
     if latest - earliest < window:
         return latest
     reader.setpos(earliest)
-    samples = array("h", reader.readframes(latest - earliest))
+    data = reader.readframes(latest - earliest)
+    if len(data) < (latest - earliest) * reader.getnchannels() * 2:
+        raise PanoScribeError("WAV file ended before its declared length")
+    samples = array("h", data)
     if sys.byteorder == "big":
         samples.byteswap()
     channels = reader.getnchannels()
