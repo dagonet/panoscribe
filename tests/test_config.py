@@ -623,6 +623,10 @@ def test_remote_asr_unknown_backend_rejected(monkeypatch: pytest.MonkeyPatch) ->
         ("asr_remote_max_retries", -1),
         ("asr_remote_max_upload_mb", 0.0),
         ("asr_remote_max_upload_mb", -1.0),
+        ("asr_remote_timeout_s", float("nan")),
+        ("asr_remote_timeout_s", float("inf")),
+        ("asr_remote_max_upload_mb", float("nan")),
+        ("asr_remote_max_upload_mb", float("inf")),
     ],
 )
 def test_remote_asr_numeric_validation(

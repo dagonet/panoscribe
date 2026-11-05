@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -196,9 +197,9 @@ class PanoScribeConfig(BaseSettings):
     @field_validator("asr_remote_timeout_s", "asr_remote_max_upload_mb", mode="after")
     @classmethod
     def _validate_remote_asr_positive(cls, v: float) -> float:
-        """Reject zero or negative remote ASR timeouts and upload limits."""
-        if v <= 0:
-            raise ValueError(f"must be > 0; got {v!r}")
+        """Reject zero, negative and non-finite remote ASR timeouts and upload limits."""
+        if not math.isfinite(v) or v <= 0:
+            raise ValueError(f"must be a finite number > 0; got {v!r}")
         return v
 
     @field_validator("asr_remote_max_retries", mode="after")

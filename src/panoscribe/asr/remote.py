@@ -6,7 +6,9 @@ It POSTs audio to ``{base_url}/audio/transcriptions`` and maps the
 
 Secrets: the API key is read here and nowhere else (``get_secret_value``). It
 is never logged, never placed in an error message, and ``httpx`` exception
-text (which can quote headers) is never used: errors are raised ``from None``.
+text (which can quote headers) is never used. Errors are raised outside the
+``except`` block that caught the original, so neither ``__cause__`` nor
+``__context__`` carries the request or the response body.
 """
 
 from __future__ import annotations
@@ -215,12 +217,19 @@ def _checked_host(base_url: str) -> tuple[str, str]:
         raise PanoScribeError(problem)
     if "#" in base_url:
         raise PanoScribeError(problem)
+    # The failure is recorded and raised outside the ``except`` so that no
+    # ``__context__`` is left behind: the ValueError text quotes part of the URL.
+    unparseable = False
+    parts = None
+    hostname = None
     try:
         parts = urlsplit(base_url)
         hostname = parts.hostname
         _ = parts.port  # raises ValueError on a malformed port
     except ValueError:
-        raise PanoScribeError(problem) from None
+        unparseable = True
+    if unparseable or parts is None:
+        raise PanoScribeError(problem)
     if (
         parts.scheme not in ("http", "https")
         or not hostname
@@ -264,11 +273,16 @@ class RemoteTranscriber:
         try:
             import httpx as httpx_module
         except ImportError:
+            httpx_module = None  # type: ignore[assignment]
+        if httpx_module is None:
             raise PanoScribeError(
                 "Remote speech recognition needs the httpx package. "
                 "Install it with: uv sync --extra remote-asr"
-            ) from None
+            )
 
+        # httpx logs every request URL at INFO, and a token in a URL path cannot
+        # be recognised, so keep that logger quiet whenever this engine is built.
+        logging.getLogger("httpx").setLevel(logging.WARNING)
         self._config = config
         self._httpx = httpx_module
         self._transport = transport
@@ -276,6 +290,9 @@ class RemoteTranscriber:
         self._model: str = config.asr_remote_model
         self._url = f"{config.asr_remote_base_url.rstrip('/')}/audio/transcriptions"
         self._host = f"[{hostname}]" if ":" in hostname else hostname
+        # A loopback server must not be reached through an environment proxy:
+        # the proxy would receive the audio and the Authorization header.
+        self._trust_env = not _is_loopback(hostname)
         self._announce(scheme, hostname)
 
     def _announce(self, scheme: str, hostname: str) -> None:
@@ -303,11 +320,7 @@ class RemoteTranscriber:
         )
         language: str | None = None
         segments: list[TranscriptSegment] = []
-        with self._httpx.Client(
-            transport=self._transport,
-            timeout=self._httpx.Timeout(cfg.asr_remote_timeout_s, connect=_CONNECT_TIMEOUT_S),
-            follow_redirects=False,
-        ) as client:
+        with self._new_client() as client:
             for chunk in chunks:
                 body = self._post_chunk(client, chunk)
                 parsed = self._parse_segments(body)
@@ -324,6 +337,32 @@ class RemoteTranscriber:
             )
             for start, end, text, logprob in segments
         ], final_language
+
+    def _new_client(self) -> httpx.Client:
+        """Build the HTTP client; any failure becomes a clear, chain-free error.
+
+        Odd base URLs, proxy variables and ``SSL_CERT_FILE`` can all make httpx
+        raise, with text that may quote them, so only the exception type is kept.
+        """
+        failure = ""
+        client: httpx.Client | None = None
+        try:
+            client = self._httpx.Client(
+                transport=self._transport,
+                timeout=self._httpx.Timeout(
+                    self._config.asr_remote_timeout_s, connect=_CONNECT_TIMEOUT_S
+                ),
+                follow_redirects=False,
+                trust_env=self._trust_env,
+            )
+        except Exception as exc:
+            failure = type(exc).__name__
+        if client is None:
+            raise PanoScribeError(
+                f"Remote speech recognition could not set up its HTTP client ({failure}). "
+                "Check the base URL (PANO_ASR_REMOTE_BASE_URL) and the proxy settings."
+            )
+        return client
 
     def _post_chunk(self, client: httpx.Client, chunk: AudioChunk) -> dict[str, object]:
         """POST one chunk and return the decoded JSON object."""
@@ -342,8 +381,13 @@ class RemoteTranscriber:
         audio = chunk.path.read_bytes()
         attempts = cfg.asr_remote_max_retries + 1
         response: httpx.Response | None = None
+        # Every failure is recorded inside the ``except`` and raised after it, so
+        # the error has no ``__context__``: the original exception can hold the
+        # request (with the Authorization header) or the response body.
         for attempt in range(attempts):
             failure: str
+            fatal = False
+            response = None
             try:
                 response = client.post(
                     self._url,
@@ -352,17 +396,18 @@ class RemoteTranscriber:
                     headers=headers,
                 )
             except self._httpx.TransportError as exc:
-                response = None
                 failure = type(exc).__name__
-            except self._httpx.HTTPError as exc:
-                raise PanoScribeError(
-                    f"Remote speech recognition request to {self._host} failed "
-                    f"({type(exc).__name__})."
-                ) from None
+            except Exception as exc:
+                failure = type(exc).__name__
+                fatal = True
             else:
                 if response.status_code not in _RETRYABLE_STATUS:
                     break
                 failure = f"HTTP {response.status_code}"
+            if fatal:
+                raise PanoScribeError(
+                    f"Remote speech recognition request to {self._host} failed ({failure})."
+                )
             if attempt + 1 < attempts:
                 retry_after = response.headers.get("Retry-After") if response else None
                 self._sleep(_retry_delay(attempt, retry_after))
@@ -370,17 +415,21 @@ class RemoteTranscriber:
             raise PanoScribeError(
                 f"Remote speech recognition at {self._host} failed ({failure}) after "
                 f"{attempts} attempt(s) (model {self._model!r})."
-            ) from None
+            )
         if response is None:  # pragma: no cover - the loop always breaks or raises
             raise PanoScribeError(f"Remote speech recognition at {self._host} failed.")
         self._raise_for_status(response.status_code)
+        body: object = None
+        undecodable = False
         try:
             body = response.json()
-        except ValueError:
+        except (ValueError, RecursionError):
+            undecodable = True
+        if undecodable:
             raise PanoScribeError(
                 f"Remote speech recognition at {self._host} returned a response that is "
                 "not valid JSON."
-            ) from None
+            )
         if not isinstance(body, dict):
             raise PanoScribeError(
                 f"Remote speech recognition at {self._host} returned an unexpected JSON response."

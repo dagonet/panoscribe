@@ -440,7 +440,7 @@ def test_transport_error_text_never_used(wav: Path) -> None:
 
     assert KEY not in str(info.value)
     assert info.value.__cause__ is None
-    assert info.value.__suppress_context__ is True
+    assert info.value.__context__ is None
 
 
 # ── Retries and error mapping ────────────────────────────────────
@@ -670,3 +670,169 @@ def test_failed_chunk_fails_the_run(tmp_path: Path) -> None:
         server.engine(_cfg(asr_remote_max_upload_mb=0.7)).transcribe(src)
 
     assert len(server.requests) == 2
+
+
+# ── No context left behind, hostile failures, environment ────────
+
+
+def _assert_no_chain(exc: BaseException) -> None:
+    """Neither ``__cause__`` nor ``__context__``: both can hold the request or the body."""
+    assert exc.__cause__ is None
+    assert exc.__context__ is None
+
+
+def test_non_transport_httpx_error_leaves_no_chain(wav: Path) -> None:
+    server = _Server(httpx.DecodingError(f"Bearer {KEY}"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    _assert_no_chain(info.value)
+
+
+@pytest.mark.parametrize(
+    "make_exc",
+    [
+        lambda: RuntimeError(f"Bearer {KEY}"),
+        lambda: OverflowError("timestamp too large for a socket"),
+        lambda: httpx.InvalidURL(f"bad {KEY}"),
+    ],
+)
+def test_any_other_exception_from_post_fails_at_once_with_the_type_only(
+    wav: Path, make_exc: Callable[[], Exception]
+) -> None:
+    exc = make_exc()
+    server = _Server(exc)
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+    assert type(exc).__name__ in str(info.value)
+    assert KEY not in str(info.value)
+    _assert_no_chain(info.value)
+
+
+@pytest.mark.parametrize("url", ["https://☃.example/v1", "https://h.example/" + "a" * 70_000])
+def test_unusable_base_url_is_a_clear_failure_without_chain(wav: Path, url: str) -> None:
+    server = _Server(httpx.Response(200, json={"segments": []}))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine(_cfg(asr_remote_base_url=url)).transcribe(wav)
+
+    assert len(server.requests) <= 1
+    _assert_no_chain(info.value)
+
+
+def test_transport_failure_after_retries_leaves_no_chain(wav: Path) -> None:
+    server = _Server(httpx.ConnectError(f"Bearer {KEY}"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    _assert_no_chain(info.value)
+
+
+@pytest.mark.parametrize("content", [b"<html>SENTINEL", b"[" * 200_000])
+def test_unparseable_reply_leaves_no_chain(wav: Path, content: bytes) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=content)
+
+    with pytest.raises(PanoScribeError, match="not valid JSON") as info:
+        _engine(handler).transcribe(wav)
+
+    assert "SENTINEL" not in str(info.value)
+    _assert_no_chain(info.value)
+
+
+@pytest.mark.parametrize("url", ["https://user:sk-secret/v1", "http://host:notaport/v1"])
+def test_malformed_port_in_base_url_leaves_no_chain_and_no_secret(url: str) -> None:
+    with pytest.raises(PanoScribeError) as info:
+        _engine(_ok, _cfg(asr_remote_base_url=url))
+
+    assert "sk-secret" not in str(info.value)
+    _assert_no_chain(info.value)
+
+
+@pytest.mark.parametrize(
+    "make_exc",
+    [
+        lambda: httpx.InvalidURL("sk-secret"),
+        lambda: ImportError("sk-secret"),
+        lambda: ValueError("sk-secret"),
+        lambda: FileNotFoundError("sk-secret"),
+    ],
+)
+def test_client_construction_failure_is_a_clear_failure_without_chain(
+    wav: Path, monkeypatch: pytest.MonkeyPatch, make_exc: Callable[[], Exception]
+) -> None:
+    exc = make_exc()
+
+    def broken_client(*args: object, **kwargs: object) -> httpx.Client:
+        raise exc
+
+    monkeypatch.setattr(httpx, "Client", broken_client)
+
+    with pytest.raises(PanoScribeError) as info:
+        _engine(_ok).transcribe(wav)
+
+    message = str(info.value)
+    assert type(exc).__name__ in message
+    assert "sk-secret" not in message
+    assert "base URL" in message
+    assert "proxy" in message
+    _assert_no_chain(info.value)
+
+
+def test_timeout_setting_reaches_the_request(wav: Path) -> None:
+    seen: list[dict[str, float | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.extensions["timeout"]))
+        return httpx.Response(200, json={"segments": []})
+
+    _engine(handler, _cfg(asr_remote_timeout_s=123.0)).transcribe(wav)
+
+    assert seen == [{"connect": 10.0, "read": 123.0, "write": 123.0, "pool": 123.0}]
+
+
+@pytest.mark.parametrize(
+    ("url", "trust_env"),
+    [
+        ("http://127.0.0.1:8000/v1", False),
+        ("http://localhost:8000/v1", False),
+        ("http://[::1]:8000/v1", False),
+        ("https://asr.example.test/v1", True),
+        ("http://10.0.0.5:8000/v1", True),
+    ],
+)
+def test_environment_proxies_ignored_only_for_a_loopback_server(
+    wav: Path, monkeypatch: pytest.MonkeyPatch, url: str, trust_env: bool
+) -> None:
+    seen: list[dict[str, object]] = []
+    real_client = httpx.Client
+
+    def spy(*args: object, **kwargs: object) -> httpx.Client:
+        seen.append(dict(kwargs))
+        return real_client(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(httpx, "Client", spy)
+
+    _engine(_json_handler({"segments": []}), _cfg(asr_remote_base_url=url)).transcribe(wav)
+
+    assert [kw["trust_env"] for kw in seen] == [trust_env]
+
+
+def test_building_the_engine_quiets_the_httpx_logger() -> None:
+    httpx_logger = logging.getLogger("httpx")
+    original = httpx_logger.level
+    httpx_logger.setLevel(logging.INFO)
+    try:
+        assert httpx_logger.isEnabledFor(logging.INFO)
+
+        _engine(_ok)
+
+        assert not httpx_logger.isEnabledFor(logging.INFO)
+        assert httpx_logger.isEnabledFor(logging.WARNING)
+    finally:
+        httpx_logger.setLevel(original)

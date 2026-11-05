@@ -1978,3 +1978,8 @@ def test_serve_calls_uvicorn_run(monkeypatch) -> None:
     assert len(captured) == 1
     assert captured[0]["host"] == "0.0.0.0"
     assert captured[0]["port"] == 9000
+
+
+def test_crash_reports_do_not_show_locals() -> None:
+    """Typer's default prints local variables, which would include the remote ASR API key."""
+    assert app.pretty_exceptions_show_locals is False
