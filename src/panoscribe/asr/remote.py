@@ -14,6 +14,7 @@ from __future__ import annotations
 import ipaddress
 import logging
 import math
+import random
 import re
 import time
 from typing import TYPE_CHECKING
@@ -38,6 +39,10 @@ logger = logging.getLogger(__name__)
 _REQUEST_OVERHEAD_BYTES = 4096
 _CONNECT_TIMEOUT_S = 10.0
 _CHUNK_DIR_NAME = "remote_asr_chunks"
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_BACKOFF_BASE_S = 1.0
+_BACKOFF_CAP_S = 60.0
+_NUMERIC_SECONDS = re.compile(r"\d+(?:\.\d+)?")
 
 # Hosts already announced in this process: the engine is built once per video
 # or API job, but the notice should appear once per host. Tests clear it.
@@ -333,18 +338,42 @@ class RemoteTranscriber:
         headers: dict[str, str] = {}
         if cfg.asr_remote_api_key and (key := cfg.asr_remote_api_key.get_secret_value()):
             headers["Authorization"] = f"Bearer {key}"
-        files = {"file": (chunk.path.name, chunk.path.read_bytes(), "audio/wav")}
-        try:
-            response = client.post(self._url, data=form, files=files, headers=headers)
-        except self._httpx.HTTPError as exc:
+        # Bytes, not a file handle: every attempt sends the whole audio again.
+        audio = chunk.path.read_bytes()
+        attempts = cfg.asr_remote_max_retries + 1
+        response: httpx.Response | None = None
+        for attempt in range(attempts):
+            failure: str
+            try:
+                response = client.post(
+                    self._url,
+                    data=form,
+                    files={"file": (chunk.path.name, audio, "audio/wav")},
+                    headers=headers,
+                )
+            except self._httpx.TransportError as exc:
+                response = None
+                failure = type(exc).__name__
+            except self._httpx.HTTPError as exc:
+                raise PanoScribeError(
+                    f"Remote speech recognition request to {self._host} failed "
+                    f"({type(exc).__name__})."
+                ) from None
+            else:
+                if response.status_code not in _RETRYABLE_STATUS:
+                    break
+                failure = f"HTTP {response.status_code}"
+            if attempt + 1 < attempts:
+                retry_after = response.headers.get("Retry-After") if response else None
+                self._sleep(_retry_delay(attempt, retry_after))
+                continue
             raise PanoScribeError(
-                f"Remote speech recognition request to {self._host} failed ({type(exc).__name__})."
+                f"Remote speech recognition at {self._host} failed ({failure}) after "
+                f"{attempts} attempt(s) (model {self._model!r})."
             ) from None
-        if not response.is_success:
-            raise PanoScribeError(
-                f"Remote speech recognition at {self._host} failed with HTTP "
-                f"{response.status_code} (model {self._model!r})."
-            )
+        if response is None:  # pragma: no cover - the loop always breaks or raises
+            raise PanoScribeError(f"Remote speech recognition at {self._host} failed.")
+        self._raise_for_status(response.status_code)
         try:
             body = response.json()
         except ValueError:
@@ -357,6 +386,39 @@ class RemoteTranscriber:
                 f"Remote speech recognition at {self._host} returned an unexpected JSON response."
             )
         return body
+
+    def _raise_for_status(self, status: int) -> None:
+        """Raise a specific, non-retryable error for a non-2xx ``status``.
+
+        Messages carry the host, the status and the configured model only; never
+        the response body, headers, key or URL.
+        """
+        if 200 <= status < 300:
+            return
+        where = f"Remote speech recognition at {self._host}"
+        if status in (401, 403):
+            message = (
+                f"{where} rejected the credentials (HTTP {status}). Check PANO_ASR_REMOTE_API_KEY."
+            )
+        elif status == 413:
+            message = (
+                f"{where} refused the upload as too large (HTTP 413). "
+                "Lower PANO_ASR_REMOTE_MAX_UPLOAD_MB."
+            )
+        elif status == 400:
+            message = (
+                f"{where} rejected the request (HTTP 400) for model {self._model!r}. This "
+                "backend needs a model that returns verbose_json with segment timestamps, "
+                "such as a whisper-1 style model."
+            )
+        elif 300 <= status < 400:
+            message = (
+                f"{where} answered with a redirect (HTTP {status}), which is not followed. "
+                "Check the base URL (PANO_ASR_REMOTE_BASE_URL)."
+            )
+        else:
+            message = f"{where} failed with HTTP {status} (model {self._model!r})."
+        raise PanoScribeError(message)
 
     def _no_timestamps(self) -> PanoScribeError:
         return PanoScribeError(
@@ -398,6 +460,19 @@ class RemoteTranscriber:
                 )
             )
         return parsed
+
+
+def _retry_delay(attempt: int, retry_after: str | None) -> float:
+    """Seconds to wait before retry number ``attempt + 1``.
+
+    A numeric ``Retry-After`` is honoured, capped at 60 s. Otherwise the delay
+    is exponential from 1 s with jitter: between the base step and twice it,
+    never above the cap. An HTTP-date ``Retry-After`` falls back to backoff.
+    """
+    if retry_after is not None and _NUMERIC_SECONDS.fullmatch(retry_after.strip()):
+        return min(float(retry_after), _BACKOFF_CAP_S)
+    step = min(_BACKOFF_BASE_S * 2.0**attempt, _BACKOFF_CAP_S)
+    return min(step * (1.0 + random.random()), _BACKOFF_CAP_S)
 
 
 def _is_number(value: object) -> bool:

@@ -443,14 +443,230 @@ def test_transport_error_text_never_used(wav: Path) -> None:
     assert info.value.__suppress_context__ is True
 
 
-def test_redirects_are_not_followed(wav: Path) -> None:
-    calls: list[httpx.Request] = []
+# ── Retries and error mapping ────────────────────────────────────
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(request)
-        return httpx.Response(307, headers={"Location": "https://elsewhere.example/v1"})
+
+class _Server:
+    """Scripted responses; records requests and the delays the engine slept."""
+
+    def __init__(self, *responses: httpx.Response | Exception) -> None:
+        self._responses = list(responses)
+        self.requests: list[httpx.Request] = []
+        self.sleeps: list[float] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        item = self._responses[min(len(self.requests), len(self._responses)) - 1]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    def engine(self, cfg: PanoScribeConfig | None = None) -> RemoteTranscriber:
+        return RemoteTranscriber(
+            cfg or _cfg(), transport=httpx.MockTransport(self.handler), sleep=self.sleeps.append
+        )
+
+
+_GOOD = {"language": "en", "segments": [{"start": 0.0, "end": 1.0, "text": "hi"}]}
+
+
+def _good() -> httpx.Response:
+    return httpx.Response(200, json=_GOOD)
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+def test_retryable_status_then_success(wav: Path, status: int) -> None:
+    server = _Server(httpx.Response(status), _good())
+
+    segments, _ = server.engine().transcribe(wav)
+
+    assert [s.text for s in segments] == ["hi"]
+    assert len(server.requests) == 2
+    assert len(server.sleeps) == 1
+
+
+def test_gives_up_after_max_retries(wav: Path) -> None:
+    server = _Server(httpx.Response(503, text="BODYSENTINEL"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 4
+    message = str(info.value)
+    assert "503" in message
+    assert "asr.example.test" in message
+    assert "BODYSENTINEL" not in message
+
+
+def test_zero_retries_means_one_call(wav: Path) -> None:
+    server = _Server(httpx.Response(503))
 
     with pytest.raises(PanoScribeError):
-        _engine(handler).transcribe(wav)
+        server.engine(_cfg(asr_remote_max_retries=0)).transcribe(wav)
 
-    assert len(calls) == 1
+    assert len(server.requests) == 1
+    assert server.sleeps == []
+
+
+@pytest.mark.parametrize(
+    "make_exc",
+    [
+        lambda: httpx.ConnectError("boom"),
+        lambda: httpx.ReadTimeout("slow"),
+    ],
+)
+def test_transport_errors_retried(wav: Path, make_exc: Callable[[], Exception]) -> None:
+    server = _Server(make_exc(), _good())
+
+    segments, _ = server.engine().transcribe(wav)
+
+    assert len(segments) == 1
+    assert len(server.requests) == 2
+
+
+def test_exhausted_transport_errors_name_the_exception_type_only(wav: Path) -> None:
+    server = _Server(httpx.ConnectError("TEXTSENTINEL"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 4
+    assert "ConnectError" in str(info.value)
+    assert "TEXTSENTINEL" not in str(info.value)
+
+
+def _normalised_body(request: httpx.Request) -> bytes:
+    content_type = request.headers["Content-Type"]
+    boundary = content_type.split("boundary=", 1)[1].encode()
+    return request.content.replace(boundary, b"BOUNDARY")
+
+
+def test_retry_resends_whole_audio(wav: Path) -> None:
+    server = _Server(httpx.Response(503), _good())
+
+    server.engine().transcribe(wav)
+
+    first, second = server.requests
+    assert wav.read_bytes() in first.content
+    assert wav.read_bytes() in second.content
+    # httpx draws a fresh multipart boundary per request; nothing else may differ.
+    assert _normalised_body(first) == _normalised_body(second)
+
+
+@pytest.mark.parametrize(("header", "want"), [("7", 7.0), ("3600", 60.0)])
+def test_retry_after_honoured_and_capped(wav: Path, header: str, want: float) -> None:
+    server = _Server(httpx.Response(429, headers={"Retry-After": header}), _good())
+
+    server.engine().transcribe(wav)
+
+    assert server.sleeps == [want]
+
+
+@pytest.mark.parametrize("header", ["Wed, 21 Oct 2026 07:28:00 GMT", "-5", "nan", "soon"])
+def test_retry_after_not_a_number_falls_back_to_backoff(wav: Path, header: str) -> None:
+    server = _Server(httpx.Response(503, headers={"Retry-After": header}), _good())
+
+    server.engine().transcribe(wav)
+
+    (delay,) = server.sleeps
+    assert 1.0 <= delay <= 2.0
+
+
+def test_backoff_grows_and_is_capped(wav: Path) -> None:
+    server = _Server(httpx.Response(503))
+
+    with pytest.raises(PanoScribeError):
+        server.engine(_cfg(asr_remote_max_retries=8)).transcribe(wav)
+
+    assert len(server.sleeps) == 8
+    assert max(server.sleeps) <= 60.0
+    assert min(server.sleeps) >= 1.0
+    assert server.sleeps[-1] > server.sleeps[0]
+    assert server.sleeps[-1] >= 32.0
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_auth_failure_names_key_var_no_retry(wav: Path, status: int) -> None:
+    server = _Server(httpx.Response(status))
+
+    with pytest.raises(PanoScribeError, match="PANO_ASR_REMOTE_API_KEY"):
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+
+
+def test_413_suggests_lower_limit_no_retry(wav: Path) -> None:
+    server = _Server(httpx.Response(413))
+
+    with pytest.raises(PanoScribeError, match="PANO_ASR_REMOTE_MAX_UPLOAD_MB"):
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+
+
+def test_400_hints_model_kind_no_retry(wav: Path) -> None:
+    server = _Server(httpx.Response(400, text="BODYSENTINEL"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+    message = str(info.value)
+    assert "verbose_json" in message
+    assert "whisper-1" in message
+    assert "BODYSENTINEL" not in message
+
+
+def test_redirect_not_followed_no_retry(wav: Path) -> None:
+    server = _Server(httpx.Response(307, headers={"Location": "https://elsewhere.example/v1"}))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+    assert "307" in str(info.value)
+    assert "base URL" in str(info.value)
+    assert "elsewhere" not in str(info.value)
+
+
+@pytest.mark.parametrize("status", [404, 501])
+def test_other_status_no_retry(wav: Path, status: int) -> None:
+    server = _Server(httpx.Response(status))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+    assert str(status) in str(info.value)
+    assert "whisper-1" in str(info.value)
+
+
+def test_error_never_carries_url_query_or_key(wav: Path) -> None:
+    server = _Server(httpx.Response(503))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert KEY not in str(info.value)
+    assert "/audio/transcriptions" not in str(info.value)
+
+
+def test_non_transport_httpx_error_is_not_retried(wav: Path) -> None:
+    server = _Server(httpx.DecodingError("TEXTSENTINEL"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    assert len(server.requests) == 1
+    assert "DecodingError" in str(info.value)
+    assert "TEXTSENTINEL" not in str(info.value)
+
+
+def test_failed_chunk_fails_the_run(tmp_path: Path) -> None:
+    src = _write_wav(tmp_path / "audio.wav", 40.0)
+    server = _Server(_good(), httpx.Response(400))
+
+    with pytest.raises(PanoScribeError):
+        server.engine(_cfg(asr_remote_max_upload_mb=0.7)).transcribe(src)
+
+    assert len(server.requests) == 2
