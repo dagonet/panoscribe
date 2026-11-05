@@ -382,8 +382,11 @@ def test_key_with_inner_whitespace_or_non_ascii_refused_without_echo(key: str) -
 def test_missing_httpx_gives_install_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "httpx", None)
 
-    with pytest.raises(PanoScribeError, match="uv sync --extra remote-asr"):
+    with pytest.raises(PanoScribeError, match="uv sync --extra remote-asr") as info:
         RemoteTranscriber(_cfg())
+
+    assert info.value.__cause__ is None
+    assert info.value.__context__ is None
 
 
 def test_notice_once_per_host_at_warning(caplog: pytest.LogCaptureFixture) -> None:
@@ -757,7 +760,6 @@ def test_malformed_port_in_base_url_leaves_no_chain_and_no_secret(url: str) -> N
 @pytest.mark.parametrize(
     "make_exc",
     [
-        lambda: httpx.InvalidURL("sk-secret"),
         lambda: ImportError("sk-secret"),
         lambda: ValueError("sk-secret"),
         lambda: FileNotFoundError("sk-secret"),
@@ -779,9 +781,57 @@ def test_client_construction_failure_is_a_clear_failure_without_chain(
     message = str(info.value)
     assert type(exc).__name__ in message
     assert "sk-secret" not in message
-    assert "base URL" in message
-    assert "proxy" in message
+    # The client never receives the base URL, so it is not the suspect.
+    assert "BASE_URL" not in message
+    for setting in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SSL_CERT_FILE"):
+        assert setting in message
     _assert_no_chain(info.value)
+
+
+def test_invalid_url_from_post_fails_at_once_and_points_at_the_base_url(wav: Path) -> None:
+    server = _Server(httpx.InvalidURL("https://user:sk-secret@host/v1"))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    message = str(info.value)
+    assert len(server.requests) == 1
+    assert "InvalidURL" in message
+    assert "PANO_ASR_REMOTE_BASE_URL" in message
+    assert "sk-secret" not in message
+    _assert_no_chain(info.value)
+
+
+def test_keyboard_interrupt_from_post_passes_through_unconverted(wav: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        _engine(handler).transcribe(wav)
+
+
+def test_retry_after_of_an_earlier_attempt_does_not_carry_over(wav: Path) -> None:
+    server = _Server(
+        httpx.Response(503, headers={"Retry-After": "7"}),
+        httpx.ConnectError("boom"),
+        _good(),
+    )
+
+    server.engine().transcribe(wav)
+
+    assert server.sleeps[0] == 7.0
+    assert 2.0 <= server.sleeps[1] <= 4.0  # backoff for the second retry, not the stale 7
+
+
+def test_retry_delay_does_not_overflow_at_a_huge_attempt_number() -> None:
+    assert remote._retry_delay(2000, None) <= 60.0
+
+
+def test_segment_time_beyond_the_limit_is_not_a_usable_time(wav: Path) -> None:
+    content = b'{"segments": [{"start": 1e306, "end": 1e306, "text": "x"}]}'
+
+    with pytest.raises(PanoScribeError, match="no segment timestamps"):
+        _engine(_raw_handler(content)).transcribe(wav)
 
 
 def test_timeout_setting_reaches_the_request(wav: Path) -> None:

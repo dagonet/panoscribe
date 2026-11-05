@@ -348,7 +348,9 @@ Limits:
 
 - `--translate` is not supported with the remote backend and fails before any
   audio is sent.
-- Environment proxy settings are honoured, except for a loopback server.
+- Environment proxy settings are honoured, except for a loopback server. A
+  loopback server also ignores `SSL_CERT_FILE` and `SSL_CERT_DIR`, so
+  `https://localhost` with a private CA is not supported.
 - OCR stays local. A machine that cannot run local models also needs
   `--no-ocr` or `PANO_OCR_DEVICE=cpu`.
 - The HTTP API server cannot change these settings per job; they come from

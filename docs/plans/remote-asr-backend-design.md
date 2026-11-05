@@ -176,3 +176,4 @@ Roughly 250-350 lines with tests, plus docs, which is T4 by size. No architect, 
 - The `httpx` logger is raised to WARNING when the remote engine is built, because a token in a URL path cannot be recognised.
 - `pretty_exceptions_show_locals=False` on the CLI, because Typer's default printed the key in tracebacks on allowed versions.
 - Failures are raised outside the `except` block, so `__context__` is empty as well as `__cause__`.
+- Limits exist so that absurd values fail clearly: `asr_remote_max_upload_mb` is at most 1,000,000, and a segment time above 1e9 s counts as unusable.

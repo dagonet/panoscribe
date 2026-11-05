@@ -37,6 +37,9 @@ _OCR_VERSION_CANONICAL: dict[str, str] = {
 }
 
 
+_MAX_REMOTE_UPLOAD_MB = 1_000_000.0
+
+
 class PanoScribeConfig(BaseSettings):
     """panoscribe runtime configuration.
 
@@ -200,6 +203,14 @@ class PanoScribeConfig(BaseSettings):
         """Reject zero, negative and non-finite remote ASR timeouts and upload limits."""
         if not math.isfinite(v) or v <= 0:
             raise ValueError(f"must be a finite number > 0; got {v!r}")
+        return v
+
+    @field_validator("asr_remote_max_upload_mb", mode="after")
+    @classmethod
+    def _validate_remote_asr_upload_limit(cls, v: float) -> float:
+        """Reject an absurd upload limit: it would overflow the byte count."""
+        if v > _MAX_REMOTE_UPLOAD_MB:
+            raise ValueError(f"must be <= {_MAX_REMOTE_UPLOAD_MB:,}; got {v!r}")
         return v
 
     @field_validator("asr_remote_max_retries", mode="after")

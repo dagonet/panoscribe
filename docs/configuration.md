@@ -49,9 +49,11 @@ are no CLI flags and the HTTP API cannot set them per job. `whisper_model`,
 `whisper_device`, `whisper_compute_type` and `whisper_batch_size` are ignored
 when remote; `whisper_language` is honoured and sent as `language`.
 `whisper_task="translate"` is refused with the remote backend. OCR always stays
-local. Environment proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `SSL_CERT_FILE`)
-are honoured, except for a loopback server (`localhost`, `127.0.0.1`, `::1`),
-which is always reached directly. Do not put credentials anywhere in the base
+local. Environment proxy and TLS settings (`HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR`) are honoured, except for a
+loopback server (`localhost`, `127.0.0.1`, `::1`): it is always reached
+directly and ignores `SSL_CERT_FILE` and `SSL_CERT_DIR` too, so
+`https://localhost` with a private CA is not supported. Do not put credentials anywhere in the base
 URL: user-info, a query string and a fragment are refused, and a token in the
 path cannot be recognised and kept out of logs or proxies. See the [README](../README.md#remote-speech-recognition-opt-in).
 
@@ -157,7 +159,7 @@ override.
 | `whisper_language`, `ocr_det_limit_side_len`, `ocr_det_thresh`, `ocr_det_box_thresh`, `ocr_det_model_type`, `ocr_det_ocr_version`, `ocr_rec_model_type`, `ocr_rec_ocr_version` | Coerces empty-string env values to `None` | — (empty string treated as unset) |
 | `asr_backend` | Must be `local` or `remote` | Unknown value rejected |
 | `asr_remote_base_url`, `asr_remote_model`, `asr_remote_api_key` | Surrounding whitespace is stripped; blank becomes `None` | — (a pasted key with a trailing newline is accepted) |
-| `asr_remote_timeout_s`, `asr_remote_max_upload_mb` | Must be `> 0` | Zero or negative values rejected |
+| `asr_remote_timeout_s`, `asr_remote_max_upload_mb` | Must be finite and `> 0`; the upload limit is at most 1,000,000 | Zero, negative, `nan`, `inf` and (for the limit) larger values rejected |
 | `asr_remote_max_retries` | Must be `>= 0` | Negative values rejected |
 | Remote URL and key content | Checked when the remote engine is built, not at config load, because a validation error prints its input. The URL must be `http` or `https` with a host and no user-info, query string or fragment; the key must be printable ASCII with no whitespace | The engine refuses with an error that does not echo the value |
 | `platform_profile` | Must be one of `auto`, `tiktok`, `youtube`, `instagram`, `unknown`, `generic` | Unknown value rejected with list of allowed options |

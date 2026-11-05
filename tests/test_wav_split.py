@@ -165,9 +165,10 @@ def test_stereo_input_is_split_with_whole_frames(tmp_path: Path) -> None:
 
 
 def test_quieter_point_before_the_search_window_is_not_chosen(tmp_path: Path) -> None:
-    # A silent second at 2-3 s is far quieter than anything else, but the first
-    # cut may only look at the last 10 s a chunk can cover (8-18 s).
-    src = _wav(tmp_path / "a.wav", [(2, 9000), (1, 0), (27, 9000)])
+    # A silent second at 7-8 s is far quieter than anything else, but the first
+    # cut may only look at the last 10 s a chunk can cover (8-18 s). A search
+    # window even one second wider than that would land in the silence.
+    src = _wav(tmp_path / "a.wav", [(7, 9000), (1, 0), (22, 9000)])
 
     chunks = split_wav(src, max_bytes=MAX, out_dir=tmp_path / "c")
 

@@ -42,6 +42,9 @@ _REQUEST_OVERHEAD_BYTES = 4096
 _CONNECT_TIMEOUT_S = 10.0
 _CHUNK_DIR_NAME = "remote_asr_chunks"
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+# Longer than any recording; a larger server-sent time is garbage and would
+# overflow the subtitle timestamp formatter.
+_MAX_TIME_S = 1e9
 _BACKOFF_BASE_S = 1.0
 _BACKOFF_CAP_S = 60.0
 _NUMERIC_SECONDS = re.compile(r"\d+(?:\.\d+)?")
@@ -324,7 +327,7 @@ class RemoteTranscriber:
             audio_path, max_bytes=max_bytes, out_dir=audio_path.parent / _CHUNK_DIR_NAME
         )
         language: str | None = None
-        segments: list[TranscriptSegment] = []
+        segments: list[tuple[float, float, str, float | None]] = []
         with self._new_client() as client:
             for chunk in chunks:
                 body = self._post_chunk(client, chunk)
@@ -346,8 +349,9 @@ class RemoteTranscriber:
     def _new_client(self) -> httpx.Client:
         """Build the HTTP client; any failure becomes a clear, chain-free error.
 
-        Odd base URLs, proxy variables and ``SSL_CERT_FILE`` can all make httpx
-        raise, with text that may quote them, so only the exception type is kept.
+        The base URL never reaches the client; proxy and TLS environment settings
+        can make httpx raise, with text that may quote them, so only the
+        exception type is kept.
         """
         failure = ""
         client: httpx.Client | None = None
@@ -365,7 +369,8 @@ class RemoteTranscriber:
         if client is None:
             raise PanoScribeError(
                 f"Remote speech recognition could not set up its HTTP client ({failure}). "
-                "Check the base URL (PANO_ASR_REMOTE_BASE_URL) and the proxy settings."
+                "Check the proxy and TLS environment settings (HTTP_PROXY, HTTPS_PROXY, "
+                "ALL_PROXY, SSL_CERT_FILE)."
             )
         return client
 
@@ -392,7 +397,8 @@ class RemoteTranscriber:
         for attempt in range(attempts):
             failure: str
             fatal = False
-            response = None
+            hint = ""
+            response = None  # per attempt: a stale reply must not feed Retry-After
             try:
                 response = client.post(
                     self._url,
@@ -405,13 +411,15 @@ class RemoteTranscriber:
             except Exception as exc:
                 failure = type(exc).__name__
                 fatal = True
+                if isinstance(exc, self._httpx.InvalidURL):
+                    hint = " Check PANO_ASR_REMOTE_BASE_URL."
             else:
                 if response.status_code not in _RETRYABLE_STATUS:
                     break
                 failure = f"HTTP {response.status_code}"
             if fatal:
                 raise PanoScribeError(
-                    f"Remote speech recognition request to {self._host} failed ({failure})."
+                    f"Remote speech recognition request to {self._host} failed ({failure}).{hint}"
                 )
             if attempt + 1 < attempts:
                 retry_after = response.headers.get("Retry-After") if response else None
@@ -509,7 +517,7 @@ class RemoteTranscriber:
             if not isinstance(item, dict):
                 raise self._no_timestamps()
             start, end = item.get("start"), item.get("end")
-            if not (_is_finite_number(start) and _is_finite_number(end)):
+            if not (_is_time(start) and _is_time(end)):
                 raise self._no_timestamps()
             # Bad values are never clamped or dropped: they would invent timing.
             text_value = item.get("text")
@@ -539,8 +547,17 @@ def _retry_delay(attempt: int, retry_after: str | None) -> float:
     """
     if retry_after is not None and _NUMERIC_SECONDS.fullmatch(retry_after.strip()):
         return min(float(retry_after), _BACKOFF_CAP_S)
-    step = min(_BACKOFF_BASE_S * 2.0**attempt, _BACKOFF_CAP_S)
+    # The exponent is capped: 2.0 ** 1024 overflows, and 2 ** 6 s is past the cap already.
+    step = min(_BACKOFF_BASE_S * 2.0 ** min(attempt, 16), _BACKOFF_CAP_S)
     return min(step * (1.0 + random.random()), _BACKOFF_CAP_S)
+
+
+def _is_time(value: object) -> bool:
+    """A finite number of seconds no larger than ``_MAX_TIME_S``.
+
+    Negative values pass here and are rejected as malformed by the caller.
+    """
+    return _is_finite_number(value) and value <= _MAX_TIME_S  # type: ignore[operator]
 
 
 def _is_finite_number(value: object) -> bool:

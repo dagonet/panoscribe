@@ -1981,5 +1981,29 @@ def test_serve_calls_uvicorn_run(monkeypatch) -> None:
 
 
 def test_crash_reports_do_not_show_locals() -> None:
-    """Typer's default prints local variables, which would include the remote ASR API key."""
+    """Typer's default prints local variables, which would include the remote ASR API key.
+
+    The locked Typer already defaults to False, but ``typer>=0.13`` is allowed
+    and some of those versions default to True, so the argument itself must be
+    passed. Checked in the source, because the attribute alone cannot tell.
+    """
+    import ast
+
+    import panoscribe.cli as cli_module
+
+    tree = ast.parse(Path(cli_module.__file__).read_text(encoding="utf-8"))
+    typer_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "Typer"
+    ]
+    assert len(typer_calls) == 1
+    flags = {
+        kw.arg: ast.literal_eval(kw.value)
+        for kw in typer_calls[0].keywords
+        if kw.arg == "pretty_exceptions_show_locals"
+    }
+    assert flags == {"pretty_exceptions_show_locals": False}
     assert app.pretty_exceptions_show_locals is False
