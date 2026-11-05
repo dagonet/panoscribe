@@ -99,6 +99,20 @@ def _resolve_output_format(
     return "json"
 
 
+def _build_asr_engine(config: PanoScribeConfig) -> AsrEngine:
+    """Return the speech-recognition engine the config selects.
+
+    Local faster-whisper is the default. The remote module is imported only
+    when ``asr_backend == "remote"``, so a default run never loads it. There
+    is no fallback between the two: a failed remote run fails.
+    """
+    if config.asr_backend == "remote":
+        from panoscribe.asr.remote import RemoteTranscriber
+
+        return RemoteTranscriber(config)
+    return WhisperTranscriber(config)
+
+
 def process_single_video(
     source: str,
     config: PanoScribeConfig,
@@ -116,7 +130,8 @@ def process_single_video(
 
     Imports stay at module scope (do NOT move them in here): existing tests
     patch ``panoscribe.cli.WhisperTranscriber`` etc. and rely on those names
-    resolving via this module.
+    resolving via this module. The one exception is the remote ASR engine,
+    imported lazily by :func:`_build_asr_engine`.
     """
     temp_dir = config.temp_dir
     try:
@@ -131,7 +146,7 @@ def process_single_video(
             # Photo branch: audio, ASR, and timestamp computation.
             if photo_post.audio_path:
                 audio_path = extract_audio(photo_post.audio_path, temp_dir / "audio.wav")
-                asr_engine: AsrEngine = WhisperTranscriber(config)
+                asr_engine = _build_asr_engine(config)
                 speech_segments, detected_language = asr_engine.transcribe(audio_path)
             else:
                 speech_segments, detected_language = [], "en"
@@ -164,7 +179,7 @@ def process_single_video(
             # ---- Existing video path (byte-identical) ----
             video_path = download_video(source, temp_dir)
             audio_path = extract_audio(video_path, temp_dir / "audio.wav")
-            asr_engine: AsrEngine = WhisperTranscriber(config)
+            asr_engine = _build_asr_engine(config)
             speech_segments, detected_language = asr_engine.transcribe(audio_path)
 
             if ocr_active:

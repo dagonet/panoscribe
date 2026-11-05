@@ -147,3 +147,40 @@ If you see an error indicating `ffmpeg` (or `ffprobe`) could not be found:
 
 Verify with `ffmpeg -version` on the same shell/environment panoscribe runs
 in.
+
+## Remote speech recognition
+
+These apply only when `PANO_ASR_BACKEND=remote`. See the
+[README](../README.md#remote-speech-recognition-opt-in) for setup.
+
+### Model returned no timestamps
+
+Error: `The model '...' returned no segment timestamps`. The remote backend
+needs segment timestamps and never invents them. Some servers ignore
+`response_format=verbose_json` and return plain text; some models (the
+`gpt-4o-transcribe` family) support only plain JSON. Set
+`PANO_ASR_REMOTE_MODEL` to a `whisper-1`-style model that returns
+`verbose_json` with segments.
+
+### The server rejected the request (HTTP 400)
+
+Error: `rejected the request (HTTP 400) for model '...'`. A common cause is a
+model that does not accept `verbose_json` or `timestamp_granularities[]`. Use
+a `whisper-1`-style model. Also check that `PANO_ASR_REMOTE_MODEL` names a
+model the server actually serves.
+
+### Upload too large (HTTP 413)
+
+Error: `refused the upload as too large (HTTP 413)`. panoscribe splits audio
+above `PANO_ASR_REMOTE_MAX_UPLOAD_MB` (default 25), but your server or a proxy
+in front of it may allow less. Lower `PANO_ASR_REMOTE_MAX_UPLOAD_MB`. If the
+error says the upload limit is too small to split audio, the value is too
+small: the smallest usable value is about 0.04 (one second of audio plus
+request framing).
+
+### Authentication or redirect errors
+
+HTTP 401 or 403 means the key was refused: check `PANO_ASR_REMOTE_API_KEY`. A
+3xx reply means the base URL redirects; redirects are never followed so the
+key cannot travel to another host. Point `PANO_ASR_REMOTE_BASE_URL` at the
+final URL.

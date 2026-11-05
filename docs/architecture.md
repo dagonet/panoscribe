@@ -28,7 +28,10 @@ exclusion zones, auto-caption bands, and text patterns.
 | `panoscribe/acquire/platform.py` | `Platform` enum + URL keyword detection |
 | `panoscribe/acquire/photo.py` | Photo-post download via gallery-dl and local-directory scanning |
 | `panoscribe/acquire/playlist.py` | YouTube playlist / channel URL expansion |
+| `panoscribe/asr/protocol.py` | `AsrEngine` typing.Protocol for swappable speech-recognition backends |
 | `panoscribe/asr/whisper.py` | Faster-Whisper wrapper with lazy model init, batched inference, Windows DLL preload |
+| `panoscribe/asr/remote.py` | Opt-in `RemoteTranscriber` for OpenAI-compatible `/audio/transcriptions` endpoints — retries, error mapping, per-host notice; `httpx` imported lazily |
+| `panoscribe/asr/wav_split.py` | Stdlib splitter that cuts long PCM WAV at quiet points so each upload fits the size limit |
 | `panoscribe/ocr/protocol.py` | `OcrEngine` typing.Protocol for swappable backends |
 | `panoscribe/ocr/rapid_ocr.py` | RapidOCR engine wrapper — frame sampling, preprocessing, zone masking, OCR inference, bbox aggregation |
 | `panoscribe/ocr/frame_sampler.py` | Video frame sampling with optional scene-change detection |
@@ -171,6 +174,17 @@ only `asr_logprob` from their speech side — `ocr_confidence` is dropped rather
 than mixed in, because the two scales are not comparable. `write_txt`,
 `write_srt`, and `write_markdown` do not expose either field.
 
+## Positioning: local by default, remote is opt-in
+
+All inference runs on the user's machine unless they explicitly switch speech
+recognition to a remote endpoint (`PANO_ASR_BACKEND=remote` plus a base URL and
+a model, neither of which has a default). When they do, the audio leaves the
+machine. `pipeline._build_asr_engine` picks the backend at both construction
+sites (photo and video) and imports the remote module only for `remote`. There
+is no fallback between the two backends in either direction, and OCR stays
+local. The API server's job request has no field that can reach the remote
+settings, so a client cannot redirect audio to another host.
+
 ## Layering rules
 
 ```
@@ -192,6 +206,7 @@ api ──→ pipeline          (no cli import)
 
 | Seam | Mechanism | Key file |
 |---|---|---|
+| New ASR backend | Implement the `AsrEngine` Protocol (structural typing), then select it in `pipeline._build_asr_engine`, which is used at both the photo and video sites | `src/panoscribe/asr/protocol.py` + `src/panoscribe/pipeline.py` |
 | New OCR backend | Implement the `OcrEngine` Protocol (structural typing — no inheritance required) | `src/panoscribe/ocr/protocol.py` |
 | New platform profile | Define a `PlatformProfile` frozen dataclass with zones and patterns; register in `PROFILES` dict | `src/panoscribe/platforms/base.py` + `registry.py` |
 | New output format | Write a `write_*` function; add it to the `_writer_registry` dict in `write_transcript` | `src/panoscribe/output.py` |
