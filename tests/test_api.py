@@ -345,4 +345,12 @@ def test_job_request_has_no_remote_asr_fields() -> None:
     """A client must not be able to redirect audio to another host."""
     from panoscribe.api.server import JobRequest
 
-    assert not any(name.startswith("asr_") for name in JobRequest.model_fields)
+    # The exact set, so any new field (a base_url, say) fails here and is looked at.
+    assert set(JobRequest.model_fields) == {
+        "source",
+        "language",
+        "translate",
+        "ocr",
+        "ocr_language",
+        "platform",
+    }

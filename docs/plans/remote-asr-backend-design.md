@@ -167,3 +167,12 @@ Helper names and module layout inside `remote.py`, the language-name table's con
 ## Size and pipeline
 
 Roughly 250-350 lines with tests, plus docs, which is T4 by size. No architect, since this document covers that step: `cct:python-coder`, then reviewer, then tester, then the green-CI merge gate.
+
+## Changes after code review (2026-11-06)
+
+- Segments with `start < 0`, `end < start`, or missing or non-string `text` fail the run. They are not clamped or dropped.
+- `asr_remote_timeout_s` and `asr_remote_max_upload_mb` must be finite.
+- A loopback server ignores environment proxy settings, so audio for a local server cannot leave through a proxy. Other hosts honour them.
+- The `httpx` logger is raised to WARNING when the remote engine is built, because a token in a URL path cannot be recognised.
+- `pretty_exceptions_show_locals=False` on the CLI, because Typer's default printed the key in tracebacks on allowed versions.
+- Failures are raised outside the `except` block, so `__context__` is empty as well as `__cause__`.

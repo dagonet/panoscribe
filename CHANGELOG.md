@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `PANO_ASR_REMOTE_MODEL`, which have no defaults. Audio leaves the machine
   when it is on, and one warning names the host. Long audio is split at quiet
   points; retries and error mapping cover 429/5xx, auth, size and redirects;
-  the API key is never logged. `--translate` and the HTTP API's per-job
-  settings do not apply. Install the supported dependency with
+  the API key is never logged. `--translate` is refused, and the HTTP API
+  cannot set the remote settings per job. Install the supported dependency with
   `uv sync --extra remote-asr`.
 
 ### Changed
