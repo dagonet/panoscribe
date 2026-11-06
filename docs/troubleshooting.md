@@ -178,6 +178,14 @@ error says the upload limit is too small to split audio, the value is too
 small: the smallest usable value is about 0.04 (one second of audio plus
 request framing).
 
+### Not found (HTTP 404)
+
+Error: `answered HTTP 404 (model '...')`. The same status comes back for two
+different mistakes, so check both. Either `PANO_ASR_REMOTE_MODEL` names a model
+the server does not serve, or `PANO_ASR_REMOTE_BASE_URL` is missing the API
+version: the base URL must include it, for example
+`https://asr.example.com/v1`. panoscribe does not retry a 404.
+
 ### Authentication or redirect errors
 
 HTTP 401 or 403 means the key was refused: check `PANO_ASR_REMOTE_API_KEY`. A

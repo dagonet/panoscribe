@@ -65,7 +65,7 @@ path cannot be recognised and kept out of logs or proxies. See the [README](../R
 | `asr_remote_api_key` | `PANO_ASR_REMOTE_API_KEY` | `None` | Bearer token, held as a secret and never logged. Optional: self-hosted servers often need none |
 | `asr_remote_timeout_s` | `PANO_ASR_REMOTE_TIMEOUT_S` | `600.0` | Timeout in seconds for the read, write and pool phases of a request (must be finite and > 0). The connect timeout is fixed at 10 s |
 | `asr_remote_max_retries` | `PANO_ASR_REMOTE_MAX_RETRIES` | `3` | Retries after a 429, 500, 502, 503 or 504 status, a timeout or a connection error (must be >= 0) |
-| `asr_remote_max_upload_mb` | `PANO_ASR_REMOTE_MAX_UPLOAD_MB` | `25.0` | Request size above which audio is split (must be finite and > 0). Here 1 MB means 1,000,000 bytes, and 4 KiB is held back for the request framing, so a chunk plus its framing stays inside the limit |
+| `asr_remote_max_upload_mb` | `PANO_ASR_REMOTE_MAX_UPLOAD_MB` | `25.0` | Request size above which audio is split (must be finite, > 0 and at most 1,000,000). Here 1 MB means 1,000,000 bytes, and 4 KiB is held back for the request framing, so a chunk plus its framing stays inside the limit |
 
 ### OCR
 

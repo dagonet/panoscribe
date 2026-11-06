@@ -177,3 +177,4 @@ Roughly 250-350 lines with tests, plus docs, which is T4 by size. No architect, 
 - `pretty_exceptions_show_locals=False` on the CLI, because Typer's default printed the key in tracebacks on allowed versions.
 - Failures are raised outside the `except` block, so `__context__` is empty as well as `__cause__`.
 - Limits exist so that absurd values fail clearly: `asr_remote_max_upload_mb` is at most 1,000,000, and a segment time above 1e9 s counts as unusable.
+- A 404 names both `PANO_ASR_REMOTE_MODEL` and `PANO_ASR_REMOTE_BASE_URL`, because a real server returned it for an unknown model and for a base URL missing `/v1`.

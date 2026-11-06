@@ -478,6 +478,12 @@ class RemoteTranscriber:
                 f"{where} answered with a redirect (HTTP {status}), which is not followed. "
                 "Check the base URL (PANO_ASR_REMOTE_BASE_URL)."
             )
+        elif status == 404:
+            message = (
+                f"{where} answered HTTP 404 (model {self._model!r}). Check "
+                "PANO_ASR_REMOTE_MODEL and PANO_ASR_REMOTE_BASE_URL; the base URL must "
+                "include the API version, such as /v1."
+            )
         else:
             message = f"{where} failed with HTTP {status} (model {self._model!r})."
         raise PanoScribeError(message)

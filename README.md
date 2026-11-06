@@ -329,6 +329,9 @@ export PANO_ASR_REMOTE_MODEL=whisper-1
 export PANO_ASR_REMOTE_API_KEY=...   # optional for self-hosted servers
 ```
 
+`uv sync` keeps only the extras you name, so list the others you use as well,
+for example `uv sync --extra remote-asr --extra api`.
+
 The extra only installs `httpx`; the settings are what enable the backend.
 They are environment or `.env` only, with no command-line flags, so a key
 never lands in shell history. See

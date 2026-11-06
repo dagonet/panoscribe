@@ -632,16 +632,33 @@ def test_redirect_not_followed_no_retry(wav: Path) -> None:
     assert "elsewhere" not in str(info.value)
 
 
-@pytest.mark.parametrize("status", [404, 501])
-def test_other_status_no_retry(wav: Path, status: int) -> None:
-    server = _Server(httpx.Response(status))
+def test_other_status_no_retry(wav: Path) -> None:
+    server = _Server(httpx.Response(501))
 
     with pytest.raises(PanoScribeError) as info:
         server.engine().transcribe(wav)
 
     assert len(server.requests) == 1
-    assert str(status) in str(info.value)
+    assert "501" in str(info.value)
     assert "whisper-1" in str(info.value)
+    assert "PANO_ASR_REMOTE_BASE_URL" not in str(info.value)
+
+
+def test_404_names_the_model_and_both_settings_without_retry(wav: Path) -> None:
+    # A real server answered 404 for an unknown model and for a base URL missing
+    # /v1, so the message must not pick one of the two.
+    server = _Server(httpx.Response(404))
+
+    with pytest.raises(PanoScribeError) as info:
+        server.engine().transcribe(wav)
+
+    message = str(info.value)
+    assert len(server.requests) == 1
+    assert "404" in message
+    assert "whisper-1" in message
+    assert "PANO_ASR_REMOTE_MODEL" in message
+    assert "PANO_ASR_REMOTE_BASE_URL" in message
+    assert "/v1" in message
 
 
 def test_error_never_carries_url_query_or_key(wav: Path) -> None:
@@ -763,6 +780,8 @@ def test_malformed_port_in_base_url_leaves_no_chain_and_no_secret(url: str) -> N
         lambda: ImportError("sk-secret"),
         lambda: ValueError("sk-secret"),
         lambda: FileNotFoundError("sk-secret"),
+        # A malformed HTTPS_PROXY raises exactly this when the client is built.
+        lambda: httpx.InvalidURL("sk-secret"),
     ],
 )
 def test_client_construction_failure_is_a_clear_failure_without_chain(
@@ -829,6 +848,13 @@ def test_retry_delay_does_not_overflow_at_a_huge_attempt_number() -> None:
 
 def test_segment_time_beyond_the_limit_is_not_a_usable_time(wav: Path) -> None:
     content = b'{"segments": [{"start": 1e306, "end": 1e306, "text": "x"}]}'
+
+    with pytest.raises(PanoScribeError, match="no segment timestamps"):
+        _engine(_raw_handler(content)).transcribe(wav)
+
+
+def test_segment_end_just_beyond_the_limit_is_not_a_usable_time(wav: Path) -> None:
+    content = b'{"segments": [{"start": 0, "end": 1000000001, "text": "x"}]}'
 
     with pytest.raises(PanoScribeError, match="no segment timestamps"):
         _engine(_raw_handler(content)).transcribe(wav)

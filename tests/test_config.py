@@ -642,6 +642,19 @@ def test_remote_asr_numeric_validation(
         PanoScribeConfig(_env_file=None, **{field: value})
 
 
+def test_remote_asr_upload_limit_message_prints_the_limit_as_an_integer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pydantic import ValidationError
+
+    _strip_pano_env(monkeypatch)
+
+    with pytest.raises(ValidationError) as info:
+        PanoScribeConfig(_env_file=None, asr_remote_max_upload_mb=1_000_001.0)
+
+    assert "<= 1,000,000;" in str(info.value)
+
+
 def test_remote_asr_blank_values_become_none(monkeypatch: pytest.MonkeyPatch) -> None:
     _strip_pano_env(monkeypatch)
     monkeypatch.setenv("PANO_ASR_REMOTE_BASE_URL", "")

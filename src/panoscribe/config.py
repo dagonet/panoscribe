@@ -210,7 +210,7 @@ class PanoScribeConfig(BaseSettings):
     def _validate_remote_asr_upload_limit(cls, v: float) -> float:
         """Reject an absurd upload limit: it would overflow the byte count."""
         if v > _MAX_REMOTE_UPLOAD_MB:
-            raise ValueError(f"must be <= {_MAX_REMOTE_UPLOAD_MB:,}; got {v!r}")
+            raise ValueError(f"must be <= {_MAX_REMOTE_UPLOAD_MB:,.0f}; got {v!r}")
         return v
 
     @field_validator("asr_remote_max_retries", mode="after")
