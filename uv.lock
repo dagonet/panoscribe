@@ -819,6 +819,9 @@ llm = [
 photo = [
     { name = "gallery-dl" },
 ]
+remote-asr = [
+    { name = "httpx" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -826,6 +829,7 @@ requires-dist = [
     { name = "faster-whisper", specifier = ">=1.1.0" },
     { name = "gallery-dl", marker = "extra == 'photo'", specifier = ">=1.30" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "httpx", marker = "extra == 'remote-asr'", specifier = ">=0.27" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy", specifier = ">=1.26,<3.0" },
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
@@ -846,7 +850,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.30" },
     { name = "yt-dlp", specifier = ">=2026.7.4" },
 ]
-provides-extras = ["photo", "llm", "api", "dev"]
+provides-extras = ["photo", "llm", "api", "remote-asr", "dev"]
 
 [[package]]
 name = "pathspec"

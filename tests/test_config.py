@@ -587,3 +587,113 @@ def test_whisper_task_invalid_rejects(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValidationError):
         PanoScribeConfig(whisper_task="summarize")  # type: ignore[arg-type]
+
+
+# ── Remote ASR (#83) ─────────────────────────────────────────────
+
+
+def test_remote_asr_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    _strip_pano_env(monkeypatch)
+
+    cfg = PanoScribeConfig(_env_file=None)
+
+    assert cfg.asr_backend == "local"
+    assert cfg.asr_remote_base_url is None
+    assert cfg.asr_remote_model is None
+    assert cfg.asr_remote_api_key is None
+    assert cfg.asr_remote_timeout_s == 600.0
+    assert cfg.asr_remote_max_retries == 3
+    assert cfg.asr_remote_max_upload_mb == 25.0
+
+
+def test_remote_asr_unknown_backend_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pydantic import ValidationError
+
+    _strip_pano_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        PanoScribeConfig(_env_file=None, asr_backend="cloud")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("asr_remote_timeout_s", 0.0),
+        ("asr_remote_timeout_s", -1.0),
+        ("asr_remote_max_retries", -1),
+        ("asr_remote_max_upload_mb", 0.0),
+        ("asr_remote_max_upload_mb", -1.0),
+        ("asr_remote_timeout_s", float("nan")),
+        ("asr_remote_timeout_s", float("inf")),
+        ("asr_remote_max_upload_mb", float("nan")),
+        ("asr_remote_max_upload_mb", float("inf")),
+        ("asr_remote_max_upload_mb", 1e303),
+        ("asr_remote_max_upload_mb", 1_000_001.0),
+    ],
+)
+def test_remote_asr_numeric_validation(
+    monkeypatch: pytest.MonkeyPatch, field: str, value: float
+) -> None:
+    from pydantic import ValidationError
+
+    _strip_pano_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        PanoScribeConfig(_env_file=None, **{field: value})
+
+
+def test_remote_asr_upload_limit_message_prints_the_limit_as_an_integer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pydantic import ValidationError
+
+    _strip_pano_env(monkeypatch)
+
+    with pytest.raises(ValidationError) as info:
+        PanoScribeConfig(_env_file=None, asr_remote_max_upload_mb=1_000_001.0)
+
+    assert "<= 1,000,000;" in str(info.value)
+
+
+def test_remote_asr_blank_values_become_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_ASR_REMOTE_BASE_URL", "")
+    monkeypatch.setenv("PANO_ASR_REMOTE_MODEL", "")
+    monkeypatch.setenv("PANO_ASR_REMOTE_API_KEY", "")
+
+    cfg = PanoScribeConfig(_env_file=None)
+
+    assert cfg.asr_remote_base_url is None
+    assert cfg.asr_remote_model is None
+    assert cfg.asr_remote_api_key is None
+
+
+def test_remote_asr_key_is_stripped_and_masked(monkeypatch: pytest.MonkeyPatch) -> None:
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_ASR_REMOTE_API_KEY", " sk-test-secret\n")
+
+    cfg = PanoScribeConfig(_env_file=None)
+
+    assert cfg.asr_remote_api_key is not None
+    assert cfg.asr_remote_api_key.get_secret_value() == "sk-test-secret"
+    assert "sk-test-secret" not in repr(cfg)
+
+
+def test_remote_asr_whitespace_only_key_becomes_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_ASR_REMOTE_API_KEY", "  \n")
+
+    assert PanoScribeConfig(_env_file=None).asr_remote_api_key is None
+
+
+def test_remote_asr_url_is_stripped_and_blank_model_becomes_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_ASR_REMOTE_BASE_URL", "  https://h/v1\n")
+    monkeypatch.setenv("PANO_ASR_REMOTE_MODEL", "   ")
+
+    cfg = PanoScribeConfig(_env_file=None)
+
+    assert cfg.asr_remote_base_url == "https://h/v1"
+    assert cfg.asr_remote_model is None

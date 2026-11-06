@@ -310,3 +310,47 @@ def test_per_job_temp_dir_is_distinct(
 def test_submit_without_source_returns_422(client: TestClient) -> None:
     resp = client.post("/jobs", json={})
     assert resp.status_code == 422
+
+
+def test_api_job_translate_with_remote_fails_cleanly(
+    sync_executor, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Translate is unsupported remotely: the job fails with a clear, key-free error."""
+    key = "sk-test-secret"
+    cfg = PanoScribeConfig(
+        _env_file=None,
+        temp_dir=str(tmp_path / "omni"),
+        asr_backend="remote",
+        asr_remote_base_url="https://asr.example.test/v1",
+        asr_remote_model="whisper-1",
+        asr_remote_api_key=key,
+    )
+    client = TestClient(create_app(config=cfg, executor=sync_executor))
+
+    with (
+        patch("panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"),
+        patch("panoscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav"),
+    ):
+        post_resp = client.post("/jobs", json={"source": "fake.mp4", "translate": True})
+    job_id = post_resp.json()["job_id"]
+
+    resp = client.get(f"/jobs/{job_id}")
+    body = resp.json()
+    assert body["status"] == "failed"
+    assert "translate" in body["error"]
+    assert key not in resp.text
+
+
+def test_job_request_has_no_remote_asr_fields() -> None:
+    """A client must not be able to redirect audio to another host."""
+    from panoscribe.api.server import JobRequest
+
+    # The exact set, so any new field (a base_url, say) fails here and is looked at.
+    assert set(JobRequest.model_fields) == {
+        "source",
+        "language",
+        "translate",
+        "ocr",
+        "ocr_language",
+        "platform",
+    }

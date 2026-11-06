@@ -97,7 +97,7 @@ Videos from any other platform work too — just without UI-specific filtering.
 - **Dual extraction** — Speech (ASR) + on-screen text (OCR) combined into one transcript
 - **Smart deduplication** — Detects when spoken words match displayed text, avoids duplicates
 - **Platform-aware** — UI element filtering profiles for TikTok, YouTube, Instagram
-- **Fully local** — All processing runs on your machine, no API keys or cloud services
+- **Local by default** — The default install and config do all inference on your machine, with no API keys or cloud services. Remote speech recognition is an explicit opt-in, switched on only by settings with no defaults. When it is on, **your audio leaves the machine** and goes to the provider you configured. See [Remote speech recognition](#remote-speech-recognition-opt-in).
 - **GPU-accelerated** — Optimized for NVIDIA GPUs (CUDA), works on CPU too
 - **Multiple output formats** — JSON, TXT, SRT, Markdown
 - **Multilingual** — Supports 80+ languages for both speech and text recognition
@@ -304,6 +304,60 @@ is a CPU-only measurement — the equivalent GPU run on this fixture was not
 timed, so no CPU-vs-GPU speedup ratio is claimed here. `large-v3-turbo` is a
 substantially larger model than `small` and was not benchmarked on CPU;
 expect it to be markedly slower per the model-size difference alone.
+
+## Remote speech recognition (opt-in)
+
+Speech recognition can run on a server instead of your machine, for example
+when you cannot deploy models locally. Local inference stays the default and
+the recommended path.
+
+**When this is on, your audio leaves the machine** and is sent to the server
+you configured. panoscribe logs one warning naming that host the first time.
+Nothing else switches it on, and there is no fallback: a failed remote run
+fails, and a local run never silently goes remote.
+
+Install the supported dependency, then set the three settings that switch it
+on (there are no defaults for the URL or the model) and, if the server needs
+one, an API key:
+
+```bash
+uv sync --extra remote-asr
+
+export PANO_ASR_BACKEND=remote
+export PANO_ASR_REMOTE_BASE_URL=https://asr.example.com/v1
+export PANO_ASR_REMOTE_MODEL=whisper-1
+export PANO_ASR_REMOTE_API_KEY=...   # optional for self-hosted servers
+```
+
+`uv sync` keeps only the extras you name, so list the others you use as well,
+for example `uv sync --extra remote-asr --extra api`.
+
+The extra only installs `httpx`; the settings are what enable the backend.
+They are environment or `.env` only, with no command-line flags, so a key
+never lands in shell history. See
+[docs/configuration.md](docs/configuration.md#remote-asr) for timeouts,
+retries and the upload limit.
+
+What the server must provide:
+
+- An OpenAI-compatible `POST {base_url}/audio/transcriptions` endpoint.
+- A model that returns `verbose_json` with segment timestamps, such as
+  `whisper-1`-style models. `gpt-4o-transcribe`-style models do not return
+  segment timestamps and will not work.
+- Audio over the upload limit (25 MB by default, about 13 minutes) is split
+  at quiet points and sent in order, so long videos work.
+
+Limits:
+
+- `--translate` is not supported with the remote backend and fails before any
+  audio is sent.
+- Environment proxy settings are honoured, except for a loopback server. A
+  loopback server also ignores `SSL_CERT_FILE` and `SSL_CERT_DIR`, so
+  `https://localhost` with a private CA is not supported.
+- OCR stays local. A machine that cannot run local models also needs
+  `--no-ocr` or `PANO_OCR_DEVICE=cpu`.
+- The HTTP API server cannot change these settings per job; they come from
+  the server's own environment.
 
 ## Renamed from OmniScribe
 

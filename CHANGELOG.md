@@ -5,6 +5,26 @@ All notable changes to panoscribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Opt-in remote speech recognition** (#83, #85) — send audio to an
+  OpenAI-compatible `/audio/transcriptions` endpoint instead of running
+  faster-whisper locally. Off by default; switched on only by
+  `PANO_ASR_BACKEND=remote` with `PANO_ASR_REMOTE_BASE_URL` and
+  `PANO_ASR_REMOTE_MODEL`, which have no defaults. Audio leaves the machine
+  when it is on, and one warning names the host. Long audio is split at quiet
+  points; retries and error mapping cover 429/5xx, auth, size and redirects;
+  the API key is never logged. `--translate` is refused, and the HTTP API
+  cannot set the remote settings per job. Install the supported dependency with
+  `uv sync --extra remote-asr`.
+
+### Changed
+
+- README: "Fully local" is reworded to "Local by default" to say plainly that
+  remote speech recognition exists and what it sends.
+
 ## [0.8.1] - 2026-10-13
 
 ### Fixed

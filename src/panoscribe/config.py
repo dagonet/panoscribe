@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import tempfile
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from panoscribe.acquire.platform import Platform
@@ -36,6 +37,9 @@ _OCR_VERSION_CANONICAL: dict[str, str] = {
 }
 
 
+_MAX_REMOTE_UPLOAD_MB = 1_000_000.0
+
+
 class PanoScribeConfig(BaseSettings):
     """panoscribe runtime configuration.
 
@@ -57,6 +61,18 @@ class PanoScribeConfig(BaseSettings):
     whisper_batch_size: int = 16
     whisper_language: str | None = None
     whisper_task: Literal["transcribe", "translate"] = "transcribe"
+
+    # ── Remote ASR (opt-in; local by default) ────────────
+    # The URL and key CONTENT is checked by RemoteTranscriber, not here:
+    # pydantic's ValidationError prints the offending input, which would echo
+    # a secret or credentialed URL.
+    asr_backend: Literal["local", "remote"] = "local"
+    asr_remote_base_url: str | None = None
+    asr_remote_model: str | None = None
+    asr_remote_api_key: SecretStr | None = None
+    asr_remote_timeout_s: float = 600.0
+    asr_remote_max_retries: int = 3
+    asr_remote_max_upload_mb: float = 25.0
 
     # ── OCR ──────────────────────────────────────────────
     ocr_enabled: bool = True
@@ -146,6 +162,9 @@ class PanoScribeConfig(BaseSettings):
 
     @field_validator(
         "whisper_language",
+        "asr_remote_base_url",
+        "asr_remote_model",
+        "asr_remote_api_key",
         "ocr_det_limit_side_len",
         "ocr_det_thresh",
         "ocr_det_box_thresh",
@@ -159,6 +178,48 @@ class PanoScribeConfig(BaseSettings):
     def _empty_to_none(cls, v: object) -> object:
         """Coerce empty-string env values to ``None`` for optional fields."""
         return None if v == "" else v
+
+    @field_validator(
+        "asr_remote_base_url",
+        "asr_remote_model",
+        "asr_remote_api_key",
+        mode="before",
+    )
+    @classmethod
+    def _strip_remote_asr_text(cls, v: object) -> object:
+        """Strip stray whitespace (a pasted key often ends in a newline).
+
+        A value that is blank after stripping becomes ``None``. The value is
+        never echoed in an error from here.
+        """
+        if isinstance(v, str):
+            v = v.strip()
+            return v or None
+        return v
+
+    @field_validator("asr_remote_timeout_s", "asr_remote_max_upload_mb", mode="after")
+    @classmethod
+    def _validate_remote_asr_positive(cls, v: float) -> float:
+        """Reject zero, negative and non-finite remote ASR timeouts and upload limits."""
+        if not math.isfinite(v) or v <= 0:
+            raise ValueError(f"must be a finite number > 0; got {v!r}")
+        return v
+
+    @field_validator("asr_remote_max_upload_mb", mode="after")
+    @classmethod
+    def _validate_remote_asr_upload_limit(cls, v: float) -> float:
+        """Reject an absurd upload limit: it would overflow the byte count."""
+        if v > _MAX_REMOTE_UPLOAD_MB:
+            raise ValueError(f"must be <= {_MAX_REMOTE_UPLOAD_MB:,.0f}; got {v!r}")
+        return v
+
+    @field_validator("asr_remote_max_retries", mode="after")
+    @classmethod
+    def _validate_remote_asr_max_retries(cls, v: int) -> int:
+        """Reject a negative retry count."""
+        if v < 0:
+            raise ValueError(f"asr_remote_max_retries must be >= 0; got {v!r}")
+        return v
 
     @field_validator("platform_profile", mode="after")
     @classmethod

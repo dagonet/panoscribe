@@ -38,6 +38,35 @@ CPU env-var combination (`whisper_device` + `whisper_compute_type`).
 | `whisper_language` | `PANO_WHISPER_LANGUAGE` | `None` | Force ASR language (e.g. `"en"`); `None` = auto-detect |
 | `whisper_task` | `PANO_WHISPER_TASK` | `"transcribe"` | `"transcribe"` or `"translate"` (translate speech to English) |
 
+### Remote ASR
+
+Opt-in: speech recognition runs locally unless `PANO_ASR_BACKEND=remote`.
+**When it is remote, your audio leaves the machine.** Setting the backend to
+`remote` together with a base URL and a model is the whole opt-in; the
+`remote-asr` extra (`uv sync --extra remote-asr`) is only the supported way to
+install `httpx`. These fields come from the environment or `.env` only: there
+are no CLI flags and the HTTP API cannot set them per job. `whisper_model`,
+`whisper_device`, `whisper_compute_type` and `whisper_batch_size` are ignored
+when remote; `whisper_language` is honoured and sent as `language`.
+`whisper_task="translate"` is refused with the remote backend. OCR always stays
+local. Environment proxy and TLS settings (`HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY`, `SSL_CERT_FILE`, `SSL_CERT_DIR`) are honoured, except for a
+loopback server (`localhost`, `127.0.0.1`, `::1`): it is always reached
+directly and ignores `SSL_CERT_FILE` and `SSL_CERT_DIR` too, so
+`https://localhost` with a private CA is not supported. Do not put credentials anywhere in the base
+URL: user-info, a query string and a fragment are refused, and a token in the
+path cannot be recognised and kept out of logs or proxies. See the [README](../README.md#remote-speech-recognition-opt-in).
+
+| Field | Env var | Default | Meaning |
+|---|---|---|---|
+| `asr_backend` | `PANO_ASR_BACKEND` | `"local"` | `"local"` or `"remote"` |
+| `asr_remote_base_url` | `PANO_ASR_REMOTE_BASE_URL` | `None` | Base URL including the version, e.g. `https://host/v1`. Required when remote. No vendor default |
+| `asr_remote_model` | `PANO_ASR_REMOTE_MODEL` | `None` | Model name. Required when remote. Must return `verbose_json` with segment timestamps (`whisper-1` style). No vendor default |
+| `asr_remote_api_key` | `PANO_ASR_REMOTE_API_KEY` | `None` | Bearer token, held as a secret and never logged. Optional: self-hosted servers often need none |
+| `asr_remote_timeout_s` | `PANO_ASR_REMOTE_TIMEOUT_S` | `600.0` | Timeout in seconds for the read, write and pool phases of a request (must be finite and > 0). The connect timeout is fixed at 10 s |
+| `asr_remote_max_retries` | `PANO_ASR_REMOTE_MAX_RETRIES` | `3` | Retries after a 429, 500, 502, 503 or 504 status, a timeout or a connection error (must be >= 0) |
+| `asr_remote_max_upload_mb` | `PANO_ASR_REMOTE_MAX_UPLOAD_MB` | `25.0` | Request size above which audio is split (must be finite, > 0 and at most 1,000,000). Here 1 MB means 1,000,000 bytes, and 4 KiB is held back for the request framing, so a chunk plus its framing stays inside the limit |
+
 ### OCR
 
 See [Running without a GPU](../README.md#running-without-a-gpu) for setting
@@ -128,6 +157,11 @@ override.
 | Field(s) | Rule | Error condition |
 |---|---|---|
 | `whisper_language`, `ocr_det_limit_side_len`, `ocr_det_thresh`, `ocr_det_box_thresh`, `ocr_det_model_type`, `ocr_det_ocr_version`, `ocr_rec_model_type`, `ocr_rec_ocr_version` | Coerces empty-string env values to `None` | — (empty string treated as unset) |
+| `asr_backend` | Must be `local` or `remote` | Unknown value rejected |
+| `asr_remote_base_url`, `asr_remote_model`, `asr_remote_api_key` | Surrounding whitespace is stripped; blank becomes `None` | — (a pasted key with a trailing newline is accepted) |
+| `asr_remote_timeout_s`, `asr_remote_max_upload_mb` | Must be finite and `> 0`; the upload limit is at most 1,000,000 | Zero, negative, `nan`, `inf` and (for the limit) larger values rejected |
+| `asr_remote_max_retries` | Must be `>= 0` | Negative values rejected |
+| Remote URL and key content | Checked when the remote engine is built, not at config load, because a validation error prints its input. The URL must be `http` or `https` with a host and no user-info, query string or fragment; the key must be printable ASCII with no whitespace | The engine refuses with an error that does not echo the value |
 | `platform_profile` | Must be one of `auto`, `tiktok`, `youtube`, `instagram`, `unknown`, `generic` | Unknown value rejected with list of allowed options |
 | `scene_change_threshold` | Must be in `(0.0, 1.0]` | `0.0` (defeats feature) or `> 1.0` (impossible) rejected |
 | `llm_cleanup_timeout_s` | Must be `> 0` | Zero or negative values rejected |

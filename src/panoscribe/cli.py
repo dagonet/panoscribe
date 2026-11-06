@@ -112,6 +112,9 @@ app = typer.Typer(
     name="panoscribe",
     help="Transcribe videos with speech (ASR) and on-screen text (OCR).",
     no_args_is_help=True,
+    # Typer's default prints local variables in a crash report; in the remote
+    # ASR code those include the Authorization header with the API key.
+    pretty_exceptions_show_locals=False,
 )
 
 _console = Console()
