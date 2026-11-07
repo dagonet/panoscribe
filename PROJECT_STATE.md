@@ -2,9 +2,9 @@
 
 ## Now
 
-- **Goal:** The project is ON HOLD until further notice (user, 2026-10-12): no feature work; #83/#84/#85 stay parked; issue #77 stays open.
-- **Current step:** Idle. v0.8.1 is released (2026-10-13; PyPI + GitHub Release): the #164 Windows redirect fix and all 9 pip-audit fixes. Toolkit synced to v5.2.1 (#175; v5.1.2 was #172, the v5 plugin migration #171): agents and hooks come from the `cct` plugin, which every session here needs.
-- **Next step:** Nothing until the user lifts the hold.
+- **Goal:** The user lifted the hold on 2026-11-05. Order: #83 + #85 (shipped), then #84 (remote OCR), which needs its own cost design. Issue #77 stays open; any follow-up comment there is the maintainer's to send.
+- **Current step:** #83 (opt-in remote speech-to-text) and #85 (README "local by default") merged in #177 on 2026-11-06; main's CI green by job. Not released: v0.8.1 is still the latest release (2026-10-13). Toolkit at v5.2.1 (#175): agents and hooks come from the `cct` plugin, which every session here needs.
+- **Next step:** The design for #84, with the user, cost decisions first. A release is the user's call, and so is the follow-up comment on #77.
 
 ## Current Sprint
 
