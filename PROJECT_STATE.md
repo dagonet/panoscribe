@@ -2,9 +2,9 @@
 
 ## Now
 
-- **Goal:** The user lifted the hold on 2026-11-05. Order: #83 + #85 (shipped), then #84 (remote OCR), which needs its own cost design. Issue #77 stays open; any follow-up comment there is the maintainer's to send.
-- **Current step:** #83 (opt-in remote speech-to-text) and #85 (README "local by default") merged in #177 on 2026-11-06; main's CI green by job. Not released: v0.8.1 is still the latest release (2026-10-13). Toolkit at v5.2.1 (#175): agents and hooks come from the `cct` plugin, which every session here needs.
-- **Next step:** The design for #84, with the user, cost decisions first. A release is the user's call, and so is the follow-up comment on #77.
+- **Goal:** No feature work scheduled. #83 + #85 shipped in #177. The user parked #84 (remote OCR) on 2026-11-07 because the need is weak, free tiers are tiny and no quality gain is proven; the cost design and open questions are in the #84 comment of that day. Issue #77 stays open; any follow-up comment there is the maintainer's to send.
+- **Current step:** Idle. Not released: v0.8.1 is still the latest release (2026-10-13). Toolkit at v5.2.1 (#175): agents and hooks come from the `cct` plugin, which every session here needs.
+- **Next step:** The user's calls: a release, the #77 comment, and whether to file two follow-ups (catch wrong remote settings before the download; show `transcribe-many` failure reasons on the console). #84 reopens only for a concrete user need or a measured quality gain.
 
 ## Current Sprint
 
