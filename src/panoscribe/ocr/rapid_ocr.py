@@ -192,6 +192,36 @@ def _resolve_ocr_language(ocr_language: str, *, detected_language: str | None = 
     return lang
 
 
+# (enabled-flag attribute, loader method) per rapidocr pipeline stage. rapidocr 3.10 has
+# no public loader or warm-up, so these private ``_load_*`` methods (the ones its own
+# ``__call__`` uses) are the only way to load without running an inference.
+_LAZY_LOADERS: tuple[tuple[str, str], ...] = (
+    ("use_det", "_load_det_model"),
+    ("use_cls", "_load_cls_model"),
+    ("use_rec", "_load_rec_model"),
+)
+
+
+def _force_model_load(engine: RapidOCR) -> None:
+    """Load (and download) the det/cls/rec models now instead of on the first frame.
+
+    Each loader is idempotent, so a repeat call is a no-op. A stage the user's rapidocr
+    config disabled is skipped. A renamed loader raises, which the caller reports as
+    ``Failed to initialize RapidOCR`` (and the unmocked engine tests catch) rather than
+    silently going back to lazy loading.
+    """
+    for flag, loader_name in _LAZY_LOADERS:
+        if not getattr(engine, flag, True):
+            continue
+        loader = getattr(engine, loader_name, None)
+        if not callable(loader):
+            raise AttributeError(
+                f"rapidocr no longer provides RapidOCR.{loader_name}; "
+                "update panoscribe.ocr.rapid_ocr._LAZY_LOADERS"
+            )
+        loader()
+
+
 class RapidOCREngine:
     """Lazy-init RapidOCR wrapper that extracts on-screen text from a video.
 
@@ -260,7 +290,11 @@ class RapidOCREngine:
             # Cls (orientation classifier) deliberately stays at defaults —
             # recall-irrelevant.
             try:
-                self._engine = RapidOCR(params=params)
+                engine = RapidOCR(params=params)
+                # rapidocr >= 3.10 loads (and downloads) models lazily on the first
+                # inference; force it here so failures stay a PanoScribeError at start.
+                _force_model_load(engine)
+                self._engine = engine
             except Exception as exc:
                 raise PanoScribeError(
                     f"Failed to initialize RapidOCR on {self._config.ocr_device}: {exc}"

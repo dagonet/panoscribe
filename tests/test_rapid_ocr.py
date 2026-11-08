@@ -958,6 +958,105 @@ def test_v6_knob_for_language_without_v6_raises_before_rapidocr(tmp_path: Path) 
     mock_rapid_cls.assert_not_called()
 
 
+# ── rapidocr >= 3.10 loads models lazily: the engine must force it at start ──────
+
+
+@pytest.mark.parametrize("loader", ["_load_det_model", "_load_cls_model", "_load_rec_model"])
+@pytest.mark.parametrize("error", [ValueError("no route"), OSError("download failed")])
+def test_model_load_error_becomes_panoscribe_error(
+    tmp_path: Path, loader: str, error: Exception
+) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    getattr(engine_mock, loader).side_effect = error
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        pytest.raises(PanoScribeError) as excinfo,
+    ):
+        RapidOCREngine(_make_config(ocr_device="cpu")).extract(video)
+    assert str(excinfo.value).startswith("Failed to initialize RapidOCR on cpu:")
+    assert str(error) in str(excinfo.value)
+    assert excinfo.value.__cause__ is error
+
+
+def test_failed_model_load_is_retried_on_the_next_call(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+    engine_mock._load_rec_model.side_effect = [OSError("offline"), None]
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", side_effect=[iter([]), iter([])]),
+    ):
+        ocr = RapidOCREngine(_make_config(ocr_device="cpu"))
+        with pytest.raises(PanoScribeError):
+            ocr.extract(video)
+        ocr.extract(video)
+    assert engine_mock._load_rec_model.call_count == 2
+
+
+def test_models_are_loaded_once_per_engine_not_per_frame(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+    frames = [(float(i), _fake_frame()) for i in range(3)]
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "panoscribe.ocr.rapid_ocr.sample_frames",
+            side_effect=[iter(frames), iter(frames)],
+        ),
+    ):
+        ocr = RapidOCREngine(_make_config(ocr_device="cpu"))
+        ocr.extract(video)
+        ocr.extract(video)
+    assert engine_mock.call_count == 6  # 3 frames, 2 calls
+    assert engine_mock._load_det_model.call_count == 1
+    assert engine_mock._load_cls_model.call_count == 1
+    assert engine_mock._load_rec_model.call_count == 1
+
+
+def test_disabled_stage_is_not_loaded(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.use_cls = False
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(_make_config(ocr_device="cpu")).extract(video)
+    engine_mock._load_cls_model.assert_not_called()
+    engine_mock._load_det_model.assert_called_once()
+    engine_mock._load_rec_model.assert_called_once()
+
+
+def test_renamed_rapidocr_loader_fails_loudly(tmp_path: Path) -> None:
+    """A rapidocr that drops a private loader must not fall back to lazy loading silently."""
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    stub = SimpleNamespace(use_det=True, use_cls=True, use_rec=True)  # no _load_* methods
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=stub),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        pytest.raises(PanoScribeError, match=r"Failed to initialize RapidOCR.*_load_det_model"),
+    ):
+        RapidOCREngine(_make_config(ocr_device="cpu")).extract(video)
+
+
+def test_installed_rapidocr_still_has_the_lazy_loaders() -> None:
+    from rapidocr import RapidOCR as RealRapidOCR
+
+    from panoscribe.ocr.rapid_ocr import _LAZY_LOADERS
+
+    for _flag, loader_name in _LAZY_LOADERS:
+        assert callable(getattr(RealRapidOCR, loader_name, None)), loader_name
+
+
 def test_model_set_leaves_det_threshold_knobs_alone(tmp_path: Path) -> None:
     config = _make_config(ocr_model_set="v6", ocr_det_thresh=0.2)
     params = _init_params(config, tmp_path)
