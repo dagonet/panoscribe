@@ -84,13 +84,13 @@ Issues = "https://github.com/dagonet/panoscribe/issues"
 Changelog = "https://github.com/dagonet/panoscribe/blob/main/CHANGELOG.md"
 
 [tool.uv]
-# rapidocr hard-depends on the full opencv-python wheel, which dlopens libGL
-# at import time and breaks headless Linux (GitHub runners dropped libGL from
-# ubuntu-latest on 2026-07-13, turning this latent conflict into a hard CI
-# failure — two wheels were installing into the same cv2/ package). This
-# project ships opencv-python-headless; cv2's Python API is identical for
-# rapidocr's imgproc usage. The unsatisfiable marker removes opencv-python
-# from resolution entirely, leaving headless as the only cv2 provider.
+# rapidocr 3.8 hard-depended on the full opencv-python wheel, which dlopens
+# libGL at import time and breaks headless Linux (GitHub runners dropped libGL
+# from ubuntu-latest on 2026-07-13, turning this latent conflict into a hard CI
+# failure — two wheels were installing into the same cv2/ package). rapidocr
+# 3.10 depends on opencv-python-headless itself, so the override below is now a
+# safety net: should any package pull the full wheel in again, the unsatisfiable
+# marker keeps opencv-python out of resolution and headless the only cv2 provider.
 # `faster-whisper` hard-requires plain `onnxruntime<2,>=1.14`. On GPU platforms
 # that transitive requirement would otherwise install a second `onnxruntime`
 # distribution alongside `onnxruntime-gpu` — both unpack into the same

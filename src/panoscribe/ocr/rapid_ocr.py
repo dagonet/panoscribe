@@ -176,7 +176,8 @@ def _resolve_ocr_language(ocr_language: str, *, detected_language: str | None = 
         lang = _ISO_TO_LANGREC.get(resolved_iso)
         if lang is None:
             logger.warning(
-                "No LangRec mapping for detected language %r; falling back to en",
+                "No LangRec mapping for detected language %r; the classic models fall back to "
+                "en (the v6 set uses the ISO code directly when PP-OCRv6 supports it)",
                 resolved_iso,
             )
             return LangRec.EN

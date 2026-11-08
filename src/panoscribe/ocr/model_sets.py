@@ -23,7 +23,7 @@ Explicit knobs (``PANO_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}``,
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from rapidocr import LangRec, ModelType, OCRVersion
 from rapidocr.utils.typings import LangDet
@@ -181,21 +181,32 @@ def build_model_params(
 
     Returns ``(params, fell_back)``: ``params`` holds exactly ``Det.lang_type``,
     ``Det.ocr_version``, ``Det.model_type`` and the same three ``Rec.*`` keys;
-    ``fell_back`` is True when the ``v6`` set was asked for but ``lang`` has no
-    PP-OCRv6 code, so the set's tasks use the classic models instead.
+    ``fell_back`` is True only when the *set* asked for v6 (``ocr_model_set="v6"``),
+    ``lang`` has no PP-OCRv6 code, and at least one task took its version from the
+    set (not from a knob); those tasks then use the classic models. It is False
+    when v6 was never asked for, when ``lang`` has a v6 code, and when both tasks
+    are pinned by knobs.
 
-    Raises :class:`PanoScribeError` when a PP-OCRv6 *knob* is set but ``lang`` has
-    no v6 code (explicit settings are never changed silently).
+    ``PANO_OCR_DET_LANG`` (``config.ocr_det_lang``) is an explicit knob and is never
+    ignored: if Det's version comes only from the v6 set, a set ``ocr_det_lang``
+    keeps Det on the classic PP-OCRv4 detector with that language (Rec still follows
+    the set, and this is not a fallback); if a Det version knob pins PP-OCRv6, the
+    value is used as the v6 Det language (``en`` and ``ch`` are valid, ``multi`` is not).
+
+    Raises :class:`PanoScribeError` when a PP-OCRv6 *knob* is set but the language
+    it needs has no v6 code (explicit settings are never changed silently).
     """
     code = _v6_code(lang, iso)
     det_knob = OCRVersion(config.ocr_det_ocr_version) if config.ocr_det_ocr_version else None
     rec_knob = OCRVersion(config.ocr_rec_ocr_version) if config.ocr_rec_ocr_version else None
+    det_lang_knob = config.ocr_det_lang
 
-    if code is None and OCRVersion.PPOCRV6 in (det_knob, rec_knob):
-        supported = ", ".join(sorted(V6_LANGS))
-        raise PanoScribeError(
-            f"OCR language {lang.value!r} has no PP-OCRv6 model; supported: {supported}"
-        )
+    # A Det pinned to v6 needs a v6 language: DET_LANG if set, else the resolved code.
+    det_v6_code = det_lang_knob if det_lang_knob is not None else code
+    if det_knob is OCRVersion.PPOCRV6 and det_v6_code not in V6_LANGS:
+        _raise_no_v6(det_v6_code or lang.value)
+    if rec_knob is OCRVersion.PPOCRV6 and code is None:
+        _raise_no_v6(lang.value)
 
     want_v6 = config.ocr_model_set == "v6"
     set_driven = det_knob is None or rec_knob is None
@@ -208,8 +219,20 @@ def build_model_params(
         )
     set_version = OCRVersion.PPOCRV6 if want_v6 and code is not None else None
 
+    # An explicit DET_LANG keeps a set-driven Det on the classic detector (the v6 Det
+    # has no way to honour it, e.g. ``multi``); a Det version knob is left alone.
+    det_set_version = set_version
+    if set_version is not None and det_knob is None and det_lang_knob is not None:
+        det_set_version = None
+        logger.info(
+            "PANO_OCR_DET_LANG=%s is set: detection uses the classic PP-OCRv4 model, "
+            "recognition follows the %s set",
+            det_lang_knob,
+            config.ocr_model_set,
+        )
+
     rec_classic = OCRVersion.PPOCRV5 if lang.value in _V5_REC_ONLY else OCRVersion.PPOCRV4
-    det_version = det_knob or set_version or OCRVersion.PPOCRV4
+    det_version = det_knob or det_set_version or OCRVersion.PPOCRV4
     rec_version = rec_knob or set_version or rec_classic
 
     det_type = _model_type(config.ocr_det_model_type, det_version)
@@ -218,7 +241,7 @@ def build_model_params(
     det_lang: object
     rec_lang: object
     if det_version is OCRVersion.PPOCRV6:
-        det_lang = code
+        det_lang = det_v6_code
     else:
         det_lang = _classic_det_value(config, lang, det_version, det_type)
     rec_lang = code if rec_version is OCRVersion.PPOCRV6 else lang
@@ -232,6 +255,13 @@ def build_model_params(
         "Rec.model_type": rec_type,
     }
     return params, fell_back
+
+
+def _raise_no_v6(language: str) -> NoReturn:
+    supported = ", ".join(sorted(V6_LANGS))
+    raise PanoScribeError(
+        f"OCR language {language!r} has no PP-OCRv6 model; supported: {supported}"
+    )
 
 
 def _model_type(knob: str | None, version: OCRVersion) -> ModelType:

@@ -249,6 +249,84 @@ def test_v6_langs_matches_installed_rapidocr_small_list() -> None:
             ("latin", V4, "mobile"),
             False,
         ),
+        # R14 (a): PANO_OCR_DET_LANG with a set-driven v6 Det keeps Det on classic v4 with
+        # that language; Rec still follows the set. Not a fallback (de has a v6 code).
+        (
+            {"ocr_language": "de", "ocr_model_set": "v6", "ocr_det_lang": "multi"},
+            None,
+            ("multi", V4, "mobile"),
+            ("de", V6, "small"),
+            False,
+        ),
+        (
+            {"ocr_language": "de", "ocr_model_set": "v6", "ocr_det_lang": "ch"},
+            None,
+            ("ch", V4, "mobile"),
+            ("de", V6, "small"),
+            False,
+        ),
+        (
+            {"ocr_language": "de", "ocr_model_set": "v6", "ocr_det_lang": "en"},
+            None,
+            ("en", V4, "mobile"),
+            ("de", V6, "small"),
+            False,
+        ),
+        (
+            {
+                "ocr_language": "de",
+                "ocr_model_set": "v6",
+                "ocr_det_lang": "multi",
+                "ocr_det_model_type": "server",
+            },
+            None,
+            ("ch", V4, "server"),
+            ("de", V6, "small"),
+            False,
+        ),
+        # DET_LANG with a language that has no v6 code: ordinary fallback, DET_LANG honoured.
+        (
+            {"ocr_language": "ko", "ocr_model_set": "v6", "ocr_det_lang": "ch"},
+            None,
+            ("ch", V4, "mobile"),
+            ("korean", V4, "mobile"),
+            True,
+        ),
+        # R14 (b): a Det version knob pinning v6 takes DET_LANG as the v6 Det language.
+        (
+            {"ocr_language": "de", "ocr_det_ocr_version": V6, "ocr_det_lang": "en"},
+            None,
+            ("en", V6, "small"),
+            ("latin", V4, "mobile"),
+            False,
+        ),
+        (
+            {
+                "ocr_language": "de",
+                "ocr_model_set": "v6",
+                "ocr_det_ocr_version": V6,
+                "ocr_det_lang": "ch",
+            },
+            None,
+            ("ch", V6, "small"),
+            ("de", V6, "small"),
+            False,
+        ),
+        (
+            {"ocr_language": "ko", "ocr_det_ocr_version": V6, "ocr_det_lang": "en"},
+            None,
+            ("en", V6, "small"),
+            ("korean", V4, "mobile"),
+            False,
+        ),
+        # Auto-detected ISO code that v6 knows but _ISO_TO_LANGREC does not.
+        (
+            {"ocr_language": "auto", "ocr_model_set": "v6"},
+            "hr",
+            ("hr", V6, "small"),
+            ("hr", V6, "small"),
+            False,
+        ),
         # Rec model-type knob alone keeps the classic version.
         (
             {"ocr_language": "de", "ocr_rec_model_type": "server"},
@@ -311,6 +389,18 @@ def test_det_lang_knob_passes_a_langdet_member() -> None:
             "korean",
         ),
         ({"ocr_language": "auto", "ocr_det_ocr_version": V6}, "ru", "eslav"),
+        # R14 (b): DET_LANG=multi has no PP-OCRv6 model, so a pinned v6 Det cannot use it.
+        ({"ocr_language": "de", "ocr_det_ocr_version": V6, "ocr_det_lang": "multi"}, None, "multi"),
+        (
+            {
+                "ocr_language": "de",
+                "ocr_model_set": "v6",
+                "ocr_det_ocr_version": V6,
+                "ocr_det_lang": "multi",
+            },
+            None,
+            "multi",
+        ),
     ],
 )
 def test_explicit_v6_knob_without_v6_code_raises(
@@ -319,10 +409,20 @@ def test_explicit_v6_knob_without_v6_code_raises(
     with pytest.raises(PanoScribeError) as excinfo:
         _build(detected, **overrides)
     message = str(excinfo.value)
-    assert language_word in message
-    assert "PP-OCRv6" in message
-    assert "supported" in message
-    assert "de" in message  # lists the supported languages
+    assert f"'{language_word}'" in message
+    assert "has no PP-OCRv6 model" in message
+    assert "supported: af, az" in message  # the sorted V6_LANGS list starts here
+
+
+def test_det_lang_under_v6_set_does_not_log_the_fallback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="panoscribe.ocr.model_sets")
+    _view, fell_back = _build(None, ocr_language="de", ocr_model_set="v6", ocr_det_lang="multi")
+    assert fell_back is False
+    messages = [r.getMessage() for r in caplog.records if r.name == "panoscribe.ocr.model_sets"]
+    assert not any("has no model" in m for m in messages)
+    assert any("PANO_OCR_DET_LANG" in m for m in messages)
 
 
 def test_fallback_logs_info_once(caplog: pytest.LogCaptureFixture) -> None:

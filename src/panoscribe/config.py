@@ -103,7 +103,8 @@ class PanoScribeConfig(BaseSettings):
     ocr_det_limit_side_len: int | None = Field(default=None, ge=32)
     ocr_det_thresh: float | None = Field(default=None, gt=0, lt=1)
     ocr_det_box_thresh: float | None = Field(default=None, gt=0, lt=1)
-    # Sprint 9.5 — model-variant knobs (None = rapidocr defaults: mobile / PP-OCRv4).
+    # Sprint 9.5 — model-variant knobs (None = the model set decides: ``ocr_model_set``
+    # picks PP-OCRv4/v5 mobile for ``classic`` and PP-OCRv6 small for ``v6``).
     # Exposed for the #41 capability probe. Rec knobs shipped alongside so a
     # rec-bottleneck finding doesn't need a second sprint; the measurement
     # matrix keeps rec at defaults unless det finds text with poor similarity.
