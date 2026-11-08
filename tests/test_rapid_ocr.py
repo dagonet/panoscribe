@@ -1207,3 +1207,55 @@ def test_extract_images_no_masking(tmp_path: Path) -> None:
         ocr.extract_images([img])
 
     mock_mask.assert_not_called()
+
+
+# --- logical text order for right-to-left scripts (#188) ----------------------
+
+
+def _sentinel_reorder(texts: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(t[::-1] for t in texts)
+
+
+def test_ensure_loaded_makes_rapidocr_bidi_reorder_the_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rapidocr.ch_ppocr_rec.main as rec_main
+
+    monkeypatch.setattr(rec_main, "reorder_bidi_for_display", _sentinel_reorder)
+    texts = ("مرحبا", "بالعالم")
+
+    with patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()):
+        RapidOCREngine(_make_config())._ensure_loaded()
+
+    assert rec_main.reorder_bidi_for_display(texts) is texts
+
+
+def test_bidi_reorder_patch_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+    import rapidocr.ch_ppocr_rec.main as rec_main
+
+    monkeypatch.setattr(rec_main, "reorder_bidi_for_display", _sentinel_reorder)
+    texts = ("abc",)
+
+    with patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=MagicMock()):
+        RapidOCREngine(_make_config())._ensure_loaded()
+        patched = rec_main.reorder_bidi_for_display
+        RapidOCREngine(_make_config())._ensure_loaded()
+
+    assert rec_main.reorder_bidi_for_display is patched
+    assert rec_main.reorder_bidi_for_display(texts) is texts
+
+
+def test_ensure_loaded_raises_when_rapidocr_has_no_bidi_reorder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import rapidocr.ch_ppocr_rec.main as rec_main
+
+    monkeypatch.delattr(rec_main, "reorder_bidi_for_display")
+
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls,
+        pytest.raises(PanoScribeError, match=r"rapidocr \d"),
+    ):
+        RapidOCREngine(_make_config())._ensure_loaded()
+
+    mock_rapid_cls.assert_not_called()

@@ -11,6 +11,7 @@ GPU init surfaces as the native library exception (wrapped by the caller).
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -230,6 +231,37 @@ def _force_model_load(engine: RapidOCR) -> None:
         loader()
 
 
+def _keep_logical_text_order() -> None:
+    """Stop rapidocr turning each Arabic text into display order (#188).
+
+    rapidocr's recogniser runs ``reorder_bidi_for_display`` on Arabic results, which
+    reverses every box's text for drawing; panoscribe wants logical order and orders the
+    boxes itself (``bbox_aggregator._reading_order``). ``main.py`` imported the function by
+    name, so it is replaced in that module's namespace. Idempotent. The
+    ``rapidocr>=3.10,<3.11`` pin and the engine CI test guard this private hook.
+    """
+    from rapidocr.ch_ppocr_rec import main as rec_main
+
+    if not hasattr(rec_main, "reorder_bidi_for_display"):
+        raise PanoScribeError(
+            f"rapidocr {_rapidocr_version()} no longer has "
+            "rapidocr.ch_ppocr_rec.main.reorder_bidi_for_display; Arabic text would come out "
+            "reversed. Update panoscribe.ocr.rapid_ocr._keep_logical_text_order"
+        )
+    rec_main.reorder_bidi_for_display = _identity_texts
+
+
+def _identity_texts(texts: tuple[str, ...]) -> tuple[str, ...]:
+    return texts
+
+
+def _rapidocr_version() -> str:
+    try:
+        return importlib.metadata.version("rapidocr")
+    except importlib.metadata.PackageNotFoundError:
+        return "(unknown version)"
+
+
 def validate_ocr_settings(config: PanoScribeConfig) -> None:
     """Fail on a wrong OCR setting now, before any download or speech recognition (#191).
 
@@ -314,6 +346,7 @@ class RapidOCREngine:
                 params["Det.box_thresh"] = self._config.ocr_det_box_thresh
             # Cls (orientation classifier) deliberately stays at defaults —
             # recall-irrelevant.
+            _keep_logical_text_order()
             try:
                 engine = RapidOCR(params=params)
                 # rapidocr >= 3.10 loads (and downloads) models lazily on the first

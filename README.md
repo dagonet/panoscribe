@@ -287,7 +287,7 @@ Switch with `export PANO_OCR_MODEL_SET=v6` (or put it in your `.env`). The expli
 
 panoscribe requires `rapidocr[rtl]>=3.10,<3.11`; the `rtl` extra pulls in `python-bidi`, which rapidocr needs for Arabic. The languages Japanese, Korean, Russian (and other Eastern Slavic), Cyrillic, Arabic, Hindi (Devanagari), Thai, Greek, Tamil, Telugu and Kannada now start; on the previous rapidocr they failed with `Invalid OCR configuration`. Korean, Hindi and Telugu start but read poorly on a synthetic check.
 
-Known limitations: Arabic text comes out in display order ([#188](https://github.com/dagonet/panoscribe/issues/188)); AV1 videos that OpenCV cannot decode stop with a clear error (see [Troubleshooting](docs/troubleshooting.md#cannot-decode-any-video-frame-av1)).
+Known limitations: in an Arabic line, a number directly followed by a Latin word may swap places; AV1 videos that OpenCV cannot decode stop with a clear error (see [Troubleshooting](docs/troubleshooting.md#cannot-decode-any-video-frame-av1)).
 
 ## Running without a GPU
 

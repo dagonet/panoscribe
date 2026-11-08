@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from panoscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
+from panoscribe.ocr.bbox_aggregator import _reading_order, aggregate_frame_bboxes
 
 
 def _box(x_min: float, y_min: float, x_max: float, y_max: float) -> list[tuple[float, float]]:
@@ -377,3 +377,59 @@ def test_column_split_chunks_have_independent_geometry() -> None:
     assert len(out) == 2
     assert out[0].mean_box_height == pytest.approx(30.0)
     assert out[1].mean_box_height == pytest.approx(50.0)
+
+
+# --- right-to-left reading order (#188) ---------------------------------------
+#
+# Texts below are written in LEFT-TO-RIGHT screen order, i.e. the order the
+# aggregator receives them after sorting by x. The recogniser returns each box's
+# text in logical order.
+
+
+def _row_text(texts_left_to_right: list[str]) -> str:
+    boxes = [_box(i * 50.0, 0.0, i * 50.0 + 40.0, 30.0) for i in range(len(texts_left_to_right))]
+    out = aggregate_frame_bboxes(
+        boxes, texts_left_to_right, [0.9] * len(texts_left_to_right), min_confidence=0.6
+    )
+    assert len(out) == 1
+    return out[0].text
+
+
+@pytest.mark.parametrize(
+    ("screen_order", "expected"),
+    [
+        (["بالعالم", "مرحبا"], "مرحبا بالعالم"),
+        (["دولار", "123", "سعر"], "سعر 123 دولار"),
+        (["بالعالم", "2026", "مرحبا"], "مرحبا 2026 بالعالم"),
+        (["AI", "Model", "2024", "عربي"], "عربي AI Model 2024"),
+        (["שלום", "עולם"], "עולם שלום"),
+        # Latin, digits and CJK keep today's left-to-right join.
+        (["left", "right"], "left right"),
+        (["2026", "123"], "2026 123"),
+        (["你好", "世界", "2026"], "你好 世界 2026"),
+    ],
+)
+def test_rtl_boxes_are_read_right_to_left_and_others_left_to_right(
+    screen_order: list[str], expected: str
+) -> None:
+    assert _row_text(screen_order) == expected
+
+
+@pytest.mark.parametrize(
+    ("screen_order", "expected"),
+    [
+        ([], []),
+        (["a", "b", "c"], ["a", "b", "c"]),
+        (["1", "2"], ["1", "2"]),
+        (["ب", "أ"], ["أ", "ب"]),
+        (["Hello", "World", "ب", "أ"], ["أ", "ب", "Hello", "World"]),
+        # Digit-only boxes between Arabic boxes stay single units (no re-reversal).
+        (["ج", "2", "1", "ب"], ["ب", "1", "2", "ج"]),
+        # Two separate Latin phrases, each kept left to right.
+        (["B1", "B2", "ج", "A1", "A2", "ب"], ["ب", "A1", "A2", "ج", "B1", "B2"]),
+        # Documented limit: a number directly followed by a Latin word.
+        (["AI", "2024", "عربي"], ["عربي", "AI", "2024"]),
+    ],
+)
+def test_reading_order_helper(screen_order: list[str], expected: list[str]) -> None:
+    assert _reading_order(screen_order) == expected

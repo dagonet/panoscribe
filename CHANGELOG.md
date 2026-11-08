@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Arabic on-screen text is no longer reversed** — rapidocr turned every Arabic box into
+  display order (letters of each word flipped), and panoscribe then joined the boxes of
+  a line from left to right, so the words came out in reverse order too. panoscribe now
+  keeps the recogniser's logical order and reads a line with right-to-left text from
+  right to left, keeping an embedded Latin phrase such as `AI Model 2024` in order.
+  Other languages are unchanged. Known limit: a number directly followed by a Latin
+  word inside an Arabic line may swap places (#188)
 - **AV1 videos no longer give silent empty OCR** — the OpenCV build that panoscribe
   uses can only decode AV1 with hardware support, so on most machines an AV1 video
   gave no on-screen text and no error. Downloads now ask yt-dlp for H.264 first (AV1

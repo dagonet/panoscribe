@@ -31,10 +31,56 @@ Algorithm (per frame):
 
 from __future__ import annotations
 
+import unicodedata
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+
+def _has_bidi_class(text: str, classes: frozenset[str]) -> bool:
+    return any(unicodedata.bidirectional(ch) in classes for ch in text)
+
+
+_RTL_CLASSES = frozenset({"R", "AL"})
+_LTR_CLASSES = frozenset({"L"})
+
+
+def _reading_order(texts: list[str]) -> list[str]:
+    """Order one line's box texts (given left to right on screen) for reading.
+
+    Lines without a right-to-left character come back unchanged. Otherwise the line is
+    read as a right-to-left paragraph at box level: the box sequence is reversed, then each
+    maximal run of consecutive boxes with no right-to-left character that contains a
+    left-to-right letter (``AI Model 2024``) is put back left to right. Digit-only boxes
+    between right-to-left boxes stay single units.
+
+    Each box's own text is already in logical order (the recogniser output is not
+    re-ordered, see ``rapid_ocr._keep_logical_text_order``), so it is never touched here.
+
+    Known limit: box-level ordering cannot resolve a number directly followed by a Latin
+    word inside a right-to-left line; ``عربي 2024 AI`` comes out as ``عربي AI 2024``.
+    """
+    if not any(_has_bidi_class(t, _RTL_CLASSES) for t in texts):
+        return texts
+    reversed_texts = texts[::-1]
+    ordered: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        if any(_has_bidi_class(t, _LTR_CLASSES) for t in run):
+            run.reverse()
+        ordered.extend(run)
+        run.clear()
+
+    for text in reversed_texts:
+        if _has_bidi_class(text, _RTL_CLASSES):
+            flush()
+            ordered.append(text)
+        else:
+            run.append(text)
+    flush()
+    return ordered
 
 
 class AggregatedLine(NamedTuple):
@@ -234,7 +280,7 @@ def aggregate_frame_bboxes(
         # Each chunk emits its own joined text, mean confidence, and geometry
         # (averaged over the chunk's surviving bboxes).
         for chunk in chunks:
-            joined_text = " ".join(s.text for s in chunk)
+            joined_text = " ".join(_reading_order([s.text for s in chunk]))
             mean_conf = sum(s.score for s in chunk) / len(chunk)
             chunk_mean_height = sum(s.box_height for s in chunk) / len(chunk)
             chunk_y_center = sum(s.y_center for s in chunk) / len(chunk)
