@@ -86,14 +86,14 @@ See [Running without a GPU](../README.md#running-without-a-gpu) for setting
 | `ocr_det_limit_side_len` | `PANO_OCR_DET_LIMIT_SIDE_LEN` | `None` | RapidOCR Det limit_side_len override (≥ 32, or `None` for config default) |
 | `ocr_det_thresh` | `PANO_OCR_DET_THRESH` | `None` | RapidOCR Det detection threshold (0.0–1.0, or `None` for default) |
 | `ocr_det_box_thresh` | `PANO_OCR_DET_BOX_THRESH` | `None` | RapidOCR Det box threshold (0.0–1.0, or `None` for default) |
-| `ocr_model_set` | `PANO_OCR_MODEL_SET` | `"classic"` | Which OCR models run: `"classic"` (PP-OCRv4 mobile; PP-OCRv5 recognition for Eastern Slavic, Thai and Greek) or `"v6"` (PP-OCRv6 small, with a per-language fallback to classic). Empty means `"classic"`. The default was decided by measurement, see [the report](plans/2026-11-08-ocr-v6-measurement.md) |
-| `ocr_det_lang` | `PANO_OCR_DET_LANG` | `None` | Detection model language (`"en"`, `"ch"` or `"multi"`). `None` = chosen from the OCR language. Under the `v6` set it keeps detection on the classic model; with `ocr_det_ocr_version="pp-ocrv6"` only `"en"` and `"ch"` are valid |
+| `ocr_model_set` | `PANO_OCR_MODEL_SET` | `"classic"` | Which OCR models run: `"classic"` (rapidocr's PP-OCRv4 mobile route; PP-OCRv5 recognition for Eastern Slavic, Thai and Greek) or `"v6"` (PP-OCRv6 small, with a per-language fallback to classic). Empty means `"classic"`. The default was decided by measurement, see [the report](plans/2026-11-08-ocr-v6-measurement.md) |
+| `ocr_det_lang` | `PANO_OCR_DET_LANG` | `None` | Detection model language (`"en"`, `"ch"` or `"multi"`). `None` = chosen from the OCR language. An empty `PANO_OCR_DET_LANG=` is rejected (unlike the four model-type and version fields, it is not read as unset). Under the `v6` set it keeps detection on the classic model; with `ocr_det_ocr_version="pp-ocrv6"` only `"en"` and `"ch"` are valid |
 | `ocr_det_model_type` | `PANO_OCR_DET_MODEL_TYPE` | `None` | Detection model variant: `"mobile"` or `"server"` (PP-OCRv4, PP-OCRv5); `"tiny"`, `"small"` or `"medium"` (PP-OCRv6). `None` = the model set decides |
 | `ocr_det_ocr_version` | `PANO_OCR_DET_OCR_VERSION` | `None` | Detection OCR version (`"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"`). `None` = the model set decides |
 | `ocr_rec_model_type` | `PANO_OCR_REC_MODEL_TYPE` | `None` | Recognition model variant: `"mobile"` or `"server"` (PP-OCRv4, PP-OCRv5); `"tiny"`, `"small"` or `"medium"` (PP-OCRv6). `None` = the model set decides |
 | `ocr_rec_ocr_version` | `PANO_OCR_REC_OCR_VERSION` | `None` | Recognition OCR version (`"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"`). `None` = the model set decides |
 
-A model-type or version setting that does not fit the version in effect for the task (for example `medium` with PP-OCRv4, or PP-OCRv6 for a language that has no v6 model) stops that run at start with an error naming the setting and the allowed values. See [Troubleshooting](troubleshooting.md#ocr-fails-to-start-with-an-explicit-model-setting).
+A model-type or version setting that does not fit the version in effect for the task (for example `medium` with PP-OCRv4, or PP-OCRv6 for a language that has no v6 model) stops OCR for that item when the OCR engine starts (after the download and speech recognition) with an error naming the setting or the language, and what is allowed. See [Troubleshooting](troubleshooting.md#ocr-fails-to-start-with-an-explicit-model-setting).
 
 ### LLM cleanup
 

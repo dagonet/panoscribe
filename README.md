@@ -235,22 +235,7 @@ segments. The noise sits alongside them.
 - Tune `PANO_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
   low-confidence partial detections, at the cost of also missing some real
   text.
-- The `PANO_OCR_DET_LIMIT_SIDE_LEN` / `PANO_OCR_DET_THRESH` / `PANO_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`PANO_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to other models, per task: `PP-OCRv4`, `PP-OCRv5` or `PP-OCRv6`, and model types `mobile` / `server` (v4, v5) or `tiny` / `small` / `medium` (v6). A knob that does not fit its version (for example `PANO_OCR_DET_MODEL_TYPE=medium` with PP-OCRv4) stops that run at start with an error that names the setting and the allowed values. With server / PP-OCRv5 detection there is an automatic CH-det-lang override (registry limitation — only `ch_*` det models ship for server/v5). `PANO_OCR_DET_LANG` (`en` | `ch` | `multi`) selects the detection model independently of the recognition language; for Latin-script text the default `en` (`en_PP-OCRv3_det_mobile`) is retained after a Sprint 13 A/B, and `multi` (`multi_PP-OCRv3_det_mobile`, the multilingual detector) is an opt-in for hard / low-recall latin-script content — it trades ~3–5× more raw detections for a small quality edge, so it is not the default (see [`docs/plans/2026-07-16-ocr-det-ab.md`](docs/plans/2026-07-16-ocr-det-ab.md)). Under the `v6` model set (below), setting `PANO_OCR_DET_LANG` keeps detection on the classic model, because the v6 detector has no `multi`; if you pin the detector to PP-OCRv6 with `PANO_OCR_DET_OCR_VERSION`, only `en` and `ch` are valid there.
-
-### OCR model sets
-
-Which OCR models run is chosen by one setting, `PANO_OCR_MODEL_SET` (`--ocr-language` and `PANO_OCR_LANGUAGE` still pick the language):
-
-- **`classic`** (default; empty also means `classic`) — the PP-OCRv4 mobile models, the same files as before for English, Latin-script and Chinese text. Recognition for Eastern Slavic (`eslav`), Thai and Greek uses PP-OCRv5 mobile, because PP-OCRv4 has no model for them.
-- **`v6`** (opt-in) — PP-OCRv6 `small`, picked per language. A language with no PP-OCRv6 model falls back to the classic models, with one INFO line in the log.
-
-Switch with `export PANO_OCR_MODEL_SET=v6` (or put it in your `.env`). The explicit `PANO_OCR_{DET,REC}_*` knobs above still win over the set, per task.
-
-`classic` is the default because it was measured, not assumed. On 15 real clips in five languages (German, English, French, Spanish, Portuguese), `v6` found about 3 points less of the expected text in French and left more unmatched text in French and Portuguese; it was equal or slightly cleaner in German and English, and about 1.3× slower on CPU. See [`docs/plans/2026-11-08-ocr-v6-measurement.md`](docs/plans/2026-11-08-ocr-v6-measurement.md) for the numbers.
-
-panoscribe requires `rapidocr[rtl]>=3.10,<3.11`; the `rtl` extra pulls in `python-bidi`, which rapidocr needs for Arabic. The languages Japanese, Korean, Russian (and other Eastern Slavic), Cyrillic, Arabic, Hindi (Devanagari), Thai, Greek, Tamil, Telugu and Kannada now start; on the previous rapidocr they failed with `Invalid OCR configuration`. Korean, Hindi and Telugu start but read poorly on a synthetic check.
-
-Known limitations: Arabic text comes out in display order ([#188](https://github.com/dagonet/panoscribe/issues/188)); some YouTube videos give no on-screen text at all (see [Troubleshooting](docs/troubleshooting.md#no-on-screen-text-from-some-youtube-videos)).
+- The `PANO_OCR_DET_LIMIT_SIDE_LEN` / `PANO_OCR_DET_THRESH` / `PANO_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`PANO_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to other models, per task: `PP-OCRv4`, `PP-OCRv5` or `PP-OCRv6`, and model types `mobile` / `server` (v4, v5) or `tiny` / `small` / `medium` (v6). A knob that does not fit its version (for example `PANO_OCR_DET_MODEL_TYPE=medium` with PP-OCRv4) stops OCR for that item when it starts (after the download and speech recognition) with an error that names the setting or the language, and what is allowed. With server / PP-OCRv5 detection there is an automatic CH-det-lang override (registry limitation — only `ch_*` det models ship for server/v5). `PANO_OCR_DET_LANG` (`en` | `ch` | `multi`) selects the detection model independently of the recognition language; for Latin-script text the default `en` (`en_PP-OCRv3_det_mobile`) is retained after a Sprint 13 A/B, and `multi` (`multi_PP-OCRv3_det_mobile`, the multilingual detector) is an opt-in for hard / low-recall latin-script content — it trades ~3–5× more raw detections for a small quality edge, so it is not the default (see [`docs/plans/2026-07-16-ocr-det-ab.md`](docs/plans/2026-07-16-ocr-det-ab.md)). Under the `v6` model set (see [OCR model sets](#ocr-model-sets)), setting `PANO_OCR_DET_LANG` keeps detection on the classic model, because the v6 detector has no `multi`; if you pin the detector to PP-OCRv6 with `PANO_OCR_DET_OCR_VERSION`, only `en` and `ch` are valid there.
 
 ## Docker
 
@@ -270,7 +255,7 @@ docker run --rm -e PANO_WHISPER_DEVICE=cpu -e PANO_WHISPER_COMPUTE_TYPE=int8 \
 The image bundles Whisper `large-v3-turbo` (~1.5 GB) and RapidOCR models (~66 MB:
 the default `classic` models for English, Latin-script and Chinese text, plus the
 `v6` small set), so transcription of those languages starts instantly with no
-model downloads at runtime. Other OCR languages download their recognition model
+model downloads at runtime. Other OCR languages download their models
 on first use. The `[photo]`
 extra (gallery-dl) is included, so TikTok `/photo/` posts work in-container.
 The `[llm]` extra is **not** bundled — LLM cleanup (`--llm-cleanup` / `--asr-cleanup`)
@@ -288,6 +273,21 @@ On Windows, CUDA 12 runtime libraries (cuda_runtime, cublas, cudnn, cufft) are b
 
 Model downloads, offline setups, and CUDA errors are covered in
 [docs/troubleshooting.md](docs/troubleshooting.md).
+
+## OCR model sets
+
+Which OCR models run is chosen by one setting, `PANO_OCR_MODEL_SET` (`--ocr-language` and `PANO_OCR_LANGUAGE` still pick the language):
+
+- **`classic`** (default; empty also means `classic`) — rapidocr's PP-OCRv4 mobile route, the same model files as before for English, Latin-script and Chinese text. Recognition for Eastern Slavic (`eslav`), Thai and Greek uses PP-OCRv5 mobile, because PP-OCRv4 has no model for them.
+- **`v6`** (opt-in) — PP-OCRv6 `small`, picked per language. A language with no PP-OCRv6 model falls back to the classic models, with one INFO line in the log.
+
+Switch with `export PANO_OCR_MODEL_SET=v6` (or put it in your `.env`). The explicit `PANO_OCR_{DET,REC}_*` knobs (see [OCR noise on text-heavy backgrounds](#ocr-noise-on-text-heavy-backgrounds)) still win over the set, per task.
+
+`classic` is the default because it was measured, not assumed. On 15 real clips in five languages (German, English, French, Spanish, Portuguese), `v6` found about 3 points less of the expected text in French (two French clips, 97 texts; about one text beyond the allowed margin) and left more unmatched text in French and Portuguese; it was equal or slightly cleaner in German and English, and about 1.3× slower on CPU. See [`docs/plans/2026-11-08-ocr-v6-measurement.md`](docs/plans/2026-11-08-ocr-v6-measurement.md) for the numbers.
+
+panoscribe requires `rapidocr[rtl]>=3.10,<3.11`; the `rtl` extra pulls in `python-bidi`, which rapidocr needs for Arabic. The languages Japanese, Korean, Russian (and other Eastern Slavic), Cyrillic, Arabic, Hindi (Devanagari), Thai, Greek, Tamil, Telugu and Kannada now start; on the previous rapidocr they failed with `Invalid OCR configuration`. Korean, Hindi and Telugu start but read poorly on a synthetic check.
+
+Known limitations: Arabic text comes out in display order ([#188](https://github.com/dagonet/panoscribe/issues/188)); some YouTube videos give no on-screen text at all (see [Troubleshooting](docs/troubleshooting.md#no-on-screen-text-from-some-youtube-videos)).
 
 ## Running without a GPU
 

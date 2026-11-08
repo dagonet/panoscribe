@@ -67,17 +67,20 @@ before a real PyPI publish).
 
 `ci.yml` has a job named `ocr-engine` that runs on every pull request (and
 on pushes to `main`), and so also inside the release workflow, because `publish.yml` calls
-`ci.yml`. It builds the real RapidOCR engine on CPU for every OCR language
-panoscribe can select, under both model sets (`uv run pytest -m engine`);
+`ci.yml`. It builds the real RapidOCR engine on CPU for every mapped
+language plus de/fr/es/pt on the v6 path, under both model sets
+(`uv run pytest -m engine`);
 the normal `test` job mocks RapidOCR and cannot see a rapidocr update that
 drops a model. A red `ocr-engine` job stops the release before anything is
 built or published.
 
-On a cold cache the job downloads about 205 MB of models from `modelscope.cn`
+On a cold cache the job downloads about 205 MB of models and fonts from `modelscope.cn`
 (the job timeout is 20 minutes). The models are cached under
 `rapidocr/models` in the package folder, with a cache key that holds the
 rapidocr version (`rapidocr-models-3.10.0-...` in `ci.yml`); change the key
-when rapidocr is bumped. If the run fails while downloading, re-run it first:
+when rapidocr is bumped. On a rapidocr bump also check that `_LAZY_LOADERS`
+(`src/panoscribe/ocr/rapid_ocr.py`) and the private `_load_*` calls in the
+Dockerfile still exist in the new version. If the run fails while downloading, re-run it first:
 a `modelscope.cn` outage looks the same as a missing model.
 
 ## Known post-publish artifact: stale uv cache

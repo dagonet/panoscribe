@@ -10,41 +10,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **OCR model sets** — `PANO_OCR_MODEL_SET` (`ocr_model_set`) chooses the OCR
-  models: `classic` (default; PP-OCRv4 mobile, the same model files as before
+  models: `classic` (default; rapidocr's PP-OCRv4 mobile route, the same model files as before
   for English, Latin-script and Chinese, with PP-OCRv5 recognition for Eastern
   Slavic, Thai and Greek) or `v6` (PP-OCRv6 small, per language; a language
   without a v6 model falls back to classic with an INFO line). Empty means
   `classic`. `PANO_OCR_{DET,REC}_OCR_VERSION` now also accept `PP-OCRv6`, and
   `PANO_OCR_{DET,REC}_MODEL_TYPE` accept `tiny`, `small` and `medium` for it.
   A model-type or version knob that does not fit the version in effect stops
-  that run at start with an error naming the setting and the allowed values.
+  OCR for that item when it starts (after the download and speech
+  recognition) with an error naming the setting or the language, and what is
+  allowed.
   Under the `v6` set, `PANO_OCR_DET_LANG` keeps detection on the classic
   model; with an explicit PP-OCRv6 detector only `en` and `ch` are valid.
 - **Real-engine OCR check in CI** — a new `ocr-engine` job builds the real
-  RapidOCR engine on CPU for every OCR language, under both model sets, so a
+  RapidOCR engine on CPU for every mapped language plus de/fr/es/pt on the v6
+  path, under both model sets, so a
   rapidocr update that drops a model fails CI instead of failing for users. It
   runs on every pull request and inside the release workflow; a cold cache
-  downloads about 205 MB of models.
-- **OCR evaluation tooling** — `scripts/probe_ocr_languages.py` (start-up check
-  per language), `scripts/eval_ocr.py` and `scripts/summarize_eval.py` (score
-  OCR against an answer key and compare model sets), and
-  `scripts/fetch_eval_samples.py`.
+  downloads about 205 MB of models and fonts.
+- **OCR evaluation tooling** — new `scripts/probe_ocr_languages.py` (start-up
+  check per language) and `scripts/summarize_eval.py` (compare model sets per
+  language); `scripts/eval_ocr.py` and `scripts/fetch_eval_samples.py` were
+  extended (provenance fields in the results, ten YouTube samples).
 
 ### Changed
 
 - **rapidocr range is now `rapidocr[rtl]>=3.10,<3.11`** (was `<3.9`). The
   `rtl` extra adds `python-bidi`, which rapidocr needs for Arabic. For the
-  languages that already worked (English, Latin-script, Chinese) the 3.10
-  `classic` set reads the evaluation clips exactly as before.
+  languages that already worked, the 3.10 `classic` set reads the 15
+  evaluation clips (English and Latin script) exactly as before.
 - **The default model set stays `classic`, decided by measurement.** On 15 real
   clips in five languages, `v6` found about 3 points less of the expected
-  text in French, left more unmatched text in French and Portuguese, and was
+  text in French (two French clips, 97 texts; about one text beyond the
+  allowed margin), left more unmatched text in French and Portuguese, and was
   about 1.3x slower on CPU; it was equal or slightly cleaner in German and
   English. `v6` is opt-in with `PANO_OCR_MODEL_SET=v6`. See
   [`docs/plans/2026-11-08-ocr-v6-measurement.md`](https://github.com/dagonet/panoscribe/blob/main/docs/plans/2026-11-08-ocr-v6-measurement.md).
 - **Docker image** now pre-downloads the classic models for English, Latin
-  script and Chinese plus the `v6` small set, about 66 MB (the earlier "about
-  15 MB" figure was wrong). Other OCR languages download on first use.
+  script and Chinese plus the `v6` small set, about 66 MB. The old image
+  prefetched rapidocr's default (Chinese) models, roughly 16 MB, which are not
+  the English and Latin models panoscribe uses. Other OCR languages download
+  their models on first use.
 - **Docs**: the offline pre-seeding steps in `docs/troubleshooting.md` are
   updated for rapidocr 3.10, which loads models lazily and takes them from
   `modelscope.cn`, not Hugging Face.
@@ -56,7 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cyrillic, Arabic, Hindi (Devanagari), Thai, Greek, Tamil, Telugu and
   Kannada. The detector is now chosen on its own instead of reusing the
   recognition language.
-- **Georgian (`ka`) no longer maps to the Kannada model**; `kn` does.
+- **Auto-detected Georgian (`ka`) no longer runs the Kannada model**; it falls
+  back to English with a warning. Kannada is reached by its ISO code `kn` (an
+  explicit `ka` still selects rapidocr's `ka`, which is Kannada).
 - **A model download or load failure now fails that one item with a clear
   `Failed to initialize RapidOCR` error.** rapidocr 3.10 loads models lazily,
   which would have moved the failure into the middle of frame processing;

@@ -11,7 +11,8 @@ automatically:
 - **RapidOCR** downloads its detection/recognition models from
   `modelscope.cn`, not from Hugging Face. The default `classic` set is roughly
   **10 to 15 MB** for English, Latin-script or Chinese text (each other
-  language downloads its own recognition model the first time you use it);
+  language downloads its own models the first time you use it, usually a
+  recognition model and the multilingual detector);
   the `v6` set (`PANO_OCR_MODEL_SET=v6`) is roughly **30 MB**.
 
 Both are cached after the first run, so subsequent runs do not re-download.
@@ -73,20 +74,25 @@ export HF_HOME=/path/to/model-cache
 ```
 
 RapidOCR 3.10 loads its models lazily, so creating `RapidOCR(...)` alone
-downloads nothing. Run panoscribe once with the language and model set you
-will use on a short clip; OCR start-up fetches the models it needs:
+downloads nothing. Run panoscribe once on a short clip with sound (speech
+recognition runs first and needs an audio track), with the language and
+model set you will use; OCR start-up then fetches the models it needs. One
+run seeds both the Whisper cache (`HF_HOME`) and the OCR models:
 
 ```bash
-PANO_OCR_DEVICE=cpu PANO_OCR_MODEL_SET=classic \
-  panoscribe transcribe ./short.mp4 --ocr-language en -o /tmp/preseed.json
+HF_HOME=./model-cache PANO_WHISPER_DEVICE=cpu PANO_WHISPER_COMPUTE_TYPE=int8 \
+  PANO_OCR_DEVICE=cpu PANO_OCR_MODEL_SET=classic \
+  panoscribe transcribe ./short.mp4 --ocr-language en -o out.json
 
 # Find the folder to copy to the same place on the target machine:
 python -c "import pathlib, rapidocr; print(pathlib.Path(rapidocr.__file__).parent / 'models')"
 ```
 
-Repeat with `--ocr-language <code>` (and `PANO_OCR_MODEL_SET=v6` if you use
-it) for every language you need. The Dockerfile pre-downloads RapidOCR models
-the same way, by forcing the model load at build time.
+Repeat with `--ocr-language <code>` for every other language you need
+(each downloads its own models). One extra run with `PANO_OCR_MODEL_SET=v6`
+covers every v6 language, because they share one detector and one
+recogniser. The Dockerfile pre-downloads RapidOCR models the same way, by
+forcing the model load at build time.
 
 ## CUDA not found
 
@@ -178,17 +184,19 @@ panoscribe 0.8.1 did not cap the version. This applies to 0.8.1 only; later
 releases pin a rapidocr range that works. Locked installs (`uv sync`,
 Docker) were not affected.
 
-Fix by upgrading panoscribe to 0.10.0 or newer:
+Fix by upgrading panoscribe. 0.9.0 and newer fix this error (0.9.0 caps
+rapidocr below 3.9); 0.10.0 moves to the newer library:
 
 ```bash
-uv pip install --upgrade "panoscribe>=0.10.0"
+uv pip install --upgrade "panoscribe>=0.9.0"
 ```
 
 ## OCR fails to start with an explicit model setting
 
 If you set one of `PANO_OCR_DET_MODEL_TYPE`, `PANO_OCR_REC_MODEL_TYPE`,
 `PANO_OCR_DET_OCR_VERSION`, `PANO_OCR_REC_OCR_VERSION` or `PANO_OCR_DET_LANG`
-and OCR stops at start with a message such as:
+and OCR stops for that item when it starts (after the download and speech
+recognition) with a message such as:
 
 ```
 PANO_OCR_REC_MODEL_TYPE='medium' does not fit PP-OCRv4 (the effective version for
@@ -197,8 +205,8 @@ OCR language 'fr'); PP-OCRv4 takes: mobile, server
 
 or `OCR language 'eslav' has no PP-OCRv6 model; supported: ...`, the setting
 does not fit the model that would run. panoscribe does not change an
-explicit setting behind your back, so it stops and names the setting and the
-allowed values. The model types are `mobile` or `server` for PP-OCRv4 and
+explicit setting behind your back, so it stops and names the setting or the
+language, and what is allowed. The model types are `mobile` or `server` for PP-OCRv4 and
 PP-OCRv5, and `tiny`, `small` or `medium` for PP-OCRv6. With the PP-OCRv6
 detector pinned by `PANO_OCR_DET_OCR_VERSION`, `PANO_OCR_DET_LANG` must be
 `en` or `ch`.
