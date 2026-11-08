@@ -45,3 +45,12 @@ class EvalResult(BaseModel):
     correction -- ``unmatched_rate`` is authoritative, ``junk_rate`` is
     phase-1-only). ``None`` unless the caller opts in
     (``scripts/eval_ocr.py --junk``)."""
+    ocr_model_set: str | None = None
+    """``classic`` or ``v6``; set by ``scripts/eval_ocr.py`` so each number is
+    traceable to the model set that produced it."""
+    rapidocr_version: str | None = None
+    """Installed ``rapidocr`` version; set by ``scripts/eval_ocr.py``."""
+    language: str | None = None
+    """Ground-truth ``language`` of the clip; set by ``scripts/eval_ocr.py``."""
+    clip: str | None = None
+    """Stem of the video / slides path; set by ``scripts/eval_ocr.py``."""

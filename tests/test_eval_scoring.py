@@ -183,6 +183,7 @@ class TestScoreVideo:
         assert entry["expected_text"] == "Hello World"
         assert entry["matched"] is True
         assert entry["best_candidate"] == "Hello World"
+        assert entry["required"] is True
 
     def test_fuzzy_match_via_rapidfuzz(self) -> None:
         """Fuzzy match: 'SUBSCRIBE!' vs 'SUBSCRIBE' should match."""

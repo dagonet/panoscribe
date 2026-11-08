@@ -3,13 +3,14 @@
 
 Usage
 -----
-    python scripts/fetch_eval_samples.py          # fetch all six samples
+    python scripts/fetch_eval_samples.py          # fetch all sixteen samples
     python scripts/fetch_eval_samples.py --sample 1   # fetch sample 1 only
     python scripts/fetch_eval_samples.py --sample 6   # fetch sample 6 only
 
 Samples 1, 2, 4, and 5 are TikTok PHOTO posts (image slides + optional audio),
 downloaded via gallery-dl (requires the ``[photo]`` extra).
 Samples 3 and 6 are TikTok VIDEOS, downloaded via yt-dlp.
+Samples 7-16 are YouTube Shorts (FR/ES/PT/EN/DE), also downloaded via yt-dlp.
 
 The script skips any sample whose target files already exist.  Data is placed
 at ``tests/fixtures/eval/{slides,samples,gt-*.json}`` — see the README manifest
@@ -68,6 +69,78 @@ SAMPLES: list[dict] = [
         "target_dir": "videos/sample-6.mp4",
         "expected_files": lambda d: [d] if d.exists() else [],
     },
+    # Samples 7-16: YouTube Shorts (FR/ES/PT/EN/DE), see
+    # docs/plans/2026-11-08-ocr-newer-library-design.md for the clip table.
+    {
+        "id": 7,
+        "url": "https://www.youtube.com/shorts/GJslGyaVJ-k",
+        "type": "video",
+        "target_dir": "videos/sample-7.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 8,
+        "url": "https://www.youtube.com/shorts/nBS3iLeiByU",
+        "type": "video",
+        "target_dir": "videos/sample-8.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 9,
+        "url": "https://www.youtube.com/shorts/XWQffp7qhRQ",
+        "type": "video",
+        "target_dir": "videos/sample-9.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 10,
+        "url": "https://www.youtube.com/shorts/hjhaUcMtLX4",
+        "type": "video",
+        "target_dir": "videos/sample-10.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 11,
+        "url": "https://www.youtube.com/shorts/7CKdfTeIoXo",
+        "type": "video",
+        "target_dir": "videos/sample-11.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 12,
+        "url": "https://www.youtube.com/shorts/7lxiYXA_hwk",
+        "type": "video",
+        "target_dir": "videos/sample-12.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 13,
+        "url": "https://www.youtube.com/shorts/-prSdejMkaI",
+        "type": "video",
+        "target_dir": "videos/sample-13.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 14,
+        "url": "https://www.youtube.com/shorts/q9xy46qE94I",
+        "type": "video",
+        "target_dir": "videos/sample-14.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 15,
+        "url": "https://www.youtube.com/shorts/3JbCfZGd2Sk",
+        "type": "video",
+        "target_dir": "videos/sample-15.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
+    {
+        "id": 16,
+        "url": "https://www.youtube.com/shorts/JIeiriHBI2w",
+        "type": "video",
+        "target_dir": "videos/sample-16.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
 ]
 
 
@@ -118,9 +191,9 @@ def main() -> None:
     parser.add_argument(
         "--sample",
         type=int,
-        choices=[1, 2, 3, 4, 5, 6],
+        choices=sorted(s["id"] for s in SAMPLES),
         default=None,
-        help="Sample ID to fetch (default: all six).",
+        help="Sample ID to fetch (default: all samples).",
     )
     args = parser.parse_args()
 
