@@ -25,7 +25,10 @@ _VALID_OUTPUT_FORMATS: frozenset[str] = frozenset({"json", "txt", "srt", "md"})
 # Override values accepted by ocr_{det,rec}_model_type which map directly to
 # RapidOCR's ModelType enum members lowercase; unknown values are rejected by
 # the field_validator.
-_VALID_MODEL_TYPES: frozenset[str] = frozenset({"mobile", "server"})
+_VALID_MODEL_TYPES: frozenset[str] = frozenset({"mobile", "server", "tiny", "small", "medium"})
+# Whitelist of values accepted by the ``ocr_model_set`` field: ``classic`` is
+# today's model selection, ``v6`` is the PP-OCRv6 set (rapidocr >= 3.10).
+_VALID_MODEL_SETS: frozenset[str] = frozenset({"classic", "v6"})
 _VALID_DET_LANGS: frozenset[str] = frozenset({"en", "ch", "multi"})  # rapidocr LangDet values
 
 # Case-insensitive alias map for ocr_{det,rec}_ocr_version.
@@ -34,6 +37,7 @@ _VALID_DET_LANGS: frozenset[str] = frozenset({"en", "ch", "multi"})  # rapidocr 
 _OCR_VERSION_CANONICAL: dict[str, str] = {
     "pp-ocrv4": "PP-OCRv4",
     "pp-ocrv5": "PP-OCRv5",
+    "pp-ocrv6": "PP-OCRv6",
 }
 
 
@@ -114,6 +118,9 @@ class PanoScribeConfig(BaseSettings):
     # ``LangDet`` ships only {en, ch, multi}; server/v5 still force CH (no
     # non-ch det model ships for those variants).
     ocr_det_lang: str | None = None
+    # Which model family the OCR engine uses: ``classic`` (today's models) or
+    # ``v6`` (PP-OCRv6). The explicit det/rec knobs above still win over it.
+    ocr_model_set: Literal["classic", "v6"] = "classic"
 
     # ── LLM cleanup ──────────────────────────────────────
     # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.
@@ -361,6 +368,18 @@ class PanoScribeConfig(BaseSettings):
             allowed = ", ".join(sorted(_OCR_VERSION_CANONICAL))
             raise ValueError(f"ocr_version must be one of: {allowed}; got {v!r}")
         return canonical
+
+    @field_validator("ocr_model_set", mode="before")
+    @classmethod
+    def _validate_ocr_model_set(cls, v: object) -> object:
+        """Lowercase ``ocr_model_set`` and reject unknown values with the allowed list."""
+        if isinstance(v, str):
+            lowered = v.strip().lower()
+            if lowered not in _VALID_MODEL_SETS:
+                allowed = ", ".join(sorted(_VALID_MODEL_SETS))
+                raise ValueError(f"ocr_model_set must be one of: {allowed}; got {v!r}")
+            return lowered
+        return v
 
     @field_validator("ocr_det_lang", mode="after")
     @classmethod
