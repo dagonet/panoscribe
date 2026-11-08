@@ -3,17 +3,32 @@
 ## Model downloads on first run
 
 panoscribe does not bundle models outside the Docker image. On first run
-(non-container installs), the two backends pull their weights from
-Hugging Face Hub automatically:
+(non-container installs), the two backends pull their weights
+automatically:
 
 - **faster-whisper** downloads the configured `PANO_WHISPER_MODEL`
-  (default `large-v3-turbo`) — roughly **1.6 GB**.
-- **RapidOCR** downloads its detection/recognition models — roughly
-  **15 MB**.
+  (default `large-v3-turbo`) from Hugging Face Hub — roughly **1.6 GB**.
+- **RapidOCR** downloads its detection/recognition models from
+  `modelscope.cn`, not from Hugging Face. The default `classic` set is roughly
+  **10 to 15 MB** for English, Latin-script or Chinese text (each other
+  language downloads its own recognition model the first time you use it);
+  the `v6` set (`PANO_OCR_MODEL_SET=v6`) is roughly **30 MB**.
 
 Both are cached after the first run, so subsequent runs do not re-download.
-The Docker image (`Dockerfile:27-31`) pre-downloads both at build time, so
-containerized runs never hit the network for models.
+RapidOCR keeps its models in the `rapidocr/models` folder inside the
+installed package (`site-packages`), so reinstalling or upgrading `rapidocr`
+can bring the download back.
+The Docker image (`Dockerfile`) pre-downloads the Whisper model and the
+RapidOCR models for English, Latin script and Chinese plus the `v6` set
+(about 66 MB) at build time, so containerized runs for those languages never
+hit the network for models.
+
+If the OCR models cannot be downloaded (for example `modelscope.cn` is
+blocked), OCR fails at start for that item with
+`Failed to initialize RapidOCR on <device>: ...`, and the cause is in the
+message. In a `transcribe-many` batch the other items carry on. See
+*Offline pre-seeding* below to fetch the models somewhere that has network
+access.
 
 ### Using a Hugging Face mirror (`HF_ENDPOINT`)
 
@@ -36,27 +51,42 @@ export HF_HOME=/path/to/cache
 panoscribe transcribe ./video.mp4 -o transcript.json
 ```
 
-Set `HF_HOME` before the first run so both the Whisper and RapidOCR
-downloads land in the same place.
+Set `HF_HOME` before the first run so the Whisper download lands there.
+`HF_HOME` and `HF_ENDPOINT` do not affect RapidOCR: its models come from
+`modelscope.cn` and are stored in the `rapidocr/models` folder inside the
+installed package.
 
 ### Offline pre-seeding
 
 To avoid a network dependency at run time (air-gapped environments, CI),
-pre-download both models once with `HF_HOME` (or the default cache) set to
-a location you control, then copy that cache to the target machine:
+pre-download both models once on a machine with network access, then copy
+them to the target machine.
+
+Whisper (Hugging Face cache, relocatable with `HF_HOME`):
 
 ```bash
-# On a machine with network access:
 HF_HOME=./model-cache python -c \
   "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8')"
-HF_HOME=./model-cache python -c \
-  "from rapidocr import RapidOCR; RapidOCR(params={'EngineConfig.onnxruntime.use_cuda': False})"
 
 # Copy ./model-cache to the target machine, then:
 export HF_HOME=/path/to/model-cache
 ```
 
-This is the same technique the Dockerfile uses at build time.
+RapidOCR 3.10 loads its models lazily, so creating `RapidOCR(...)` alone
+downloads nothing. Run panoscribe once with the language and model set you
+will use on a short clip; OCR start-up fetches the models it needs:
+
+```bash
+PANO_OCR_DEVICE=cpu PANO_OCR_MODEL_SET=classic \
+  panoscribe transcribe ./short.mp4 --ocr-language en -o /tmp/preseed.json
+
+# Find the folder to copy to the same place on the target machine:
+python -c "import pathlib, rapidocr; print(pathlib.Path(rapidocr.__file__).parent / 'models')"
+```
+
+Repeat with `--ocr-language <code>` (and `PANO_OCR_MODEL_SET=v6` if you use
+it) for every language you need. The Dockerfile pre-downloads RapidOCR models
+the same way, by forcing the model load at build time.
 
 ## CUDA not found
 
@@ -141,18 +171,58 @@ Failed to initialize RapidOCR
 ValueError: Unsupported rec.lang_type='latin' for PP-OCRv6 small model
 ```
 
-you most likely installed panoscribe 0.8.1 with `pip` or `uv pip install`
-and got rapidocr 3.9 or newer. From 3.9 on, rapidocr's default recognition
-model has no entry for most languages other than English, Chinese and
-Japanese. panoscribe 0.8.1 did not cap the version; later releases require
-`rapidocr<3.9`. Locked installs (`uv sync`, Docker) were not affected.
+you installed panoscribe 0.8.1 with `pip` or `uv pip install` and got
+rapidocr 3.9 or newer. From 3.9 on, rapidocr's default recognition model has
+no entry for most languages other than English, Chinese and Japanese.
+panoscribe 0.8.1 did not cap the version. This applies to 0.8.1 only; later
+releases pin a rapidocr range that works. Locked installs (`uv sync`,
+Docker) were not affected.
 
-Fix by installing an older rapidocr, or by upgrading panoscribe once a
-release with the cap is published:
+Fix by upgrading panoscribe to 0.10.0 or newer:
 
 ```bash
-uv pip install "rapidocr<3.9"
+uv pip install --upgrade "panoscribe>=0.10.0"
 ```
+
+## OCR fails to start with an explicit model setting
+
+If you set one of `PANO_OCR_DET_MODEL_TYPE`, `PANO_OCR_REC_MODEL_TYPE`,
+`PANO_OCR_DET_OCR_VERSION`, `PANO_OCR_REC_OCR_VERSION` or `PANO_OCR_DET_LANG`
+and OCR stops at start with a message such as:
+
+```
+PANO_OCR_REC_MODEL_TYPE='medium' does not fit PP-OCRv4 (the effective version for
+OCR language 'fr'); PP-OCRv4 takes: mobile, server
+```
+
+or `OCR language 'eslav' has no PP-OCRv6 model; supported: ...`, the setting
+does not fit the model that would run. panoscribe does not change an
+explicit setting behind your back, so it stops and names the setting and the
+allowed values. The model types are `mobile` or `server` for PP-OCRv4 and
+PP-OCRv5, and `tiny`, `small` or `medium` for PP-OCRv6. With the PP-OCRv6
+detector pinned by `PANO_OCR_DET_OCR_VERSION`, `PANO_OCR_DET_LANG` must be
+`en` or `ch`.
+
+Fix by removing the setting (unset lets the model set decide), by
+choosing a value from the message, or by switching `PANO_OCR_MODEL_SET`. See
+[Configuration](configuration.md#ocr).
+
+## No on-screen text from some YouTube videos
+
+If a YouTube video gives no on-screen text at all, and no error, it may be
+encoded as AV1. The video reader that panoscribe uses for OCR (OpenCV) cannot decode
+AV1 in some environments, so zero frames reach the OCR step
+([#189](https://github.com/dagonet/panoscribe/issues/189)). The speech part
+is not affected.
+
+Workarounds: re-encode the video to H.264 and run panoscribe on the new
+file, for example
+
+```bash
+ffmpeg -i video.mp4 -c:v libx264 -crf 18 -c:a copy video-h264.mp4
+```
+
+or run with `--no-ocr` if you only need the speech.
 
 ## ffmpeg missing
 

@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OCR model sets** — `PANO_OCR_MODEL_SET` (`ocr_model_set`) chooses the OCR
+  models: `classic` (default; PP-OCRv4 mobile, the same model files as before
+  for English, Latin-script and Chinese, with PP-OCRv5 recognition for Eastern
+  Slavic, Thai and Greek) or `v6` (PP-OCRv6 small, per language; a language
+  without a v6 model falls back to classic with an INFO line). Empty means
+  `classic`. `PANO_OCR_{DET,REC}_OCR_VERSION` now also accept `PP-OCRv6`, and
+  `PANO_OCR_{DET,REC}_MODEL_TYPE` accept `tiny`, `small` and `medium` for it.
+  A model-type or version knob that does not fit the version in effect stops
+  that run at start with an error naming the setting and the allowed values.
+  Under the `v6` set, `PANO_OCR_DET_LANG` keeps detection on the classic
+  model; with an explicit PP-OCRv6 detector only `en` and `ch` are valid.
+- **Real-engine OCR check in CI** — a new `ocr-engine` job builds the real
+  RapidOCR engine on CPU for every OCR language, under both model sets, so a
+  rapidocr update that drops a model fails CI instead of failing for users. It
+  runs on every pull request and inside the release workflow; a cold cache
+  downloads about 205 MB of models.
+- **OCR evaluation tooling** — `scripts/probe_ocr_languages.py` (start-up check
+  per language), `scripts/eval_ocr.py` and `scripts/summarize_eval.py` (score
+  OCR against an answer key and compare model sets), and
+  `scripts/fetch_eval_samples.py`.
+
+### Changed
+
+- **rapidocr range is now `rapidocr[rtl]>=3.10,<3.11`** (was `<3.9`). The
+  `rtl` extra adds `python-bidi`, which rapidocr needs for Arabic. For the
+  languages that already worked (English, Latin-script, Chinese) the 3.10
+  `classic` set reads the evaluation clips exactly as before.
+- **The default model set stays `classic`, decided by measurement.** On 15 real
+  clips in five languages, `v6` found about 3 points less of the expected
+  text in French, left more unmatched text in French and Portuguese, and was
+  about 1.3x slower on CPU; it was equal or slightly cleaner in German and
+  English. `v6` is opt-in with `PANO_OCR_MODEL_SET=v6`. See
+  [`docs/plans/2026-11-08-ocr-v6-measurement.md`](https://github.com/dagonet/panoscribe/blob/main/docs/plans/2026-11-08-ocr-v6-measurement.md).
+- **Docker image** now pre-downloads the classic models for English, Latin
+  script and Chinese plus the `v6` small set, about 66 MB (the earlier "about
+  15 MB" figure was wrong). Other OCR languages download on first use.
+- **Docs**: the offline pre-seeding steps in `docs/troubleshooting.md` are
+  updated for rapidocr 3.10, which loads models lazily and takes them from
+  `modelscope.cn`, not Hugging Face.
+
+### Fixed
+
+- **11 OCR languages failed to start on rapidocr 3.8** (`Invalid OCR
+  configuration`) and now start: Japanese, Korean, Russian (Eastern Slavic),
+  Cyrillic, Arabic, Hindi (Devanagari), Thai, Greek, Tamil, Telugu and
+  Kannada. The detector is now chosen on its own instead of reusing the
+  recognition language.
+- **Georgian (`ka`) no longer maps to the Kannada model**; `kn` does.
+- **A model download or load failure now fails that one item with a clear
+  `Failed to initialize RapidOCR` error.** rapidocr 3.10 loads models lazily,
+  which would have moved the failure into the middle of frame processing;
+  panoscribe now forces the load when the engine starts.
+- **`transcribe-many` shows why an item failed** (#184) — one `failed:
+  <source>: <reason>` line per failure and a closing `done / failed / pending`
+  count with the state-file path.
+- **Remote speech settings are checked before any download** (#183) — a
+  missing `PANO_ASR_REMOTE_MODEL` or another bad remote setting fails before
+  anything is fetched, and `transcribe-many` reports it once and exits 1 with
+  every item still pending.
+
+### Known limitations
+
+- Korean, Hindi (Devanagari) and Telugu start but read poorly on the synthetic
+  check, under both model sets.
+- Arabic text comes out in display order (#188).
+- YouTube videos encoded as AV1 can give zero OCR frames and so no on-screen
+  text, without an error (#189). Re-encode to H.264 (for example
+  `ffmpeg -i in.mp4 -c:v libx264 -crf 18 -c:a copy out.mp4`) or use
+  `--no-ocr`. See `docs/troubleshooting.md`.
+
 ## [0.9.0] - 2026-11-08
 
 ### Added
