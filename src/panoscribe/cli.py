@@ -456,8 +456,7 @@ def transcribe_many(
         try:
             asr_engine = pipeline._build_asr_engine(config)
         except PanoScribeError as e:
-            # escape(): settings text may contain "[...]", which rich would parse as markup.
-            _console.print(escape(str(e)), soft_wrap=True)
+            typer.secho(str(e), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from None
 
     any_success = False

@@ -148,6 +148,26 @@ def test_remote_settings_error_before_download(tmp_path: Path) -> None:
     download_photo_post.assert_not_called()
 
 
+def test_remote_settings_error_before_photo_download(tmp_path: Path) -> None:
+    cfg = _misconfigured_remote_cfg(tmp_path)
+
+    with (
+        patch("panoscribe.pipeline.download_video") as download_video,
+        patch("panoscribe.pipeline.download_photo_post") as download_photo_post,
+        pytest.raises(PanoScribeError, match="PANO_ASR_REMOTE_MODEL"),
+    ):
+        process_single_video(
+            "https://www.tiktok.com/@u/photo/1",
+            cfg,
+            tmp_path / "out.json",
+            ocr_active=False,
+            output_format="json",
+        )
+
+    download_photo_post.assert_not_called()
+    download_video.assert_not_called()
+
+
 def test_photo_post_without_audio_still_checks_remote_settings(tmp_path: Path) -> None:
     cfg = _misconfigured_remote_cfg(tmp_path)
     photo_dir = tmp_path / "photos"
