@@ -86,10 +86,14 @@ See [Running without a GPU](../README.md#running-without-a-gpu) for setting
 | `ocr_det_limit_side_len` | `PANO_OCR_DET_LIMIT_SIDE_LEN` | `None` | RapidOCR Det limit_side_len override (≥ 32, or `None` for config default) |
 | `ocr_det_thresh` | `PANO_OCR_DET_THRESH` | `None` | RapidOCR Det detection threshold (0.0–1.0, or `None` for default) |
 | `ocr_det_box_thresh` | `PANO_OCR_DET_BOX_THRESH` | `None` | RapidOCR Det box threshold (0.0–1.0, or `None` for default) |
-| `ocr_det_model_type` | `PANO_OCR_DET_MODEL_TYPE` | `None` | Detection model variant (`"mobile"` or `"server"`; `None` = rapidocr default) |
-| `ocr_det_ocr_version` | `PANO_OCR_DET_OCR_VERSION` | `None` | Detection OCR version (`"pp-ocrv4"` or `"pp-ocrv5"`; `None` = default) |
-| `ocr_rec_model_type` | `PANO_OCR_REC_MODEL_TYPE` | `None` | Recognition model variant (`"mobile"` or `"server"`; `None` = rapidocr default) |
-| `ocr_rec_ocr_version` | `PANO_OCR_REC_OCR_VERSION` | `None` | Recognition OCR version (`"pp-ocrv4"` or `"pp-ocrv5"`; `None` = default) |
+| `ocr_model_set` | `PANO_OCR_MODEL_SET` | `"classic"` | Which OCR models run: `"classic"` (rapidocr's PP-OCRv4 mobile route; PP-OCRv5 recognition for Eastern Slavic, Thai and Greek) or `"v6"` (PP-OCRv6 small, with a per-language fallback to classic). Empty means `"classic"`. The default was decided by measurement, see [the report](plans/2026-11-08-ocr-v6-measurement.md) |
+| `ocr_det_lang` | `PANO_OCR_DET_LANG` | `None` | Detection model language (`"en"`, `"ch"` or `"multi"`). `None` = chosen from the OCR language. An empty `PANO_OCR_DET_LANG=` is rejected (unlike the four model-type and version fields, it is not read as unset). Under the `v6` set it keeps detection on the classic model; with `ocr_det_ocr_version="pp-ocrv6"` only `"en"` and `"ch"` are valid |
+| `ocr_det_model_type` | `PANO_OCR_DET_MODEL_TYPE` | `None` | Detection model variant: `"mobile"` or `"server"` (PP-OCRv4, PP-OCRv5); `"tiny"`, `"small"` or `"medium"` (PP-OCRv6). `None` = the model set decides |
+| `ocr_det_ocr_version` | `PANO_OCR_DET_OCR_VERSION` | `None` | Detection OCR version (`"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"`). `None` = the model set decides |
+| `ocr_rec_model_type` | `PANO_OCR_REC_MODEL_TYPE` | `None` | Recognition model variant: `"mobile"` or `"server"` (PP-OCRv4, PP-OCRv5); `"tiny"`, `"small"` or `"medium"` (PP-OCRv6). `None` = the model set decides |
+| `ocr_rec_ocr_version` | `PANO_OCR_REC_OCR_VERSION` | `None` | Recognition OCR version (`"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"`). `None` = the model set decides |
+
+A model-type or version setting that does not fit the version in effect for the task (for example `medium` with PP-OCRv4, or PP-OCRv6 for a language that has no v6 model) stops OCR for that item when the OCR engine starts (after the download and speech recognition) with an error naming the setting or the language, and what is allowed. See [Troubleshooting](troubleshooting.md#ocr-fails-to-start-with-an-explicit-model-setting).
 
 ### LLM cleanup
 
@@ -157,6 +161,7 @@ override.
 | Field(s) | Rule | Error condition |
 |---|---|---|
 | `whisper_language`, `ocr_det_limit_side_len`, `ocr_det_thresh`, `ocr_det_box_thresh`, `ocr_det_model_type`, `ocr_det_ocr_version`, `ocr_rec_model_type`, `ocr_rec_ocr_version` | Coerces empty-string env values to `None` | — (empty string treated as unset) |
+| `ocr_model_set` | Must be `classic` or `v6` (case-insensitive); an empty value means `classic` | Unknown value rejected with list of allowed options |
 | `asr_backend` | Must be `local` or `remote` | Unknown value rejected |
 | `asr_remote_base_url`, `asr_remote_model`, `asr_remote_api_key` | Surrounding whitespace is stripped; blank becomes `None` | — (a pasted key with a trailing newline is accepted) |
 | `asr_remote_timeout_s`, `asr_remote_max_upload_mb` | Must be finite and `> 0`; the upload limit is at most 1,000,000 | Zero, negative, `nan`, `inf` and (for the limit) larger values rejected |
@@ -169,6 +174,7 @@ override.
 | `output_format` | Must be one of `json`, `txt`, `srt`, `md` | Unknown value rejected with list of allowed options |
 | `dedup_min_duration` | Must be `≥ 0.0` | Negative values rejected |
 | `ocr_language` | Must be a valid `LangRec` member, `"auto"`, or a mapped ISO 639-1 code | Unmapped arbitrary strings rejected before engine init |
-| `ocr_det_model_type`, `ocr_rec_model_type` | Must be `"mobile"` or `"server"` (case-insensitive), or `None` | Unknown values rejected |
-| `ocr_det_ocr_version`, `ocr_rec_ocr_version` | Must be `"pp-ocrv4"` or `"pp-ocrv5"` (case-insensitive), or `None` | Unknown values rejected |
+| `ocr_det_model_type`, `ocr_rec_model_type` | Must be `"mobile"`, `"server"`, `"tiny"`, `"small"` or `"medium"` (case-insensitive), or `None` | Unknown values rejected. A value that does not fit the version in effect (`tiny`/`small`/`medium` are PP-OCRv6 only; `mobile`/`server` are PP-OCRv4 and PP-OCRv5 only) is rejected when the OCR engine starts |
+| `ocr_det_ocr_version`, `ocr_rec_ocr_version` | Must be `"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"` (case-insensitive), or `None` | Unknown values rejected |
+| `ocr_det_lang` | Must be `"en"`, `"ch"` or `"multi"` (case-insensitive), or `None` | Unknown values rejected. With a PP-OCRv6 detector pinned by `ocr_det_ocr_version`, `"multi"` is rejected when the OCR engine starts |
 | `merge_similarity_threshold` | Must be in `[0.0, 1.0]` | Out-of-range values rejected |

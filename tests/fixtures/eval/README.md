@@ -68,9 +68,7 @@ public repository (legal exposure + repository bloat).
 | Ground truth | `gt-sample-6.json` |
 | Baseline recall | 0.60 (measured v0.2.5, raw_bboxes=176) |
 
-### Samples 7-16 — YouTube Shorts for the OCR model-set comparison
-
-Added for the classic-vs-v6 measurement (`docs/plans/2026-11-08-ocr-newer-library-design.md`,
+**Samples 7-16 — YouTube Shorts for the OCR model-set comparison.** Added for the classic-vs-v6 measurement (`docs/plans/2026-11-08-ocr-newer-library-design.md`,
 D5/D6). All are videos fetched with yt-dlp. Ground truths are written blind
 (from frames and speech only, never from OCR output) and stay gitignored; there
 is no baseline recall yet.
@@ -240,7 +238,8 @@ Ground truth files are JSON conforming to the `GroundTruth` pydantic model
 Run the fetch script from the repository root:
 
 ```bash
-# Fetch all sixteen samples:
+# Fetch all sixteen listed samples (sample 2's post is gone, so it cannot
+# be fetched any more):
 python scripts/fetch_eval_samples.py
 
 # Fetch a single sample:
