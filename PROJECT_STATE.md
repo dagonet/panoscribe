@@ -2,24 +2,21 @@
 
 ## Now
 
-- **Goal:** v0.10.0 (plan `docs/plans/2026-11-08-ocr-newer-library-plan.md`, design `...-design.md`). It is fully merged with this PR (part 3), and tag/publish follow the merge.
-  - **Part 1 (#186):** #184 batch failure reasons; #183 remote speech settings checked before download.
-  - **Part 2 (#187):** rapidocr `[rtl]>=3.10,<3.11` with `PANO_OCR_MODEL_SET` = `classic` (default, PP-OCRv4 mobile route) | `v6` (PP-OCRv6 small). The 11 language groups that failed to start on 3.8.1 now start; Korean, Hindi and Telugu read weakly. Model-load errors fail one item. There is an unmocked `ocr-engine` CI job.
-  - **Part 3 (this PR):**
-    - The measurement keeps `classic` as the default. v6 lost about 3 points of recall on French (2 clips) and added junk on FR/PT; it is 1.29x slower. See `docs/plans/2026-11-08-ocr-v6-measurement.md`.
-    - Classic on 3.10 equals 3.8.1 on all 15 clips.
-    - The answer keys are backed up in the private repo `dagonet/panoscribe-eval-keys`. The old keys were lost.
-  - **Earlier:** #174 is left open by the maintainer. #84 (remote OCR) is parked. #77 got its follow-up on 2026-11-08.
-- **Current step:** Release v0.10.0 after this PR merges.
-  - The version bump is in this PR.
-  - The tag push and the PyPI dispatch need the maintainer: the classifier refuses the agent's tag push, while the agent's `workflow_dispatch` was allowed for 0.9.0.
-  - Toolkit is at v5.2.1 (#175); agents and hooks come from the `cct` plugin.
-- **Next step:** Open follow-ups for the maintainer to prioritise:
-  - #188: Arabic comes out in display order.
-  - #189: AV1 YouTube downloads give 0 OCR frames, silently.
-  - An OCR knob or setting error fires per item after the download and speech recognition. This is like #183, but for OCR; not filed yet.
+- **Goal:** Fix the three v0.10.0 follow-ups in one PR (branch `fix/ocr-settings-av1-arabic`, 2026-11-09). They are unreleased and go under `[Unreleased]` in the CHANGELOG.
+  - **#191:** OCR settings are checked before any download (`validate_ocr_settings`), in `transcribe`, in `transcribe-many` (once before the loop; items stay `pending`) and in the API. With `auto`, the language-dependent check stays at OCR start.
+  - **#189:**
+    - **Cause:** the opencv wheel decodes AV1 only with hardware support, so it opens the file and then reads 0 frames.
+    - **Download:** yt-dlp gets `format` = `bv*[vcodec!^=?av01]+ba/b[vcodec!^=?av01]/bv*+ba/b`, which avoids AV1 and otherwise keeps resolution first. This is a PO ruling against "H.264 first": that order picked avc1 360p over vp9 1080p.
+    - **Error:** `ensure_frames_decodable` runs after the download and before ASR. If no frame can be read, it raises an error naming the codec, `--no-ocr` and `"ocr": false`.
+  - **#188:** there were two layers. (1) rapidocr runs python-bidi `get_display` on each Arabic box. panoscribe replaces `rapidocr.ch_ppocr_rec.main.reorder_bidi_for_display` with an identity at engine build. (2) The aggregator joined boxes left to right; it now chooses the box reading order per chunk (`_reading_order`). The remaining limits are ambiguous screen layouts, listed in the CHANGELOG.
+  - **Review:** two review rounds; the reviewers fuzzed #188 against python-bidi over about 111k lines. The test suite now passes with a CPU-only onnxruntime.
+  - **Earlier:** v0.10.0 is released (#186, #187, #190). #174 is left open by the maintainer. #84 (remote OCR) is parked.
+- **Current step:** The maintainer merges the PR after green CI. A release (0.10.1 or 0.11.0) is the maintainer's call.
+  - Toolkit is at v6.0.0 (#192); agents and hooks come from the `cct` plugin.
+- **Next step:** Remaining follow-ups for the maintainer to prioritise:
   - The weak Korean, Hindi and Telugu reads.
   - Revisit v6 only with more French clips, or after filter tuning.
+  - Optional: transcode locally to H.264 when OpenCV cannot decode (local AV1 files). Not filed.
 
 ## Current Sprint
 
