@@ -132,6 +132,28 @@ uv cache clean panoscribe
 This has been observed on consecutive releases (0.5.0 and 0.6.0), resolving
 correctly on retry both times.
 
+## OCR fails to start (`Unsupported rec.lang_type`)
+
+If OCR fails with an error such as:
+
+```
+Failed to initialize RapidOCR
+ValueError: Unsupported rec.lang_type='latin' for PP-OCRv6 small model
+```
+
+you most likely installed panoscribe 0.8.1 with `pip` or `uv pip install`
+and got rapidocr 3.9 or newer. From 3.9 on, rapidocr's default recognition
+model has no entry for most languages other than English, Chinese and
+Japanese. panoscribe 0.8.1 did not cap the version; later releases require
+`rapidocr<3.9`. Locked installs (`uv sync`, Docker) were not affected.
+
+Fix by installing an older rapidocr, or by upgrading panoscribe once a
+release with the cap is published:
+
+```bash
+uv pip install "rapidocr<3.9"
+```
+
 ## ffmpeg missing
 
 panoscribe shells out to `ffmpeg` for audio extraction and frame sampling.

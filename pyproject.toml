@@ -41,7 +41,7 @@ dependencies = [
     "nvidia-cublas-cu12>=12,<13       ; sys_platform == 'win32'",
     "nvidia-cudnn-cu12>=9,<10         ; sys_platform == 'win32'",
     "nvidia-cufft-cu12>=11,<12        ; sys_platform == 'win32'",
-    "rapidocr>=3.8,<4.0",
+    "rapidocr>=3.8,<3.9",
     "onnxruntime-gpu>=1.20,<2.0 ; (sys_platform == 'win32' or sys_platform == 'linux') and (platform_machine == 'x86_64' or platform_machine == 'AMD64')",
     "numpy>=1.26,<3.0",
     "yt-dlp>=2026.7.4",
