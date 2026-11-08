@@ -20,9 +20,10 @@ _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 # yt-dlp's default order (resolution first; small on-screen text needs the pixels,
 # and VP9/HEVC decode fine). Alternatives, first match wins: best non-AV1 video + audio,
 # best non-AV1 single file, then yt-dlp's old default ``bv*+ba/b`` -- the last one is the
-# fallback for AV1-only videos and for formats with no ``vcodec`` info, which the
-# ``vcodec!^=av01`` filter drops (yt-dlp treats a missing field as a non-match).
-_FORMAT_SELECTOR = "bv*[vcodec!^=av01]+ba/b[vcodec!^=av01]/bv*+ba/b"
+# fallback for AV1-only videos. The ``?`` in ``vcodec!^=?av01`` keeps formats with no
+# ``vcodec`` info (e.g. HLS): without it yt-dlp drops them from the filter, so a codec-less
+# 1080p would lose to a 360p H.264 stream.
+_FORMAT_SELECTOR = "bv*[vcodec!^=?av01]+ba/b[vcodec!^=?av01]/bv*+ba/b"
 
 
 def download_video(source: str, temp_dir: Path) -> Path:

@@ -49,6 +49,7 @@ _LETTER_CLASSES = frozenset({"L", "R", "AL"})
 # Arabic-Indic digits (class AN), which the bidi algorithm lays out right to left.
 _SEPARATOR_CLASSES = frozenset({"R", "AL", "AN"})
 _NUMBER_CLASSES = frozenset({"EN", "AN"})
+_AN_CLASSES = frozenset({"AN"})
 _RUN_EDGE_CLASSES = frozenset({"L", "EN"})
 
 
@@ -67,7 +68,9 @@ def _ltr_line_order(texts: list[str]) -> list[str]:
     The boxes keep their screen order, except that each run of right-to-left boxes is
     reversed (the bidi algorithm shows such a run mirrored). A digit or punctuation box
     between two boxes of a run belongs to it, and so do digit boxes directly to the left
-    of it, because a number that follows a right-to-left word is drawn on its left.
+    of it, because a number that follows a right-to-left word is drawn on its left. An
+    Arabic-Indic number right of the run is drawn on the left of the word it follows, so
+    the run extends over it too (a Western digit box there stays in place).
     """
     rtl = [i for i, t in enumerate(texts) if _has_bidi_class(t, _RTL_CLASSES)]
     runs: list[list[int]] = []
@@ -87,6 +90,11 @@ def _ltr_line_order(texts: list[str]) -> list[str]:
                 start = k
             k -= 1
         end = run[-1] + 1
+        j = end
+        while j < len(texts) and not _has_bidi_class(texts[j], _LETTER_CLASSES):
+            if _has_bidi_class(texts[j], _AN_CLASSES):
+                end = j + 1
+            j += 1
         ordered[start:end] = ordered[start:end][::-1]
     return ordered
 
@@ -142,8 +150,6 @@ def _reading_order(texts: list[str]) -> list[str]:
     * A Latin line that ends in Arabic looks like an Arabic line that ends in Latin, so it
       is read as Arabic: ``Hello مرحبا 2026`` comes out as ``مرحبا Hello 2026``. For the same
       reason ``Hello 2026 مرحبا today`` comes out as ``Hello مرحبا 2026 today``.
-    * In a Latin line, an Arabic-Indic number before an Arabic word is drawn on its right
-      and reads after it: ``Hello ١٢٣ مرحبا today`` comes out as ``Hello مرحبا ١٢٣ today``.
     * An Arabic line with a Latin word at both ends (``AI عربي Model``) is read as a Latin
       line, so the two Latin words and the Arabic word come out in screen order.
     """

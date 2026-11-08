@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -129,7 +130,10 @@ def _patched_pipeline(tmp_path: Path):
     @contextmanager
     def download_patch() -> Iterator[MagicMock]:
         # The video path is fake, so the #189 frame-decodability pre-check is stubbed too.
+        # The default OCR device is cuda (#191 probes it), so pin cpu for every user of this
+        # helper, including tests outside this module (test_cli_encoding.py).
         with (
+            patch.dict(os.environ, {"PANO_OCR_DEVICE": "cpu"}),
             patch(
                 "panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
             ) as mock_download,

@@ -454,6 +454,13 @@ def test_rtl_boxes_are_read_right_to_left_and_others_left_to_right(
             ["Hello", "بالعالم", "2026", "مرحبا", "today"],
             ["Hello", "مرحبا", "2026", "بالعالم", "today"],
         ),
+        # An Arabic-Indic number right of an Arabic word is drawn on its left (the bidi
+        # algorithm lays the number out right to left), so it reads before the word.
+        (["Hello", "مرحبا", "١٢٣", "today"], ["Hello", "١٢٣", "مرحبا", "today"]),
+        (["Hello", "مرحبا", "!", "١٢٣", "today"], ["Hello", "١٢٣", "!", "مرحبا", "today"]),
+        # Only Arabic-Indic digits (class AN) extend the run to the right: a Western digit
+        # box there is left alone.
+        (["Hello", "مرحبا", "2026", "today"], ["Hello", "مرحبا", "2026", "today"]),
         # Trailing punctuation and separate Arabic words keep their place.
         (["Hello", "مرحبا", "today", "!"], ["Hello", "مرحبا", "today", "!"]),
         (["Hello", "مرحبا", "today", "سعر", "Bye"], ["Hello", "مرحبا", "today", "سعر", "Bye"]),
@@ -468,8 +475,6 @@ def test_rtl_boxes_are_read_right_to_left_and_others_left_to_right(
         (["Hello", "بالعالم", "مرحبا"], ["مرحبا", "بالعالم", "Hello"]),
         # a number before an Arabic word in a left-to-right line reads after it,
         (["Hello", "2026", "مرحبا", "today"], ["Hello", "مرحبا", "2026", "today"]),
-        # an Arabic-Indic number before an Arabic word in a left-to-right line reads after it,
-        (["Hello", "مرحبا", "١٢٣", "today"], ["Hello", "مرحبا", "١٢٣", "today"]),
         # and an Arabic line with a Latin word at both ends reads as left-to-right.
         (["Model", "عربي", "AI"], ["Model", "عربي", "AI"]),
     ],

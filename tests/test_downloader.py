@@ -76,7 +76,7 @@ def test_download_passes_av1_avoiding_format_selector(tmp_path: Path) -> None:
         download_video("https://example.com/v/abc", tmp_path / "dl")
 
     opts = mock_ydl.call_args.args[0]
-    assert opts["format"] == "bv*[vcodec!^=av01]+ba/b[vcodec!^=av01]/bv*+ba/b"
+    assert opts["format"] == "bv*[vcodec!^=?av01]+ba/b[vcodec!^=?av01]/bv*+ba/b"
     # yt-dlp's default sort (resolution first) is kept: no format_sort, no resolution cap.
     assert "format_sort" not in opts
 
@@ -185,3 +185,30 @@ def test_selector_matches_the_default_for_formats_without_codec_info() -> None:
 
     assert picked == _picked_formats(info, _DEFAULT_SELECTOR)
     assert picked == "f1080"
+
+
+def test_selector_keeps_codec_less_format_when_other_formats_have_codec_info() -> None:
+    """Mixed info: an HLS 1080p with no ``vcodec`` must still beat an avc1 360p.
+
+    Without the ``?`` in ``vcodec!^=?av01`` yt-dlp drops the codec-less format from the
+    filtered alternatives, so the selector would silently pick the 360p H.264 stream.
+    """
+    info = _fake_info(("avc1.640028", 360))
+    formats = info["formats"]
+    assert isinstance(formats, list)
+    formats.append(
+        {
+            "format_id": "hls-1080",
+            "url": "https://example.test/hls-1080.m3u8",
+            "ext": "mp4",
+            "height": 1080,
+            "width": 1920,
+            "tbr": 1080.0,
+            "protocol": "m3u8_native",
+        }
+    )
+
+    picked = _picked_formats(info, _FORMAT_SELECTOR)
+
+    assert picked == _picked_formats(info, _DEFAULT_SELECTOR)
+    assert picked == "hls-1080"
