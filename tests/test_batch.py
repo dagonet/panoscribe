@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
 from panoscribe.batch import (
     BatchItem,
@@ -26,6 +27,8 @@ from panoscribe.batch import (
     reconcile,
     save_state,
 )
+from panoscribe.cli import app
+from panoscribe.errors import PanoScribeError
 
 # ── parse_url_list ────────────────────────────────────────────────────────
 
@@ -360,3 +363,68 @@ def test_reconcile_none_state_returns_all_pending() -> None:
     out = reconcile(None, ["A", "B"])
     assert all(it.status == "pending" for it in out.items)
     assert [it.source for it in out.items] == ["A", "B"]
+
+
+# ── transcribe-many failure reporting (#184) ──────────────────────────────
+
+
+def _write_batch_urls(tmp_path: Path, urls: list[str]) -> Path:
+    p = tmp_path / "urls.txt"
+    p.write_text("\n".join(urls) + "\n", encoding="utf-8")
+    return p
+
+
+def _fake_compute_output_path(source: str, output_dir: Path, ext: str, taken: set[Path]) -> Path:
+    stem = source.rstrip("/").rsplit("/", 1)[-1]
+    return output_dir / f"{stem}{ext}"
+
+
+def test_transcribe_many_prints_failure_reason(tmp_path: Path, monkeypatch) -> None:
+    """A failed item's reason and the final tally reach the console; exit stays 0."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    def _fake_proc(source: str, *_a, **_kw) -> None:
+        if source == "https://a/1":
+            raise PanoScribeError("[Errno 2] no such file: x")
+
+    with (
+        patch("panoscribe.pipeline.process_single_video", side_effect=_fake_proc),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    failed_lines = [line for line in result.output.splitlines() if "failed:" in line]
+    assert len(failed_lines) == 1
+    assert "https://a/1" in failed_lines[0]
+    # Brackets must survive rich markup parsing.
+    assert "[Errno 2] no such file: x" in failed_lines[0]
+    assert "1 done, 1 failed, 0 pending" in result.output
+
+
+def test_transcribe_many_all_ok_prints_summary_only(tmp_path: Path, monkeypatch) -> None:
+    """No failures: no error line, a clean tally, and the state-file path."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    with (
+        patch("panoscribe.pipeline.process_single_video"),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "failed:" not in result.output
+    assert "2 done, 0 failed, 0 pending" in result.output
+    assert str(out_dir / ".panoscribe-batch-state.json") in result.output
