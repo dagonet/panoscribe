@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from panoscribe.asr.whisper import WhisperTranscriber
 from panoscribe.config import PanoScribeConfig
+from panoscribe.errors import PanoScribeError
 from panoscribe.pipeline import _build_asr_engine, process_single_video
 
 REMOTE_ENGINE = "panoscribe.asr.remote.RemoteTranscriber"
@@ -117,3 +119,101 @@ def test_photo_branch_uses_remote(tmp_path: Path) -> None:
     engine.transcribe.assert_called_once_with(tmp_path / "audio.wav")
     whisper.assert_not_called()
     assert output.exists()
+
+
+# ── speech settings are checked before any download (#183) ───────────────
+
+
+def _misconfigured_remote_cfg(tmp_path: Path) -> PanoScribeConfig:
+    return _cfg(tmp_path, asr_backend="remote", asr_remote_base_url="https://asr.example.test/v1")
+
+
+def test_remote_settings_error_before_download(tmp_path: Path) -> None:
+    cfg = _misconfigured_remote_cfg(tmp_path)
+
+    with (
+        patch("panoscribe.pipeline.download_video") as download_video,
+        patch("panoscribe.pipeline.download_photo_post") as download_photo_post,
+        pytest.raises(PanoScribeError, match="PANO_ASR_REMOTE_MODEL"),
+    ):
+        process_single_video(
+            "https://example.test/video",
+            cfg,
+            tmp_path / "out.json",
+            ocr_active=False,
+            output_format="json",
+        )
+
+    download_video.assert_not_called()
+    download_photo_post.assert_not_called()
+
+
+def test_remote_settings_error_before_photo_download(tmp_path: Path) -> None:
+    cfg = _misconfigured_remote_cfg(tmp_path)
+
+    with (
+        patch("panoscribe.pipeline.download_video") as download_video,
+        patch("panoscribe.pipeline.download_photo_post") as download_photo_post,
+        pytest.raises(PanoScribeError, match="PANO_ASR_REMOTE_MODEL"),
+    ):
+        process_single_video(
+            "https://www.tiktok.com/@u/photo/1",
+            cfg,
+            tmp_path / "out.json",
+            ocr_active=False,
+            output_format="json",
+        )
+
+    download_photo_post.assert_not_called()
+    download_video.assert_not_called()
+
+
+def test_photo_post_without_audio_still_checks_remote_settings(tmp_path: Path) -> None:
+    cfg = _misconfigured_remote_cfg(tmp_path)
+    photo_dir = tmp_path / "photos"
+    photo_dir.mkdir()
+
+    no_audio_post = SimpleNamespace(image_paths=[], audio_path=None)
+
+    with (
+        patch("panoscribe.pipeline.scan_photo_dir", return_value=no_audio_post) as scan_photo_dir,
+        pytest.raises(PanoScribeError, match="PANO_ASR_REMOTE_MODEL"),
+    ):
+        process_single_video(
+            str(photo_dir), cfg, tmp_path / "out.json", ocr_active=False, output_format="json"
+        )
+
+    scan_photo_dir.assert_not_called()
+
+
+def test_prebuilt_engine_is_used_and_not_rebuilt(tmp_path: Path) -> None:
+    cfg = _remote_cfg(tmp_path)
+    output = tmp_path / "out.json"
+    engine = _fake_engine()
+
+    with (
+        patch("panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"),
+        patch("panoscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav"),
+        patch("panoscribe.pipeline._build_asr_engine") as build,
+    ):
+        process_single_video(
+            "https://example.test/video",
+            cfg,
+            output,
+            ocr_active=False,
+            output_format="json",
+            asr_engine=engine,
+        )
+
+    build.assert_not_called()
+    engine.transcribe.assert_called_once_with(tmp_path / "audio.wav")
+
+
+def test_local_backend_unchanged(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+
+    with patch("panoscribe.asr.whisper.WhisperModel") as model_loader:
+        engine = _build_asr_engine(cfg)
+
+    assert isinstance(engine, WhisperTranscriber)
+    model_loader.assert_not_called()

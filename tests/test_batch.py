@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
 from panoscribe.batch import (
     BatchItem,
@@ -26,6 +28,8 @@ from panoscribe.batch import (
     reconcile,
     save_state,
 )
+from panoscribe.cli import app
+from panoscribe.errors import PanoScribeError
 
 # ── parse_url_list ────────────────────────────────────────────────────────
 
@@ -360,3 +364,154 @@ def test_reconcile_none_state_returns_all_pending() -> None:
     out = reconcile(None, ["A", "B"])
     assert all(it.status == "pending" for it in out.items)
     assert [it.source for it in out.items] == ["A", "B"]
+
+
+# ── transcribe-many failure reporting (#184) ──────────────────────────────
+
+
+def _write_batch_urls(tmp_path: Path, urls: list[str]) -> Path:
+    p = tmp_path / "urls.txt"
+    p.write_text("\n".join(urls) + "\n", encoding="utf-8")
+    return p
+
+
+def _fake_compute_output_path(source: str, output_dir: Path, ext: str, taken: set[Path]) -> Path:
+    stem = source.rstrip("/").rsplit("/", 1)[-1]
+    return output_dir / f"{stem}{ext}"
+
+
+@pytest.fixture
+def clean_batch_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate a CLI batch run from the developer's shell and ``.env``.
+
+    Drops every ``PANO_*`` variable and runs from an empty directory, so
+    neither the environment nor a ``.env`` in the repo root can change the
+    backend or any other setting.
+    """
+    for name in [k for k in os.environ if k.startswith("PANO_")]:
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.chdir(tmp_path)
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_prints_failure_reason(tmp_path: Path) -> None:
+    """A failed item's reason and the final tally reach the console; exit stays 0."""
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    def _fake_proc(source: str, *_a, **_kw) -> None:
+        if source == "https://a/1":
+            raise PanoScribeError("[Errno 2] no such file: x")
+
+    with (
+        patch("panoscribe.pipeline.process_single_video", side_effect=_fake_proc),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    failed_lines = [line for line in result.output.splitlines() if "failed:" in line]
+    assert len(failed_lines) == 1
+    assert "https://a/1" in failed_lines[0]
+    # Brackets must survive rich markup parsing.
+    assert "[Errno 2] no such file: x" in failed_lines[0]
+    assert "1 done, 1 failed, 0 pending" in result.output
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_all_ok_prints_summary_only(tmp_path: Path) -> None:
+    """No failures: no error line, a clean tally, and the state-file path."""
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    with (
+        patch("panoscribe.pipeline.process_single_video"),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "failed:" not in result.output
+    assert "2 done, 0 failed, 0 pending" in result.output
+    assert str(out_dir / ".panoscribe-batch-state.json") in result.output
+
+
+# ── transcribe-many checks speech settings before any download (#183) ─────
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_stops_before_first_download_on_bad_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Misconfigured remote speech: message once, exit 1, no download, items stay pending."""
+    monkeypatch.setenv("PANO_ASR_BACKEND", "remote")
+    monkeypatch.setenv("PANO_ASR_REMOTE_BASE_URL", "https://asr.example.test/v1")
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    with (
+        patch("panoscribe.pipeline.download_video") as download_video,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 1, result.output
+    download_video.assert_not_called()
+    assert result.output.count("PANO_ASR_REMOTE_MODEL") == 1
+    assert "PANO_ASR_REMOTE_MODEL" in result.stderr  # fatal errors go to stderr
+    assert "failed:" not in result.output
+    assert "done," not in result.output  # no batch summary on this path
+    state = json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
+    assert [it["status"] for it in state["items"]] == ["pending", "pending"]
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_resume_of_finished_batch_needs_no_speech_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Nothing pending or failed: the engine is never built, so bad settings don't matter."""
+    monkeypatch.setenv("PANO_ASR_BACKEND", "remote")
+    monkeypatch.setenv("PANO_ASR_REMOTE_BASE_URL", "https://asr.example.test/v1")
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    state = BatchState(
+        version=1,
+        started_at=datetime.now(UTC),
+        input_file=urls_file.resolve(),
+        output_dir=out_dir.resolve(),
+        format="md",
+        items=[
+            BatchItem(source=src, status="done", output_path=out_dir / f"{i}.md")
+            for i, src in enumerate(["https://a/1", "https://a/2"], start=1)
+        ],
+    )
+    save_state(state, out_dir / ".panoscribe-batch-state.json")
+
+    with (
+        patch("panoscribe.pipeline._build_asr_engine") as build,
+        patch("panoscribe.pipeline.process_single_video") as process,
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    build.assert_not_called()
+    process.assert_not_called()
+    assert "2 done, 0 failed, 0 pending" in result.output

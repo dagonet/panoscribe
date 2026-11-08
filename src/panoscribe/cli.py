@@ -15,6 +15,7 @@ import click
 import typer
 from rich.console import Console
 from rich.logging import RichHandler
+from rich.markup import escape
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from panoscribe import __version__, pipeline
@@ -446,6 +447,18 @@ def transcribe_many(
     ]
     total = len(state.items)
 
+    # Build the speech engine once, before any download. A bad speech setting
+    # then stops the run here, with every item still in its prior state,
+    # instead of failing each item after its download. Skipped when nothing
+    # is left to run, so resuming a finished batch needs no speech settings.
+    asr_engine = None
+    if pending_indices:
+        try:
+            asr_engine = pipeline._build_asr_engine(config)
+        except PanoScribeError as e:
+            typer.secho(str(e), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from None
+
     any_success = False
     any_attempt = False
     progress = Progress(
@@ -482,11 +495,17 @@ def transcribe_many(
                         ocr_active=ocr_active,
                         output_format=output_format,
                         console=_console,
+                        asr_engine=asr_engine,
                     )
                 except PanoScribeError as e:
                     item.status = "failed"
                     item.error = str(e)
                     save_state(state, state_path)
+                    # escape(): error text often contains "[...]" (e.g. "[Errno 2]"),
+                    # which rich would otherwise parse as markup and swallow.
+                    progress.console.print(
+                        f"failed: {escape(truncated)}: {escape(item.error)}", soft_wrap=True
+                    )
                 except KeyboardInterrupt:
                     # Leave item in `pending` (already persisted); re-raise.
                     raise
@@ -501,6 +520,12 @@ def transcribe_many(
             "Interrupted; state file preserved for resume.", fg=typer.colors.YELLOW, err=True
         )
         raise typer.Exit(code=130) from None
+
+    n_done = sum(1 for it in state.items if it.status == "done")
+    n_failed = sum(1 for it in state.items if it.status == "failed")
+    n_pending = sum(1 for it in state.items if it.status == "pending")
+    _console.print(f"{n_done} done, {n_failed} failed, {n_pending} pending")
+    _console.print(f"State: {escape(str(state_path))}", soft_wrap=True)
 
     # Exit code: 1 if work was attempted but nothing succeeded; 0 otherwise.
     if any_attempt and not any_success:

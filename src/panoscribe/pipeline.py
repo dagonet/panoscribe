@@ -121,6 +121,7 @@ def process_single_video(
     ocr_active: bool,
     output_format: str,
     console: Console | None = None,
+    asr_engine: AsrEngine | None = None,
 ) -> None:
     """Run the full single-video pipeline and write the transcript.
 
@@ -128,11 +129,17 @@ def process_single_video(
     :func:`transcribe`. Extracted so :func:`transcribe_many` can reuse the
     orchestration loop.
 
+    The speech engine is built first, before photo routing and any download,
+    so a bad speech setting fails before bandwidth is spent. ``asr_engine``
+    lets a batch build it once and share it across items.
+
     Imports stay at module scope (do NOT move them in here): existing tests
     patch ``panoscribe.cli.WhisperTranscriber`` etc. and rely on those names
     resolving via this module. The one exception is the remote ASR engine,
     imported lazily by :func:`_build_asr_engine`.
     """
+    if asr_engine is None:
+        asr_engine = _build_asr_engine(config)
     temp_dir = config.temp_dir
     try:
         # ---- Photo-mode routing (before download_video) ----
@@ -146,7 +153,6 @@ def process_single_video(
             # Photo branch: audio, ASR, and timestamp computation.
             if photo_post.audio_path:
                 audio_path = extract_audio(photo_post.audio_path, temp_dir / "audio.wav")
-                asr_engine = _build_asr_engine(config)
                 speech_segments, detected_language = asr_engine.transcribe(audio_path)
             else:
                 speech_segments, detected_language = [], "en"
@@ -179,7 +185,6 @@ def process_single_video(
             # ---- Existing video path (byte-identical) ----
             video_path = download_video(source, temp_dir)
             audio_path = extract_audio(video_path, temp_dir / "audio.wav")
-            asr_engine = _build_asr_engine(config)
             speech_segments, detected_language = asr_engine.transcribe(audio_path)
 
             if ocr_active:
