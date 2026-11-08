@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-08
+
 ### Added
 
 - **OCR model sets** — `PANO_OCR_MODEL_SET` (`ocr_model_set`) chooses the OCR
@@ -716,6 +718,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.10.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.10.0
 [0.9.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.9.0
 [0.8.1]: https://github.com/dagonet/panoscribe/releases/tag/v0.8.1
 [0.8.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.8.0
