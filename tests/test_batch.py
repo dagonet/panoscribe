@@ -428,3 +428,36 @@ def test_transcribe_many_all_ok_prints_summary_only(tmp_path: Path, monkeypatch)
     assert "failed:" not in result.output
     assert "2 done, 0 failed, 0 pending" in result.output
     assert str(out_dir / ".panoscribe-batch-state.json") in result.output
+
+
+# ── transcribe-many checks speech settings before any download (#183) ─────
+
+
+def test_transcribe_many_stops_before_first_download_on_bad_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Misconfigured remote speech: message once, exit 1, no download, items stay pending."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_ASR_BACKEND", "remote")
+    monkeypatch.setenv("PANO_ASR_REMOTE_BASE_URL", "https://asr.example.test/v1")
+    monkeypatch.delenv("PANO_ASR_REMOTE_MODEL", raising=False)
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    with (
+        patch("panoscribe.pipeline.download_video") as download_video,
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 1, result.output
+    download_video.assert_not_called()
+    assert result.output.count("PANO_ASR_REMOTE_MODEL") == 1
+    assert "failed:" not in result.output
+    assert "done," not in result.output  # no batch summary on this path
+    state = json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
+    assert [it["status"] for it in state["items"]] == ["pending", "pending"]

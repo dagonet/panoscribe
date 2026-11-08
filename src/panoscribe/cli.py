@@ -447,6 +447,19 @@ def transcribe_many(
     ]
     total = len(state.items)
 
+    # Build the speech engine once, before any download. A bad speech setting
+    # then stops the run here, with every item still in its prior state,
+    # instead of failing each item after its download. Skipped when nothing
+    # is left to run, so resuming a finished batch needs no speech settings.
+    asr_engine = None
+    if pending_indices:
+        try:
+            asr_engine = pipeline._build_asr_engine(config)
+        except PanoScribeError as e:
+            # escape(): settings text may contain "[...]", which rich would parse as markup.
+            _console.print(escape(str(e)), soft_wrap=True)
+            raise typer.Exit(code=1) from None
+
     any_success = False
     any_attempt = False
     progress = Progress(
@@ -483,6 +496,7 @@ def transcribe_many(
                         ocr_active=ocr_active,
                         output_format=output_format,
                         console=_console,
+                        asr_engine=asr_engine,
                     )
                 except PanoScribeError as e:
                     item.status = "failed"
