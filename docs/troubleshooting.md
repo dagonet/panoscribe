@@ -215,13 +215,19 @@ Fix by removing the setting (unset lets the model set decide), by
 choosing a value from the message, or by switching `PANO_OCR_MODEL_SET`. See
 [Configuration](configuration.md#ocr).
 
-## No on-screen text from some YouTube videos
+## Cannot decode any video frame (AV1)
 
-If a YouTube video gives no on-screen text at all, and no error, it may be
-encoded as AV1. The video reader that panoscribe uses for OCR (OpenCV) cannot decode
-AV1 in some environments, so zero frames reach the OCR step
-([#189](https://github.com/dagonet/panoscribe/issues/189)). The speech part
-is not affected.
+```
+Cannot decode any video frame from video.mp4 (codec: av01). ...
+```
+
+The video reader that panoscribe uses for OCR (OpenCV) can decode AV1 only with
+hardware support, which most machines do not have
+([#189](https://github.com/dagonet/panoscribe/issues/189)). Downloads now ask
+yt-dlp for H.264 first and use AV1 only when a video has nothing else, so this
+mostly affects local AV1 files and the rare AV1-only download. panoscribe checks
+this right after the download, before speech recognition, and stops with the
+error above. The error names the codec; the speech part is not affected.
 
 Workarounds: re-encode the video to H.264 and run panoscribe on the new
 file, for example

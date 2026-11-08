@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
+# Rank H.264 first: OpenCV's bundled FFmpeg only has a hardware AV1 decoder, so
+# an AV1 download yields zero OCR frames on most machines (#189). With a limit,
+# yt-dlp ranks codecs at or below h264 first and anything above (vp9, av01)
+# after, so AV1 stays available as a last resort. No resolution cap.
+_FORMAT_SORT: list[str] = ["vcodec:h264"]
+
 
 def download_video(source: str, temp_dir: Path) -> Path:
     """Return a local path to the video referenced by ``source``.
@@ -35,6 +41,7 @@ def download_video(source: str, temp_dir: Path) -> Path:
             "outtmpl": str(temp_dir / "%(id)s.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
+            "format_sort": list(_FORMAT_SORT),
         }
         try:
             with YoutubeDL(ydl_opts) as ydl:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import click
@@ -14,6 +16,9 @@ from panoscribe import __version__
 from panoscribe.cli import app
 from panoscribe.errors import PanoScribeError
 from panoscribe.output import Transcript, TranscriptSegment
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ── Sprint 9.11: shared CLI option parity (issue #52) ────────────────────────
 # These nine options are declared by both ``transcribe`` and ``transcribe-many``;
@@ -109,9 +114,18 @@ def _patched_pipeline(tmp_path: Path):
     Sprint 6.2: additionally patches ``cleanup_speech_segments``. The 6-tuple
     return is ``(download, extract, whisper, ocr, llm_cleanup, asr_cleanup)``.
     """
-    download_patch = patch(
-        "panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
-    )
+
+    @contextmanager
+    def download_patch() -> Iterator[MagicMock]:
+        # The video path is fake, so the #189 frame-decodability pre-check is stubbed too.
+        with (
+            patch(
+                "panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
+            ) as mock_download,
+            patch("panoscribe.pipeline.ensure_frames_decodable"),
+        ):
+            yield mock_download
+
     extract_patch = patch("panoscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav")
     whisper_patch = patch("panoscribe.pipeline.WhisperTranscriber")
     ocr_patch = patch("panoscribe.pipeline.RapidOCREngine")
@@ -124,7 +138,7 @@ def _patched_pipeline(tmp_path: Path):
         side_effect=lambda segs, cfg: segs,
     )
     return (
-        download_patch,
+        download_patch(),
         extract_patch,
         whisper_patch,
         ocr_patch,

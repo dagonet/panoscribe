@@ -12,9 +12,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
-from panoscribe.acquire.downloader import download_video
+from panoscribe.acquire.downloader import _FORMAT_SORT, download_video
 from panoscribe.errors import PanoScribeError
 
 
@@ -62,3 +63,84 @@ def test_download_error_wrapped_as_panoscribe_error(tmp_path: Path) -> None:
     # ``raise ... from None`` severs the explicit cause chain.
     assert exc_info.value.__cause__ is None
     assert exc_info.value.__suppress_context__ is True
+
+
+def test_download_passes_h264_preferring_format_sort(tmp_path: Path) -> None:
+    """The download asks yt-dlp to rank H.264 first (OpenCV cannot decode AV1, #189)."""
+    with patch("panoscribe.acquire.downloader.YoutubeDL") as mock_ydl:
+        instance = MagicMock()
+        mock_ydl.return_value.__enter__.return_value = instance
+        instance.extract_info.return_value = {"id": "abc", "ext": "mp4"}
+        instance.prepare_filename.return_value = "/tmp/omni/abc.mp4"
+
+        download_video("https://example.com/v/abc", tmp_path / "dl")
+
+    opts = mock_ydl.call_args.args[0]
+    assert opts["format_sort"] == ["vcodec:h264"]
+    # yt-dlp's default ``format`` is kept: no format key, so no resolution cap.
+    assert "format" not in opts
+
+
+def _fake_info(*video_codecs: tuple[str, int]) -> dict[str, object]:
+    """Synthetic yt-dlp info dict: one video-only format per ``(vcodec, height)`` + audio."""
+    formats: list[dict[str, object]] = [
+        {
+            "format_id": f"v-{vcodec[:4]}-{height}",
+            "url": f"https://example.test/{vcodec}-{height}",
+            "ext": "mp4" if vcodec.startswith(("avc1", "av01")) else "webm",
+            "vcodec": vcodec,
+            "acodec": "none",
+            "height": height,
+            "width": height * 16 // 9,
+            "tbr": float(height),
+            "protocol": "https",
+        }
+        for vcodec, height in video_codecs
+    ]
+    formats.append(
+        {
+            "format_id": "audio",
+            "url": "https://example.test/audio",
+            "ext": "m4a",
+            "vcodec": "none",
+            "acodec": "mp4a.40.2",
+            "abr": 128.0,
+            "protocol": "https",
+        }
+    )
+    return {
+        "id": "abc",
+        "title": "t",
+        "extractor": "generic",
+        "extractor_key": "Generic",
+        "webpage_url": "https://example.test/watch",
+        "formats": formats,
+    }
+
+
+def _picked_video_format(info: dict[str, object]) -> str:
+    """Run the real yt-dlp sorter + selector offline; return the chosen video format id."""
+    # ``bv*+ba/b`` is yt-dlp's default selector whenever ffmpeg can merge; spelling it
+    # out keeps this test independent of the host having ffmpeg.
+    opts = {"format_sort": _FORMAT_SORT, "format": "bv*+ba/b", "quiet": True, "no_warnings": True}
+    with YoutubeDL(opts) as ydl:
+        result = ydl.process_ie_result(info, download=False)
+    return str(result["requested_formats"][0]["format_id"])
+
+
+def test_format_sort_picks_h264_over_higher_resolution_av1_and_vp9() -> None:
+    info = _fake_info(("av01.0.12M.08", 2160), ("vp9", 1440), ("avc1.640028", 1080))
+
+    assert _picked_video_format(info) == "v-avc1-1080"
+
+
+def test_format_sort_picks_vp9_when_no_h264_exists() -> None:
+    info = _fake_info(("av01.0.12M.08", 2160), ("vp9", 1080))
+
+    assert _picked_video_format(info) == "v-vp9-1080"
+
+
+def test_format_sort_falls_back_to_av1_when_nothing_else_exists() -> None:
+    info = _fake_info(("av01.0.12M.08", 1080))
+
+    assert _picked_video_format(info) == "v-av01-1080"

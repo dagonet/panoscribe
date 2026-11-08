@@ -24,6 +24,7 @@ from panoscribe.audio import extract_audio, get_duration
 from panoscribe.eval.funnel import FunnelCounts
 from panoscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
 from panoscribe.ocr.deduplicator import dedup_segments
+from panoscribe.ocr.frame_sampler import ensure_frames_decodable
 from panoscribe.ocr.rapid_ocr import RapidOCREngine, validate_ocr_settings
 from panoscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
 from panoscribe.output import Transcript, merge_channels, write_transcript
@@ -187,6 +188,10 @@ def process_single_video(
         else:
             # ---- Existing video path (byte-identical) ----
             video_path = download_video(source, temp_dir)
+            if ocr_active:
+                # Before audio extraction: no speech time is lost on a video OCR
+                # cannot read (#189).
+                ensure_frames_decodable(video_path)
             audio_path = extract_audio(video_path, temp_dir / "audio.wav")
             speech_segments, detected_language = asr_engine.transcribe(audio_path)
 

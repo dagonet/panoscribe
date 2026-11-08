@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **AV1 videos no longer give silent empty OCR** — the OpenCV build that panoscribe
+  uses can only decode AV1 with hardware support, so on most machines an AV1 video
+  gave no on-screen text and no error. Downloads now ask yt-dlp for H.264 first (AV1
+  stays the last resort, and there is no resolution cap). When a video opens but no
+  frame can be read, panoscribe now stops with an error that names the file and codec
+  and suggests `--no-ocr` or re-encoding to H.264. The check runs right after the
+  download, before speech recognition, so no time is lost (#189)
 - **OCR settings are checked before any download** — a wrong OCR setting (a model size
   that does not fit the model version, a PP-OCRv6 version for a language without a v6
   model, `PANO_OCR_DET_LANG=multi` with a PP-OCRv6 detector, or `PANO_OCR_DEVICE=cuda`
