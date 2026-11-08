@@ -453,6 +453,29 @@ class TestResolveOCRLanguage:
         assert result.value == "en"
         assert "Unmapped ISO code" in caplog.text
 
+    @staticmethod
+    def test_kn_maps_to_kannada_rec() -> None:
+        """ISO ``kn`` (Kannada) is the code for rapidocr's KA recognition model."""
+        from panoscribe.ocr.rapid_ocr import _resolve_ocr_language
+
+        assert _resolve_ocr_language("kn") is LangRec.KA
+
+    @staticmethod
+    def test_auto_with_detected_georgian_takes_unmapped_fallback(caplog) -> None:
+        """ISO ``ka`` is Georgian, which rapidocr has no model for; it must not
+        resolve to the Kannada (``LangRec.KA``) model."""
+        from panoscribe.ocr.rapid_ocr import _resolve_ocr_language
+
+        result = _resolve_ocr_language("auto", detected_language="ka")
+        assert result is LangRec.EN
+        assert "No LangRec mapping" in caplog.text
+
+    @staticmethod
+    def test_explicit_ka_still_resolves_through_langrec_value() -> None:
+        from panoscribe.ocr.rapid_ocr import _resolve_ocr_language
+
+        assert _resolve_ocr_language("ka") is LangRec.KA
+
 
 # ── auto-caption mask zone tests ────────────────────────────────────
 
@@ -876,6 +899,169 @@ def test_det_lang_override_yields_to_server_ch_force(tmp_path: Path) -> None:
     _, kwargs = mock_rapid_cls.call_args
     params = kwargs["params"]
     assert params["Det.lang_type"] is LangRec.CH
+
+
+# ── Model sets: resolver output reaches RapidOCR(params=...) ────────────────────
+
+
+def _init_params(config: PanoScribeConfig, tmp_path: Path, **extract_kwargs: object) -> dict:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video, **extract_kwargs)
+    return mock_rapid_cls.call_args.kwargs["params"]
+
+
+def test_classic_params_pin_v4_mobile(tmp_path: Path) -> None:
+    params = _init_params(_make_config(ocr_language="de"), tmp_path)
+    assert params["Det.ocr_version"] is OCRVersion.PPOCRV4
+    assert params["Det.model_type"] is ModelType.MOBILE
+    assert params["Rec.ocr_version"] is OCRVersion.PPOCRV4
+    assert params["Rec.model_type"] is ModelType.MOBILE
+    assert params["Rec.lang_type"] is LangRec.LATIN
+
+
+def test_v6_model_set_passes_iso_codes_and_small_models(tmp_path: Path) -> None:
+    params = _init_params(
+        _make_config(ocr_language="auto", ocr_model_set="v6"), tmp_path, detected_language="fr"
+    )
+    assert params["Det.lang_type"] == "fr"
+    assert params["Rec.lang_type"] == "fr"
+    assert params["Det.ocr_version"] is OCRVersion.PPOCRV6
+    assert params["Rec.ocr_version"] is OCRVersion.PPOCRV6
+    assert params["Det.model_type"] is ModelType.SMALL
+    assert params["Rec.model_type"] is ModelType.SMALL
+
+
+def test_v6_model_set_falls_back_to_classic_for_language_without_v6(tmp_path: Path) -> None:
+    params = _init_params(_make_config(ocr_language="ko", ocr_model_set="v6"), tmp_path)
+    assert params["Rec.lang_type"] is LangRec.KOREAN
+    assert params["Rec.ocr_version"] is OCRVersion.PPOCRV4
+    assert params["Det.ocr_version"] is OCRVersion.PPOCRV4
+    assert params["Det.lang_type"] is LangDet.MULTI
+
+
+def test_v6_knob_for_language_without_v6_raises_before_rapidocr(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    config = _make_config(ocr_language="ko", ocr_rec_ocr_version="PP-OCRv6")
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls,
+        pytest.raises(PanoScribeError, match="korean"),
+    ):
+        RapidOCREngine(config).extract(video)
+    mock_rapid_cls.assert_not_called()
+
+
+# ── rapidocr >= 3.10 loads models lazily: the engine must force it at start ──────
+
+
+@pytest.mark.parametrize("loader", ["_load_det_model", "_load_cls_model", "_load_rec_model"])
+@pytest.mark.parametrize("error", [ValueError("no route"), OSError("download failed")])
+def test_model_load_error_becomes_panoscribe_error(
+    tmp_path: Path, loader: str, error: Exception
+) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    getattr(engine_mock, loader).side_effect = error
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        pytest.raises(PanoScribeError) as excinfo,
+    ):
+        RapidOCREngine(_make_config(ocr_device="cpu")).extract(video)
+    assert str(excinfo.value).startswith("Failed to initialize RapidOCR on cpu:")
+    assert str(error) in str(excinfo.value)
+    assert excinfo.value.__cause__ is error
+
+
+def test_failed_model_load_is_retried_on_the_next_call(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+    engine_mock._load_rec_model.side_effect = [OSError("offline"), None]
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", side_effect=[iter([]), iter([])]),
+    ):
+        ocr = RapidOCREngine(_make_config(ocr_device="cpu"))
+        with pytest.raises(PanoScribeError):
+            ocr.extract(video)
+        ocr.extract(video)
+    assert engine_mock._load_rec_model.call_count == 2
+
+
+def test_models_are_loaded_once_per_engine_not_per_frame(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+    frames = [(float(i), _fake_frame()) for i in range(3)]
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "panoscribe.ocr.rapid_ocr.sample_frames",
+            side_effect=[iter(frames), iter(frames)],
+        ),
+    ):
+        ocr = RapidOCREngine(_make_config(ocr_device="cpu"))
+        ocr.extract(video)
+        ocr.extract(video)
+    assert engine_mock.call_count == 6  # 3 frames, 2 calls
+    assert engine_mock._load_det_model.call_count == 1
+    assert engine_mock._load_cls_model.call_count == 1
+    assert engine_mock._load_rec_model.call_count == 1
+
+
+def test_disabled_stage_is_not_loaded(tmp_path: Path) -> None:
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    engine_mock = MagicMock()
+    engine_mock.use_cls = False
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(_make_config(ocr_device="cpu")).extract(video)
+    engine_mock._load_cls_model.assert_not_called()
+    engine_mock._load_det_model.assert_called_once()
+    engine_mock._load_rec_model.assert_called_once()
+
+
+def test_renamed_rapidocr_loader_fails_loudly(tmp_path: Path) -> None:
+    """A rapidocr that drops a private loader must not fall back to lazy loading silently."""
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    stub = SimpleNamespace(use_det=True, use_cls=True, use_rec=True)  # no _load_* methods
+    with (
+        patch("panoscribe.ocr.rapid_ocr.RapidOCR", return_value=stub),
+        patch("panoscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        pytest.raises(PanoScribeError, match=r"Failed to initialize RapidOCR.*_load_det_model"),
+    ):
+        RapidOCREngine(_make_config(ocr_device="cpu")).extract(video)
+
+
+def test_installed_rapidocr_still_has_the_lazy_loaders() -> None:
+    from rapidocr import RapidOCR as RealRapidOCR
+
+    from panoscribe.ocr.rapid_ocr import _LAZY_LOADERS
+
+    for _flag, loader_name in _LAZY_LOADERS:
+        assert callable(getattr(RealRapidOCR, loader_name, None)), loader_name
+
+
+def test_model_set_leaves_det_threshold_knobs_alone(tmp_path: Path) -> None:
+    config = _make_config(ocr_model_set="v6", ocr_det_thresh=0.2)
+    params = _init_params(config, tmp_path)
+    assert params["Det.thresh"] == 0.2
+    assert not any(key.startswith("Global.") or key.startswith("Cls.") for key in params)
 
 
 # -- _read_image unicode-safe helper tests -------------------------------------

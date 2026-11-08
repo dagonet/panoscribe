@@ -74,6 +74,7 @@ def score_video(
                 "best_candidate": best_candidate,
                 "similarity": similarity,
                 "near_miss": near_miss,
+                "required": expected.required,
             }
         )
 

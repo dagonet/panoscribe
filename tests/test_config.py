@@ -514,6 +514,64 @@ def test_model_knobs_env_round_trip_and_empty_string(
     assert cfg.ocr_rec_ocr_version is None
 
 
+# ── OCR model set (classic / v6) ─────────────────────────────────────────────
+
+
+def test_ocr_model_set_default_classic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ocr_model_set defaults to 'classic' (today's model behaviour)."""
+    _strip_pano_env(monkeypatch)
+
+    assert PanoScribeConfig().ocr_model_set == "classic"
+
+
+def test_ocr_model_set_env_v6_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PANO_OCR_MODEL_SET is case-insensitive and normalised to lowercase."""
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_OCR_MODEL_SET", "V6")
+
+    assert PanoScribeConfig().ocr_model_set == "v6"
+
+
+@pytest.mark.parametrize("raw", ["", "  "])
+def test_ocr_model_set_empty_env_means_unset(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    """An empty PANO_OCR_MODEL_SET= falls back to the default 'classic', like the sibling knobs."""
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_OCR_MODEL_SET", raw)
+
+    assert PanoScribeConfig().ocr_model_set == "classic"
+
+
+def test_ocr_model_set_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unknown model set raises a ValidationError that lists the allowed values."""
+    from pydantic import ValidationError
+
+    _strip_pano_env(monkeypatch)
+
+    with pytest.raises(ValidationError, match=r"classic, v6"):
+        PanoScribeConfig(ocr_model_set="v5")
+
+
+def test_model_type_accepts_v6_sizes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The PP-OCRv6 model sizes (tiny, small, medium) are accepted and lowercased."""
+    _strip_pano_env(monkeypatch)
+
+    cfg = PanoScribeConfig(ocr_det_model_type="Small", ocr_rec_model_type="TINY")
+
+    assert cfg.ocr_det_model_type == "small"
+    assert cfg.ocr_rec_model_type == "tiny"
+    assert PanoScribeConfig(ocr_rec_model_type="medium").ocr_rec_model_type == "medium"
+
+
+def test_ocr_version_accepts_ppocrv6(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PP-OCRv6 is accepted case-insensitively and mapped to its canonical form."""
+    _strip_pano_env(monkeypatch)
+
+    cfg = PanoScribeConfig(ocr_det_ocr_version="pp-ocrv6", ocr_rec_ocr_version="PP-OCRv6")
+
+    assert cfg.ocr_det_ocr_version == "PP-OCRv6"
+    assert cfg.ocr_rec_ocr_version == "PP-OCRv6"
+
+
 # ── Sprint 13: ocr_det_lang override ─────────────────────────────────────────
 
 

@@ -3,7 +3,7 @@
 This directory holds fixtures for the opt-in `eval` integration test suite
 (`pytest -m eval`). Media files and ground-truth JSONs live here on the local
 machine but are **gitignored** — the repo tracks only this manifest, the
-fetch script, and the test module. Third-party TikTok content never enters the
+fetch script, and the test module. Third-party TikTok and YouTube content never enters the
 public repository (legal exposure + repository bloat).
 
 ## Samples
@@ -68,6 +68,121 @@ public repository (legal exposure + repository bloat).
 | Ground truth | `gt-sample-6.json` |
 | Baseline recall | 0.60 (measured v0.2.5, raw_bboxes=176) |
 
+### Samples 7-16 — YouTube Shorts for the OCR model-set comparison
+
+Added for the classic-vs-v6 measurement (`docs/plans/2026-11-08-ocr-newer-library-design.md`,
+D5/D6). All are videos fetched with yt-dlp. Ground truths are written blind
+(from frames and speech only, never from OCR output) and stay gitignored; there
+is no baseline recall yet.
+
+### Sample 7 — plain subtitles on pastel, quote card (YouTube Short, FR)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/GJslGyaVJ-k` |
+| Content class | Plain white subtitles, low contrast on pastel; quote card with `[On]` (franceinfo, 95 s) |
+| Language | `fr` |
+| Fixture path | `videos/sample-7.mp4` |
+| Ground truth | `gt-sample-7.json` |
+
+### Sample 8 — mixed caption styles, title cards, split screens (YouTube Short, FR)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/nBS3iLeiByU` |
+| Content class | Several caption styles, title cards, split screens (franceinfo, 78 s) |
+| Language | `fr` |
+| Fixture path | `videos/sample-8.mp4` |
+| Ground truth | `gt-sample-8.json` |
+
+### Sample 9 — white on dark box, ñ and ¿? (YouTube Short, ES)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/XWQffp7qhRQ` |
+| Content class | White on dark box; ñ, ¿? (BBC News Mundo, 70 s) |
+| Language | `es` |
+| Fixture path | `videos/sample-9.mp4` |
+| Ground truth | `gt-sample-9.json` |
+
+### Sample 10 — stylised font in short chunks (YouTube Short, ES)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/hjhaUcMtLX4` |
+| Content class | Stylised font in 1–3 word chunks, yellow highlights (AJ+ Español, 76 s) |
+| Language | `es` |
+| Fixture path | `videos/sample-10.mp4` |
+| Ground truth | `gt-sample-10.json` |
+
+### Sample 11 — headline boxes over busy crowds (YouTube Short, ES)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/7CKdfTeIoXo` |
+| Content class | Headline boxes over busy crowds; captions don't repeat speech (BBC News Mundo, 30 s) |
+| Language | `es` |
+| Fixture path | `videos/sample-11.mp4` |
+| Ground truth | `gt-sample-11.json` |
+
+### Sample 12 — red caption boxes over red overlay (YouTube Short, PT)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/7lxiYXA_hwk` |
+| Content class | Red caption boxes over red overlay; ã, ç (BBC News Brasil, 29 s) |
+| Language | `pt` |
+| Fixture path | `videos/sample-12.mp4` |
+| Ground truth | `gt-sample-12.json` |
+
+### Sample 13 — colour-coded speakers, busy backgrounds (YouTube Short, PT)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/-prSdejMkaI` |
+| Content class | Colour-coded speakers, busy backgrounds, italic species names (BBC News Brasil, 112 s) |
+| Language | `pt` |
+| Fixture path | `videos/sample-13.mp4` |
+| Ground truth | `gt-sample-13.json` |
+
+### Sample 14 — three caption styles, cyan on bright (YouTube Short, PT)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/q9xy46qE94I` |
+| Content class | Three caption styles, cyan on bright backgrounds (BBC News Brasil, 84 s) |
+| Language | `pt` |
+| Fixture path | `videos/sample-14.mp4` |
+| Ground truth | `gt-sample-14.json` |
+
+### Sample 15 — karaoke captions with red keyword box (YouTube Short, EN)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/3JbCfZGd2Sk` |
+| Content class | Karaoke captions with red keyword box (BBC News, 67 s) |
+| Language | `en` |
+| Fixture path | `videos/sample-15.mp4` |
+| Ground truth | `gt-sample-15.json` |
+
+### Sample 16 — bare white text, umlauts and „ “ quotes (YouTube Short, DE)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.youtube.com/shorts/JIeiriHBI2w` |
+| Content class | Bare white text with no box; umlauts, „ “ quotes, "Tourist:innen" (tagesschau, 45 s) |
+| Language | `de` |
+| Fixture path | `videos/sample-16.mp4` |
+| Ground truth | `gt-sample-16.json` |
+
+## Comparing OCR model sets
+
+`scripts/eval_ocr.py --junk` records `ocr_model_set` (from `PANO_OCR_MODEL_SET`),
+`rapidocr_version`, `language` and `clip` in its `--output` JSON. Run every clip
+under `PANO_OCR_MODEL_SET=classic` and `=v6`, write the results into one
+directory, then `python scripts/summarize_eval.py RESULTS_DIR` prints per-clip
+and per-language tables (recall pooled over expected texts) and the D5 verdict.
+
 ## Notes
 
 - **TikTok bytevc1 / 1080p video-only quirk**: TikTok's bytevc1 and 1080p format variants can be video-only despite metadata claiming aac audio. Sample-6 uses the `h264_720p_*-0` variant which carries audio.
@@ -117,7 +232,7 @@ Ground truth files are JSON conforming to the `GroundTruth` pydantic model
    distinct text string visible — even platform chrome (SUBSCRIBE, @user, etc.)
    as `"required": false` entries so they don't lower recall but do keep
    precision honest.
-3. Place the files at `tests/fixtures/eval/gt-sample-{1,2,3,4,5,6}.json`.
+3. Place the files at `tests/fixtures/eval/gt-sample-N.json` (N = 1-16).
 4. Run the eval suite: `uv run pytest -m eval -v`.
 
 ## Fetching Fixtures
@@ -125,7 +240,7 @@ Ground truth files are JSON conforming to the `GroundTruth` pydantic model
 Run the fetch script from the repository root:
 
 ```bash
-# Fetch all six samples:
+# Fetch all sixteen samples:
 python scripts/fetch_eval_samples.py
 
 # Fetch a single sample:
@@ -134,4 +249,4 @@ python scripts/fetch_eval_samples.py --sample 6
 
 The script is idempotent: it skips any sample whose target files already
 exist. Photo samples (1, 2, 4, 5) require the `[photo]` extra (gallery-dl);
-video samples (3, 6) use yt-dlp (bundled).
+video samples (3, 6, 7-16) use yt-dlp (bundled).

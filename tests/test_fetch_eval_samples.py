@@ -43,7 +43,7 @@ def test_already_downloaded_skips(monkeypatch: pytest.MonkeyPatch, fixtures_dir:
     mock_dl.assert_not_called()
 
 
-@pytest.mark.parametrize("sample_id", [1, 2, 3, 4, 5, 6])
+@pytest.mark.parametrize("sample_id", list(range(1, 17)))
 def test_sample_filter(monkeypatch: pytest.MonkeyPatch, fixtures_dir: Path, sample_id: int) -> None:
     """--sample N filters to exactly that sample; others skipped."""
     fetcher = _import_and_patch_fixtures_dir(monkeypatch, fixtures_dir)
@@ -158,3 +158,32 @@ def test_video_download_renames_on_mismatch(
         fetcher._download_video(sample)
 
     mock_move.assert_called_once_with(str(temp_path), str(dest))
+
+
+_YOUTUBE_SHORTS: dict[int, str] = {
+    7: "GJslGyaVJ-k",
+    8: "nBS3iLeiByU",
+    9: "XWQffp7qhRQ",
+    10: "hjhaUcMtLX4",
+    11: "7CKdfTeIoXo",
+    12: "7lxiYXA_hwk",
+    13: "-prSdejMkaI",
+    14: "q9xy46qE94I",
+    15: "3JbCfZGd2Sk",
+    16: "JIeiriHBI2w",
+}
+
+
+def test_samples_include_youtube_ids_7_to_16() -> None:
+    """Ids are unique; every design-table Short is a video sample at videos/sample-N.mp4."""
+    import scripts.fetch_eval_samples as fetcher
+
+    ids = [s["id"] for s in fetcher.SAMPLES]
+    assert len(ids) == len(set(ids))
+
+    by_id = {s["id"]: s for s in fetcher.SAMPLES}
+    for sample_id, yt_id in _YOUTUBE_SHORTS.items():
+        sample = by_id[sample_id]
+        assert sample["url"] == f"https://www.youtube.com/shorts/{yt_id}"
+        assert sample["type"] == "video"
+        assert sample["target_dir"] == f"videos/sample-{sample_id}.mp4"

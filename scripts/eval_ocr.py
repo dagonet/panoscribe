@@ -14,6 +14,7 @@ against a video file and scores the result against a ground-truth JSON file.
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -251,6 +252,12 @@ def main() -> None:
         result.funnel = asdict(funnel)
     if junk_stages is not None:
         result.junk = junk_stages
+
+    # Provenance, so every number is traceable to the model set and library.
+    result.ocr_model_set = config.ocr_model_set
+    result.rapidocr_version = importlib.metadata.version("rapidocr")
+    result.language = gt.language
+    result.clip = Path(source).stem
 
     # Typography diagnostic: raw-stage (pre-filter) normalized height,
     # matched vs unmatched. See --typography help and

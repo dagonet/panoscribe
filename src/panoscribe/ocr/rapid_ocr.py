@@ -16,13 +16,13 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import cv2
 import numpy as np
-from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
-from rapidocr.utils.typings import LangDet
+from rapidocr import LangRec, RapidOCR
 
 from panoscribe.device import require_cuda_for_ocr
 from panoscribe.errors import PanoScribeError
 from panoscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
 from panoscribe.ocr.frame_sampler import sample_frames
+from panoscribe.ocr.model_sets import build_model_params, resolve_iso
 from panoscribe.ocr.preprocessor import preprocess
 from panoscribe.ocr.ui_filter import mask_zones
 from panoscribe.output import TranscriptSegment
@@ -144,7 +144,9 @@ _ISO_TO_LANGREC: dict[str, LangRec] = {
     "el": LangRec.EL,
     "ta": LangRec.TA,
     "te": LangRec.TE,
-    "ka": LangRec.KA,
+    # LangRec.KA is Kannada in rapidocr (kannada.ttf), whose ISO 639-1 code is "kn".
+    # ISO "ka" (Georgian) has no rapidocr model, so it is deliberately unmapped.
+    "kn": LangRec.KA,
 }
 
 
@@ -174,7 +176,8 @@ def _resolve_ocr_language(ocr_language: str, *, detected_language: str | None = 
         lang = _ISO_TO_LANGREC.get(resolved_iso)
         if lang is None:
             logger.warning(
-                "No LangRec mapping for detected language %r; falling back to en",
+                "No LangRec mapping for detected language %r; the classic models fall back to "
+                "en (the v6 set uses the ISO code directly when PP-OCRv6 supports it)",
                 resolved_iso,
             )
             return LangRec.EN
@@ -184,9 +187,43 @@ def _resolve_ocr_language(ocr_language: str, *, detected_language: str | None = 
     # Treat as ISO 639-1 code
     lang = _ISO_TO_LANGREC.get(ocr_language)
     if lang is None:
-        logger.warning("Unmapped ISO code %r for OCR; falling back to en", ocr_language)
+        logger.warning(
+            "Unmapped ISO code %r for OCR; the classic models fall back to en "
+            "(the v6 set uses the ISO code directly when PP-OCRv6 supports it)",
+            ocr_language,
+        )
         return LangRec.EN
     return lang
+
+
+# (enabled-flag attribute, loader method) per rapidocr pipeline stage. rapidocr 3.10 has
+# no public loader or warm-up, so these private ``_load_*`` methods (the ones its own
+# ``__call__`` uses) are the only way to load without running an inference.
+_LAZY_LOADERS: tuple[tuple[str, str], ...] = (
+    ("use_det", "_load_det_model"),
+    ("use_cls", "_load_cls_model"),
+    ("use_rec", "_load_rec_model"),
+)
+
+
+def _force_model_load(engine: RapidOCR) -> None:
+    """Load (and download) the det/cls/rec models now instead of on the first frame.
+
+    Each loader is idempotent, so a repeat call is a no-op. A stage the user's rapidocr
+    config disabled is skipped. A renamed loader raises, which the caller reports as
+    ``Failed to initialize RapidOCR`` (and the unmocked engine tests catch) rather than
+    silently going back to lazy loading.
+    """
+    for flag, loader_name in _LAZY_LOADERS:
+        if not getattr(engine, flag, True):
+            continue
+        loader = getattr(engine, loader_name, None)
+        if not callable(loader):
+            raise AttributeError(
+                f"rapidocr no longer provides RapidOCR.{loader_name}; "
+                "update panoscribe.ocr.rapid_ocr._LAZY_LOADERS"
+            )
+        loader()
 
 
 class RapidOCREngine:
@@ -231,24 +268,18 @@ class RapidOCREngine:
 
             use_cuda = self._config.ocr_device == "cuda"
             logger.info(
-                "Loading RapidOCR on %s — first run may download ~15 MB of ONNX models",
+                "Loading RapidOCR on %s — first run may download ONNX models "
+                "(~15 MB classic, ~32 MB for the v6 set)",
                 self._config.ocr_device,
             )
-            # Detection model: en covers all latin-script languages.
-            # Recognition model: uses actual language for character set.
-            det_lang: LangRec | LangDet = LangRec.EN if lang == LangRec.LATIN else lang
-            # Sprint 13 — optional detection-language override. rapidocr resolves
-            # Det.lang_type through LangDet (only {en, ch, multi}); this is the
-            # sole way to reach multi_PP-OCRv3_det_mobile — the multilingual
-            # detector — for latin-script text. The server/v5 CH-force below
-            # still wins (no non-ch det model ships for those variants).
-            if self._config.ocr_det_lang is not None:
-                det_lang = LangDet(self._config.ocr_det_lang)
+            # Model selection (version, model type and language value per task) lives in
+            # model_sets: the PANO_OCR_MODEL_SET set plus the PANO_OCR_{DET,REC}_* knobs.
+            iso = resolve_iso(self._config.ocr_language, detected_language)
+            model_params, _fell_back = build_model_params(self._config, lang, iso)
             params: dict[str, object] = {
                 "EngineConfig.onnxruntime.use_cuda": use_cuda,
                 "EngineConfig.onnxruntime.cuda_ep_cfg.device_id": 0,
-                "Rec.lang_type": lang,
-                "Det.lang_type": det_lang,
+                **model_params,
             }
             # Sprint 9.4 — optional Det overrides (None = rapidocr config.yaml default).
             # NOTE: rapidocr validates only "Global.*" param keys; a wrong "Det.*" key
@@ -260,34 +291,14 @@ class RapidOCREngine:
                 params["Det.thresh"] = self._config.ocr_det_thresh
             if self._config.ocr_det_box_thresh is not None:
                 params["Det.box_thresh"] = self._config.ocr_det_box_thresh
-            # Sprint 9.5 — model-variant knobs (None = rapidocr default).
-            # CH-det-lang override: rapidocr's default_models.yaml ships det
-            # models only as ch_* for server and v5 variants; if det_lang stays
-            # EN while server/v5 det is selected, model-URL lookup raises
-            # ValueError("Invalid OCR configuration.").  Force det_lang to CH
-            # to pick up the shipping det model.
-            if (
-                self._config.ocr_det_model_type == "server"
-                or self._config.ocr_det_ocr_version == "PP-OCRv5"
-            ):
-                det_lang = LangRec.CH
-                logger.info(
-                    "Server/v5 det selected: forcing Det.lang_type to CH "
-                    "(rapidocr model registry limitation — only ch_* det models ship for these variants)"
-                )
-            params["Det.lang_type"] = det_lang  # re-apply in case CH override fired
-            if self._config.ocr_det_model_type is not None:
-                params["Det.model_type"] = ModelType(self._config.ocr_det_model_type)
-            if self._config.ocr_det_ocr_version is not None:
-                params["Det.ocr_version"] = OCRVersion(self._config.ocr_det_ocr_version)
-            if self._config.ocr_rec_model_type is not None:
-                params["Rec.model_type"] = ModelType(self._config.ocr_rec_model_type)
-            if self._config.ocr_rec_ocr_version is not None:
-                params["Rec.ocr_version"] = OCRVersion(self._config.ocr_rec_ocr_version)
             # Cls (orientation classifier) deliberately stays at defaults —
             # recall-irrelevant.
             try:
-                self._engine = RapidOCR(params=params)
+                engine = RapidOCR(params=params)
+                # rapidocr >= 3.10 loads (and downloads) models lazily on the first
+                # inference; force it here so failures stay a PanoScribeError at start.
+                _force_model_load(engine)
+                self._engine = engine
             except Exception as exc:
                 raise PanoScribeError(
                     f"Failed to initialize RapidOCR on {self._config.ocr_device}: {exc}"

@@ -41,7 +41,7 @@ dependencies = [
     "nvidia-cublas-cu12>=12,<13       ; sys_platform == 'win32'",
     "nvidia-cudnn-cu12>=9,<10         ; sys_platform == 'win32'",
     "nvidia-cufft-cu12>=11,<12        ; sys_platform == 'win32'",
-    "rapidocr>=3.8,<3.9",
+    "rapidocr[rtl]>=3.10,<3.11",
     "onnxruntime-gpu>=1.20,<2.0 ; (sys_platform == 'win32' or sys_platform == 'linux') and (platform_machine == 'x86_64' or platform_machine == 'AMD64')",
     "numpy>=1.26,<3.0",
     "yt-dlp>=2026.7.4",
@@ -84,13 +84,13 @@ Issues = "https://github.com/dagonet/panoscribe/issues"
 Changelog = "https://github.com/dagonet/panoscribe/blob/main/CHANGELOG.md"
 
 [tool.uv]
-# rapidocr hard-depends on the full opencv-python wheel, which dlopens libGL
-# at import time and breaks headless Linux (GitHub runners dropped libGL from
-# ubuntu-latest on 2026-07-13, turning this latent conflict into a hard CI
-# failure — two wheels were installing into the same cv2/ package). This
-# project ships opencv-python-headless; cv2's Python API is identical for
-# rapidocr's imgproc usage. The unsatisfiable marker removes opencv-python
-# from resolution entirely, leaving headless as the only cv2 provider.
+# rapidocr 3.8 hard-depended on the full opencv-python wheel, which dlopens
+# libGL at import time and breaks headless Linux (GitHub runners dropped libGL
+# from ubuntu-latest on 2026-07-13, turning this latent conflict into a hard CI
+# failure — two wheels were installing into the same cv2/ package). rapidocr
+# 3.10 depends on opencv-python-headless itself, so the override below is now a
+# safety net: should any package pull the full wheel in again, the unsatisfiable
+# marker keeps opencv-python out of resolution and headless the only cv2 provider.
 # `faster-whisper` hard-requires plain `onnxruntime<2,>=1.14`. On GPU platforms
 # that transitive requirement would otherwise install a second `onnxruntime`
 # distribution alongside `onnxruntime-gpu` — both unpack into the same
@@ -181,8 +181,9 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra -q --strict-markers -m 'not integration and not eval and not slow'"
+addopts = "-ra -q --strict-markers -m 'not integration and not eval and not slow and not engine'"
 markers = [
+    "engine: runs the real OCR engine and downloads models; the CI job `ocr-engine` runs it with '-m engine'",
     "slow: marks tests that require model inference (deselect with '-m \"not slow\"')",
     "gpu: marks tests that require a GPU",
     "integration: requires a live local Ollama server; skipped in CI",
