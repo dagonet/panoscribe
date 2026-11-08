@@ -2,9 +2,24 @@
 
 ## Now
 
-- **Goal:** No feature work scheduled. v0.9.0 released 2026-11-08 (PyPI + GitHub release): remote speech-to-text (#83, #85) and the rapidocr `<3.9` cap (#180). rapidocr 3.9.0+ defaults to PP-OCRv6, which has no `latin`/`eslav`/`korean`/... route, so fresh 0.8.1 installs failed OCR for every language but en/zh/ja; locked installs (3.8.1) were fine. Outside PR #174 (raw ISO codes) was not merged: it breaks rapidocr 3.8.x, which requires Enum `lang_type`; the reply on #174 says what a mergeable version needs. #84 (remote OCR) parked 2026-11-07; design in its comment. Issue #77 stays open; any follow-up comment there is the maintainer's to send.
-- **Current step:** Idle. Toolkit at v5.2.1 (#175): agents and hooks come from the `cct` plugin, which every session here needs.
-- **Next step:** The user's calls: what to do with #174 (wait for a rework or close), whether to plan proper PP-OCRv6 support (version-aware recognition mapping, non-Latin languages, a quality measurement; until then the cap stays), the #77 comment, and two optional follow-ups (catch wrong remote settings before the download; show `transcribe-many` failure reasons on the console). #84 reopens only for a concrete user need or a measured quality gain.
+- **Goal:** v0.10.0 (plan `docs/plans/2026-11-08-ocr-newer-library-plan.md`, design `...-design.md`). It is fully merged with this PR (part 3), and tag/publish follow the merge.
+  - **Part 1 (#186):** #184 batch failure reasons; #183 remote speech settings checked before download.
+  - **Part 2 (#187):** rapidocr `[rtl]>=3.10,<3.11` with `PANO_OCR_MODEL_SET` = `classic` (default, PP-OCRv4 mobile route) | `v6` (PP-OCRv6 small). The 11 language groups that failed to start on 3.8.1 now start; Korean, Hindi and Telugu read weakly. Model-load errors fail one item. There is an unmocked `ocr-engine` CI job.
+  - **Part 3 (this PR):**
+    - The measurement keeps `classic` as the default. v6 lost about 3 points of recall on French (2 clips) and added junk on FR/PT; it is 1.29x slower. See `docs/plans/2026-11-08-ocr-v6-measurement.md`.
+    - Classic on 3.10 equals 3.8.1 on all 15 clips.
+    - The answer keys are backed up in the private repo `dagonet/panoscribe-eval-keys`. The old keys were lost.
+  - **Earlier:** #174 is left open by the maintainer. #84 (remote OCR) is parked. #77 got its follow-up on 2026-11-08.
+- **Current step:** Release v0.10.0 after this PR merges.
+  - The version bump is in this PR.
+  - The tag push and the PyPI dispatch need the maintainer: the classifier refuses the agent's tag push, while the agent's `workflow_dispatch` was allowed for 0.9.0.
+  - Toolkit is at v5.2.1 (#175); agents and hooks come from the `cct` plugin.
+- **Next step:** Open follow-ups for the maintainer to prioritise:
+  - #188: Arabic comes out in display order.
+  - #189: AV1 YouTube downloads give 0 OCR frames, silently.
+  - An OCR knob or setting error fires per item after the download and speech recognition. This is like #183, but for OCR; not filed yet.
+  - The weak Korean, Hindi and Telugu reads.
+  - Revisit v6 only with more French clips, or after filter tuning.
 
 ## Current Sprint
 
