@@ -63,6 +63,7 @@ Source: `rapidocr/utils/parse_parameters.py`, `default_models.yaml` and `utils/m
 - **`classic`** reproduces today's models on the new library. To do that it pins `Det.ocr_version`/`Rec.ocr_version` = PP-OCRv4 and `model_type` = mobile, with today's language values (`LangRec` members, detection `en` for Latin script, as now). It is today's behaviour, made explicit, because 3.10's defaults are no longer today's.
 - **`v6`** uses PP-OCRv6 `small` for detection and recognition, passing the ISO code of the resolved language (`de`, `fr`, ..., `en`, `ch`, `japan`).
 - **Default:** `classic` until D5 says otherwise.
+- **Library defaults outside Det/Rec (checked 2026-11-08).** Diffing `config.yaml` 3.8.1 → 3.10.0 shows only one other change: two new Global switches, `use_preprocess_img` and `use_vertical_padding`, both defaulting to `true`. They reproduce 3.8.1's always-on resize and vertical padding (`main.py` in both wheels). The Cls section and the Det thresholds are unchanged. `classic` relies on these defaults and must not change them; the D5 3.8.1-vs-3.10 run confirms it.
 
 **D3 — Languages v6 doesn't cover.** Under `v6`, a language without a v6 route uses the `classic` models automatically, for detection **and** recognition, with one INFO log line. A language that works under `classic` never fails under `v6`.
 
@@ -95,6 +96,7 @@ Source: `rapidocr/utils/parse_parameters.py`, `default_models.yaml` and `utils/m
   - mean recall across all clips is not lower than classic's.
 
   Otherwise `classic` stays the default and `v6` is an opt-in.
+- **Raw vs filtered.** The report also shows recall at the raw stage (before the filters) for both sets; `--junk` already records every stage. If `v6` loses only after the filters, the cause is filters tuned for the old model, not the model. That would be the follow-up in the non-goals.
 - **Speed.** Runtime per clip is reported but is not a gate. If `v6` is more than 2× slower on CPU, the report says so plainly for the maintainer.
 - **Report.** The result goes to `docs/plans/2026-11-xx-ocr-v6-measurement.md`, with per-clip and per-language tables and the verdict.
 - **How a language's number is computed** *(PO call)*: recall per language is **pooled over all expected texts of that language's clips**, not averaged per clip, so one short clip can't swing it. The same goes for the junk rate, pooled over segments.
@@ -105,6 +107,7 @@ Source: `rapidocr/utils/parse_parameters.py`, `default_models.yaml` and `utils/m
 
 **D6 — Answer keys for the new clips.**
 - **Who writes them:** the PO or an agent, by reading extracted frames, since the maintainer doesn't read FR/ES/PT.
+- **Written blind:** keys come only from the frames and the speech transcript, never seeded from either OCR model's output. A key drafted from one model's text would bias the D5 gate toward that model.
 - **Cross-check:** each key is checked against the speech transcript wherever the captions repeat the speech. Expect differences where they don't (e.g. voice-over clips).
 - **Format:** the existing `GroundTruth` format with the correct `language`. Use `appearances` where practical.
 - **Storage:** gitignored like the existing keys.
