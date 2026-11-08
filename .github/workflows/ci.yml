@@ -81,6 +81,7 @@ jobs:
     # rapidocr bump that drops a model. Downloads ONNX models and fonts on a cold cache.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -98,6 +99,7 @@ jobs:
       # rendered unshaped and shows up as an OCR failure. Fail here instead.
       - name: Pillow complex-text shaping (libfribidi)
         run: |
+          sudo apt-get update
           sudo apt-get install -y --no-install-recommends libfribidi0
           uv run python -c "from PIL import features; assert features.check('raqm'), 'Pillow raqm unavailable'"
 

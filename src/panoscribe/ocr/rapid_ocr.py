@@ -187,7 +187,11 @@ def _resolve_ocr_language(ocr_language: str, *, detected_language: str | None = 
     # Treat as ISO 639-1 code
     lang = _ISO_TO_LANGREC.get(ocr_language)
     if lang is None:
-        logger.warning("Unmapped ISO code %r for OCR; falling back to en", ocr_language)
+        logger.warning(
+            "Unmapped ISO code %r for OCR; the classic models fall back to en "
+            "(the v6 set uses the ISO code directly when PP-OCRv6 supports it)",
+            ocr_language,
+        )
         return LangRec.EN
     return lang
 

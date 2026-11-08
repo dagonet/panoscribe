@@ -203,6 +203,44 @@ def test_verdict_fails_when_a_language_is_missing_a_set() -> None:
     assert any("es" in r for r in reasons)
 
 
+def test_summarize_records_the_clip_names() -> None:
+    records = [
+        _record(clip="a", language="de", model_set="v6", matched=1, expected=2),
+        _record(clip="b", language="de", model_set="v6", matched=1, expected=2),
+    ]
+
+    assert summarize(records)[("de", "v6")].clip_names == frozenset({"a", "b"})
+
+
+def test_verdict_fails_when_a_language_has_different_clips_per_set() -> None:
+    records = [
+        _record(clip="a", language="de", model_set="classic", matched=1, expected=2),
+        _record(clip="b", language="de", model_set="classic", matched=1, expected=2),
+        _record(clip="a", language="de", model_set="v6", matched=2, expected=2),  # b.v6 missing
+    ]
+    summaries = summarize(records)
+
+    ok, reasons = verdict(summaries, languages=("de",))
+
+    assert ok is False
+    assert len(reasons) == 1
+    assert "de" in reasons[0]
+    assert "only in classic: b" in reasons[0]
+
+
+def test_verdict_passes_when_both_sets_cover_the_same_clips() -> None:
+    records = [
+        _record(clip=clip, language="de", model_set=model_set, matched=1, expected=2)
+        for clip in ("a", "b")
+        for model_set in ("classic", "v6")
+    ]
+
+    ok, reasons = verdict(summarize(records), languages=("de",))
+
+    assert ok is True
+    assert reasons == []
+
+
 def test_verdict_honours_custom_margin() -> None:
     summaries = _equal_summaries("classic")
     summaries.update(_equal_summaries("v6", matched=84))

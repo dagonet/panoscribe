@@ -389,18 +389,6 @@ def test_det_lang_knob_passes_a_langdet_member() -> None:
             "korean",
         ),
         ({"ocr_language": "auto", "ocr_det_ocr_version": V6}, "ru", "eslav"),
-        # R14 (b): DET_LANG=multi has no PP-OCRv6 model, so a pinned v6 Det cannot use it.
-        ({"ocr_language": "de", "ocr_det_ocr_version": V6, "ocr_det_lang": "multi"}, None, "multi"),
-        (
-            {
-                "ocr_language": "de",
-                "ocr_model_set": "v6",
-                "ocr_det_ocr_version": V6,
-                "ocr_det_lang": "multi",
-            },
-            None,
-            "multi",
-        ),
     ],
 )
 def test_explicit_v6_knob_without_v6_code_raises(
@@ -412,6 +400,100 @@ def test_explicit_v6_knob_without_v6_code_raises(
     assert f"'{language_word}'" in message
     assert "has no PP-OCRv6 model" in message
     assert "supported: af, az" in message  # the sorted V6_LANGS list starts here
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        # R14 (b): DET_LANG=multi has no PP-OCRv6 model, so a pinned v6 Det cannot use it.
+        {"ocr_language": "de", "ocr_det_ocr_version": V6, "ocr_det_lang": "multi"},
+        {
+            "ocr_language": "de",
+            "ocr_model_set": "v6",
+            "ocr_det_ocr_version": V6,
+            "ocr_det_lang": "multi",
+        },
+    ],
+)
+def test_pinned_v6_det_with_multi_det_lang_names_the_knob(overrides: dict[str, object]) -> None:
+    with pytest.raises(PanoScribeError) as excinfo:
+        _build(None, **overrides)
+    message = str(excinfo.value)
+    assert "PANO_OCR_DET_LANG" in message
+    assert "'multi'" in message
+    assert "'en' or 'ch'" in message
+
+
+@pytest.mark.parametrize(
+    ("overrides", "detected", "env_name", "knob", "version", "language", "allowed"),
+    [
+        # v6 set + auto-detected ru falls back to Rec ESLAV / PP-OCRv5; `medium` is v6-only.
+        (
+            {"ocr_language": "auto", "ocr_model_set": "v6", "ocr_rec_model_type": "medium"},
+            "ru",
+            "PANO_OCR_REC_MODEL_TYPE",
+            "medium",
+            V5,
+            "ru",
+            "mobile, server",
+        ),
+        # Same for Det on a fallback language: ko -> classic PP-OCRv4 detector.
+        (
+            {"ocr_language": "ko", "ocr_model_set": "v6", "ocr_det_model_type": "small"},
+            None,
+            "PANO_OCR_DET_MODEL_TYPE",
+            "small",
+            V4,
+            "ko",
+            "mobile, server",
+        ),
+        # v6 + a classic-only type on a v6 language.
+        (
+            {"ocr_language": "de", "ocr_model_set": "v6", "ocr_rec_model_type": "mobile"},
+            None,
+            "PANO_OCR_REC_MODEL_TYPE",
+            "mobile",
+            V6,
+            "de",
+            "tiny, small, medium",
+        ),
+        (
+            {"ocr_language": "de", "ocr_model_set": "v6", "ocr_det_model_type": "server"},
+            None,
+            "PANO_OCR_DET_MODEL_TYPE",
+            "server",
+            V6,
+            "de",
+            "tiny, small, medium",
+        ),
+        # classic set + a v6 size.
+        (
+            {"ocr_language": "de", "ocr_rec_model_type": "tiny"},
+            None,
+            "PANO_OCR_REC_MODEL_TYPE",
+            "tiny",
+            V4,
+            "de",
+            "mobile, server",
+        ),
+    ],
+)
+def test_model_type_knob_that_does_not_fit_the_effective_version_raises(
+    overrides: dict[str, object],
+    detected: str | None,
+    env_name: str,
+    knob: str,
+    version: str,
+    language: str,
+    allowed: str,
+) -> None:
+    with pytest.raises(PanoScribeError) as excinfo:
+        _build(detected, **overrides)
+    message = str(excinfo.value)
+    assert f"{env_name}='{knob}'" in message
+    assert version in message
+    assert f"'{language}'" in message
+    assert f"takes: {allowed}" in message
 
 
 def test_det_lang_under_v6_set_does_not_log_the_fallback(

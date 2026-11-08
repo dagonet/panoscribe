@@ -373,9 +373,14 @@ class PanoScribeConfig(BaseSettings):
     @field_validator("ocr_model_set", mode="before")
     @classmethod
     def _validate_ocr_model_set(cls, v: object) -> object:
-        """Lowercase ``ocr_model_set`` and reject unknown values with the allowed list."""
+        """Lowercase ``ocr_model_set``; an empty value means unset (``classic``).
+
+        Unknown values are rejected with the allowed list.
+        """
         if isinstance(v, str):
             lowered = v.strip().lower()
+            if not lowered:
+                return "classic"
             if lowered not in _VALID_MODEL_SETS:
                 allowed = ", ".join(sorted(_VALID_MODEL_SETS))
                 raise ValueError(f"ocr_model_set must be one of: {allowed}; got {v!r}")

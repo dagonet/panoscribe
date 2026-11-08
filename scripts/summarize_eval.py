@@ -54,6 +54,8 @@ class LangSummary:
     """``unmatched / segments`` after the full filter chain (``junk.post_dedup``)."""
     raw_recall: float
     """``junk.raw.retained_overlay_recall`` (before the filters), weighted by expected."""
+    clip_names: frozenset[str] = frozenset()
+    """Names of the pooled clips; ``verdict`` requires both sets to cover the same clips."""
 
 
 def _field(record: dict, key: str) -> object:
@@ -106,6 +108,7 @@ def summarize(records: list[dict]) -> dict[tuple[str, str], LangSummary]:
             unmatched=unmatched,
             unmatched_rate=unmatched / segments if segments else 0.0,
             raw_recall=raw_weighted / expected if expected else 1.0,
+            clip_names=frozenset(str(record.get("clip")) for record in group),
         )
     return summaries
 
@@ -131,6 +134,14 @@ def verdict(
         if classic is None or v6 is None:
             missing = [ms for ms, s in ((_BASELINE, classic), (_CANDIDATE, v6)) if s is None]
             reasons.append(f"{lang}: no results for {', '.join(missing)}")
+            continue
+        if classic.clip_names != v6.clip_names:
+            # A missing result JSON would silently change one set's pool; refuse to compare.
+            only_classic = ", ".join(sorted(classic.clip_names - v6.clip_names)) or "-"
+            only_v6 = ", ".join(sorted(v6.clip_names - classic.clip_names)) or "-"
+            reasons.append(
+                f"{lang}: clip sets differ (only in classic: {only_classic}; only in v6: {only_v6})"
+            )
             continue
         if v6.recall < classic.recall - margin - _EPS:
             reasons.append(

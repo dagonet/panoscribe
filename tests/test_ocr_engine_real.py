@@ -107,6 +107,33 @@ def test_every_mapped_language_starts(model_set: str, language: str) -> None:
         )
 
 
+# The real v6 path is built through ISO codes (``de`` -> Rec/Det lang ``de``), which the
+# LangRec-valued cases above never exercise (``latin`` has no v6 code). One accented line
+# per main language; the classic set maps each of these ISO codes onto ``latin``.
+_ISO_PROBE_TEXT: dict[str, str] = {
+    "de": "Größe Straße über 2026",
+    "fr": "Café français où été 2026",
+    "es": "Niño año música canción 2026",
+    # The word list "Coração ação português 2026" read as nothing at all under v6 (rapidocr
+    # 3.10.0, detector found no box); an ordinary sentence is read correctly by both sets.
+    "pt": "Não há razão para isso 2026",
+}
+
+
+@pytest.mark.parametrize("model_set", ["classic", "v6"])
+@pytest.mark.parametrize("iso", list(_ISO_PROBE_TEXT))
+def test_iso_coded_language_starts(model_set: str, iso: str) -> None:
+    text = _ISO_PROBE_TEXT[iso]
+    result = probe_language(iso, model_set=model_set, text=text, font_language="latin")
+
+    assert result.ok, result.error
+    assert result.error is None, result.error
+    assert result.text.strip(), f"{iso}/{model_set}: nothing read from {text!r}"
+    assert shares_run(text, result.text), (
+        f"{iso}/{model_set}: read {result.text!r}, expected {text!r}"
+    )
+
+
 def test_v6_langs_match_installed_rapidocr() -> None:
     from rapidocr import ModelType, OCRVersion
     from rapidocr.utils.model_resolver import list_supported_langs

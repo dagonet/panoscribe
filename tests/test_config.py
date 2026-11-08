@@ -532,6 +532,15 @@ def test_ocr_model_set_env_v6_case_insensitive(monkeypatch: pytest.MonkeyPatch) 
     assert PanoScribeConfig().ocr_model_set == "v6"
 
 
+@pytest.mark.parametrize("raw", ["", "  "])
+def test_ocr_model_set_empty_env_means_unset(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    """An empty PANO_OCR_MODEL_SET= falls back to the default 'classic', like the sibling knobs."""
+    _strip_pano_env(monkeypatch)
+    monkeypatch.setenv("PANO_OCR_MODEL_SET", raw)
+
+    assert PanoScribeConfig().ocr_model_set == "classic"
+
+
 def test_ocr_model_set_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     """An unknown model set raises a ValidationError that lists the allowed values."""
     from pydantic import ValidationError

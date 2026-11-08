@@ -194,7 +194,8 @@ def build_model_params(
     value is used as the v6 Det language (``en`` and ``ch`` are valid, ``multi`` is not).
 
     Raises :class:`PanoScribeError` when a PP-OCRv6 *knob* is set but the language
-    it needs has no v6 code (explicit settings are never changed silently).
+    it needs has no v6 code, or when an explicit model-type knob does not fit the
+    task's effective version (explicit settings are never changed silently).
     """
     code = _v6_code(lang, iso)
     det_knob = OCRVersion(config.ocr_det_ocr_version) if config.ocr_det_ocr_version else None
@@ -204,6 +205,8 @@ def build_model_params(
     # A Det pinned to v6 needs a v6 language: DET_LANG if set, else the resolved code.
     det_v6_code = det_lang_knob if det_lang_knob is not None else code
     if det_knob is OCRVersion.PPOCRV6 and det_v6_code not in V6_LANGS:
+        if det_lang_knob is not None:
+            _raise_det_lang_not_v6(det_lang_knob)
         _raise_no_v6(det_v6_code or lang.value)
     if rec_knob is OCRVersion.PPOCRV6 and code is None:
         _raise_no_v6(lang.value)
@@ -235,8 +238,13 @@ def build_model_params(
     det_version = det_knob or det_set_version or OCRVersion.PPOCRV4
     rec_version = rec_knob or set_version or rec_classic
 
-    det_type = _model_type(config.ocr_det_model_type, det_version)
-    rec_type = _model_type(config.ocr_rec_model_type, rec_version)
+    language = iso or lang.value
+    det_type = _model_type(
+        "PANO_OCR_DET_MODEL_TYPE", config.ocr_det_model_type, det_version, language
+    )
+    rec_type = _model_type(
+        "PANO_OCR_REC_MODEL_TYPE", config.ocr_rec_model_type, rec_version, language
+    )
 
     det_lang: object
     rec_lang: object
@@ -264,8 +272,36 @@ def _raise_no_v6(language: str) -> NoReturn:
     )
 
 
-def _model_type(knob: str | None, version: OCRVersion) -> ModelType:
-    """Return the knob if set, else ``small`` for PP-OCRv6 and ``mobile`` for v4/v5."""
-    if knob is not None:
-        return ModelType(knob)
-    return ModelType.SMALL if version is OCRVersion.PPOCRV6 else ModelType.MOBILE
+def _raise_det_lang_not_v6(det_lang: str) -> NoReturn:
+    raise PanoScribeError(
+        f"PANO_OCR_DET_LANG={det_lang!r} has no PP-OCRv6 detection model; "
+        "with PP-OCRv6 detection the v6 detector accepts 'en' or 'ch' there"
+    )
+
+
+# Model types each OCR version ships; PP-OCRv6 is sized, v4/v5 are mobile/server.
+_MODEL_TYPES_BY_VERSION: dict[OCRVersion, tuple[ModelType, ...]] = {
+    OCRVersion.PPOCRV4: (ModelType.MOBILE, ModelType.SERVER),
+    OCRVersion.PPOCRV5: (ModelType.MOBILE, ModelType.SERVER),
+    OCRVersion.PPOCRV6: (ModelType.TINY, ModelType.SMALL, ModelType.MEDIUM),
+}
+
+
+def _model_type(env_name: str, knob: str | None, version: OCRVersion, language: str) -> ModelType:
+    """Return the knob if set and valid for ``version``, else the version's default.
+
+    The default is ``small`` for PP-OCRv6 and ``mobile`` for v4/v5. An explicit knob
+    that the effective version has no model type for raises instead of being changed
+    (the engine would otherwise fail with only ``Invalid OCR configuration``).
+    """
+    if knob is None:
+        return ModelType.SMALL if version is OCRVersion.PPOCRV6 else ModelType.MOBILE
+    model_type = ModelType(knob)
+    allowed = _MODEL_TYPES_BY_VERSION[version]
+    if model_type not in allowed:
+        names = ", ".join(m.value for m in allowed)
+        raise PanoScribeError(
+            f"{env_name}={knob!r} does not fit {version.value} (the effective version for "
+            f"OCR language {language!r}); {version.value} takes: {names}"
+        )
+    return model_type

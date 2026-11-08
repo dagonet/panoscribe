@@ -149,19 +149,31 @@ def _capture_rapidocr_log() -> Iterator[_Capture]:
         rapid_logger.removeHandler(capture)
 
 
-def probe_language(ocr_language: str, *, model_set: str | None = None) -> ProbeResult:
-    """Start the real engine for ``ocr_language`` and read one rendered probe image."""
+def probe_language(
+    ocr_language: str,
+    *,
+    model_set: str | None = None,
+    text: str | None = None,
+    font_language: str | None = None,
+) -> ProbeResult:
+    """Start the real engine for ``ocr_language`` and read one rendered probe image.
+
+    ``ocr_language`` is a ``LangRec`` value by default. To probe an ISO code (``de``),
+    pass ``text`` (the line to draw) and ``font_language`` (the ``LangRec`` value whose
+    font covers it, e.g. ``latin``).
+    """
     from panoscribe.config import PanoScribeConfig
     from panoscribe.ocr.rapid_ocr import RapidOCREngine
 
-    text = PROBE_TEXT[ocr_language]
+    if text is None:
+        text = PROBE_TEXT[ocr_language]
     config_kwargs: dict[str, object] = {"ocr_language": ocr_language, "ocr_device": "cpu"}
     if model_set is not None:
         config_kwargs["ocr_model_set"] = model_set
     font: Path | None = None
     with _capture_rapidocr_log() as capture, tempfile.TemporaryDirectory() as tmp:
         try:
-            font = font_for_language(ocr_language)
+            font = font_for_language(font_language or ocr_language)
             image = render_probe_image(text, Path(tmp) / "probe.png", font_path=font)
             engine = RapidOCREngine(PanoScribeConfig(**config_kwargs))
             segments = engine.extract_images([image])
