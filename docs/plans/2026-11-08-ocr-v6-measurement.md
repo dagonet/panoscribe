@@ -136,3 +136,30 @@ These are single synthetic lines (one font, one size), a start-up and sanity che
 real clips; that is the D5 measurement.
 Rows where the recognised text is empty or far from the probe text (`th`, `devanagari`, `te`, `ka`, `korean` without its Hangul) show the
 engine starts but that the synthetic line is not read; they are recorded as observed, not as failures of this change.
+
+## Engine check in CI (`tests/test_ocr_engine_real.py`, job `ocr-engine`)
+
+`uv run pytest -m engine -v` builds the real engine (CPU) for every `PROBE_TEXT` language under both sets. The start
+check is a hard requirement for all 28 cases. The text check (non-empty, and a 4-character run shared with the probe
+text *without* its trailing year, because every model reads digits and the year alone would let a model that cannot read
+the script pass; Arabic is compared in display order, which is what rapidocr returns) failed for several languages with
+the original 60 px / 40 px-margin image, so the probe image was changed once: the margin went from 40 to 100 px
+(60 px text; 100 and 160 px text, and a 150 px margin, read no better and Thai worse). Effect on the text check
+(classic and v6 behave the same for these languages, whose models are identical in both sets):
+
+| language | 40 px margin | 100 px margin |
+|---|---|---|
+| th | not read (0 boxes) | read in full |
+| ka | `ಜಗತು 2026` | `ನಮಸಾರ ಜಗತುೃ 2026`, passes |
+| arabic | `20 26 لاعلابابت اح` | `2026 ملاعلاب ابحرف`, passes once compared in display order |
+| devanagari | `Phh` | `नमरते I? 202५`, still misread |
+| te | `హలో Ogం&థి` | `హలో Ogం&థ! కంళం`, still misread |
+| korean | `2026` | `2026`, no Hangul at any size or margin |
+
+Known weak (engine starts, text not read; `xfail(strict=False, raises=TextNotReadError)`, both sets): **korean**, **devanagari**,
+**te**. Korean is rendered in rapidocr's Korean font, a handwriting face; the Task 5 probe saw the Hangul at 0.53
+confidence, below panoscribe's 0.6 filter, which is left as it is. No production OCR setting was changed for any of this.
+
+Model sizes (rapidocr 3.10.0 downloads, KiB): `en` classic = det 2365 + rec 7474 + cls 572; `latin` rec 8768;
+`ch` classic = det 4634 + rec 10603; PP-OCRv6 small = det 9697 + rec 20737. The Dockerfile bakes in those four
+configs, **63.3 MiB** in total.

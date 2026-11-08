@@ -74,6 +74,45 @@ jobs:
           PANO_WHISPER_COMPUTE_TYPE: int8
         run: uv run pytest -m slow -v
 
+  ocr-engine:
+    # Unmocked OCR check (tests/test_ocr_engine_real.py, @pytest.mark.engine): builds
+    # the real RapidOCR engine on CPU for every language _ISO_TO_LANGREC can produce,
+    # under both model sets. The `test` job mocks RapidOCR, so only this job notices a
+    # rapidocr bump that drops a model. Downloads ONNX models and fonts on a cold cache.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.1.0
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev --extra api
+
+      # The probe images for Arabic, Thai and Kannada are drawn with Pillow's raqm
+      # shaping, which loads the system libfribidi at runtime; without it the text is
+      # rendered unshaped and shows up as an OCR failure. Fail here instead.
+      - name: Pillow complex-text shaping (libfribidi)
+        run: |
+          sudo apt-get install -y --no-install-recommends libfribidi0
+          uv run python -c "from PIL import features; assert features.check('raqm'), 'Pillow raqm unavailable'"
+
+      # rapidocr keeps its downloaded models (and the per-language fonts) in a
+      # `models/` directory inside the installed package. Restore after the sync so
+      # the install cannot clobber it; bump the version in the key with rapidocr.
+      - name: Cache RapidOCR models
+        uses: actions/cache@v4
+        with:
+          path: .venv/lib/python3.11/site-packages/rapidocr/models
+          key: rapidocr-models-3.10.0-${{ runner.os }}
+
+      - name: Run real-engine OCR tests
+        run: uv run pytest -m engine -v
+
   resolve:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest

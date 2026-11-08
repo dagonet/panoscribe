@@ -58,6 +58,24 @@ def test_parse_model_names_returns_none_when_nothing_logged() -> None:
     assert parse_model_names(["Using engine_name: onnxruntime"]) == (None, None)
 
 
+def test_probe_language_records_font_failure_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.probe_ocr_languages as probe
+
+    def broken_font(language: str) -> Path:
+        raise OSError("cannot open resource")
+
+    monkeypatch.setattr(probe, "font_for_language", broken_font)
+
+    result = probe.probe_language("en")
+
+    assert result.ok is False
+    assert result.error is not None
+    assert "OSError" in result.error
+    assert result.text == ""
+
+
 def test_results_to_markdown_has_one_row_per_result_and_escapes_pipes() -> None:
     results = [
         ProbeResult("en", True, None, "d.onnx", "r.onnx", "a|b 2026"),

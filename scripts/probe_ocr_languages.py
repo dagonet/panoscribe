@@ -58,7 +58,9 @@ PROBE_TEXT: dict[str, str] = {
 }
 
 _FONT_SIZE = 60
-_PADDING = 40
+# Generous margin: with 40 px the detector found no Thai text at all and dropped most Indic
+# words; 100 px reads Thai whole (60 px is the best size; larger fonts read worse).
+_PADDING = 100
 _DEJAVU = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 # Scripts the system DejaVu Sans covers, used only if rapidocr's own font is unavailable.
 _DEJAVU_SCRIPTS = frozenset({"en", "latin", "eslav", "cyrillic", "el"})
@@ -156,10 +158,11 @@ def probe_language(ocr_language: str, *, model_set: str | None = None) -> ProbeR
     config_kwargs: dict[str, object] = {"ocr_language": ocr_language, "ocr_device": "cpu"}
     if model_set is not None:
         config_kwargs["ocr_model_set"] = model_set
+    font: Path | None = None
     with _capture_rapidocr_log() as capture, tempfile.TemporaryDirectory() as tmp:
-        font = font_for_language(ocr_language)
-        image = render_probe_image(text, Path(tmp) / "probe.png", font_path=font)
         try:
+            font = font_for_language(ocr_language)
+            image = render_probe_image(text, Path(tmp) / "probe.png", font_path=font)
             engine = RapidOCREngine(PanoScribeConfig(**config_kwargs))
             segments = engine.extract_images([image])
         except Exception as exc:
