@@ -44,43 +44,114 @@ def _has_bidi_class(text: str, classes: frozenset[str]) -> bool:
 
 _RTL_CLASSES = frozenset({"R", "AL"})
 _LTR_CLASSES = frozenset({"L"})
+_LETTER_CLASSES = frozenset({"L", "R", "AL"})
+# Boxes that end a left-to-right run inside a right-to-left line: Arabic words and
+# Arabic-Indic digits (class AN), which the bidi algorithm lays out right to left.
+_SEPARATOR_CLASSES = frozenset({"R", "AL", "AN"})
+_NUMBER_CLASSES = frozenset({"EN", "AN"})
+_RUN_EDGE_CLASSES = frozenset({"L", "EN"})
 
 
-def _reading_order(texts: list[str]) -> list[str]:
-    """Order one line's box texts (given left to right on screen) for reading.
+def _is_ltr_line(texts: list[str]) -> bool:
+    """True when the leftmost and rightmost boxes that hold a letter are both Latin-only."""
+    letter_boxes = [t for t in texts if _has_bidi_class(t, _LETTER_CLASSES)]
+    return all(
+        _has_bidi_class(t, _LTR_CLASSES) and not _has_bidi_class(t, _RTL_CLASSES)
+        for t in (letter_boxes[0], letter_boxes[-1])
+    )
 
-    Lines without a right-to-left character come back unchanged. Otherwise the line is
-    read as a right-to-left paragraph at box level: the box sequence is reversed, then each
-    maximal run of consecutive boxes with no right-to-left character that contains a
-    left-to-right letter (``AI Model 2024``) is put back left to right. Digit-only boxes
-    between right-to-left boxes stay single units.
 
-    Each box's own text is already in logical order (the recogniser output is not
-    re-ordered, see ``rapid_ocr._keep_logical_text_order``), so it is never touched here.
+def _ltr_line_order(texts: list[str]) -> list[str]:
+    """Order a left-to-right line that has Arabic/Hebrew boxes inside it.
 
-    Known limit: box-level ordering cannot resolve a number directly followed by a Latin
-    word inside a right-to-left line; ``عربي 2024 AI`` comes out as ``عربي AI 2024``.
+    The boxes keep their screen order, except that each run of right-to-left boxes is
+    reversed (the bidi algorithm shows such a run mirrored). A digit or punctuation box
+    between two boxes of a run belongs to it, and so do digit boxes directly to the left
+    of it, because a number that follows a right-to-left word is drawn on its left.
     """
-    if not any(_has_bidi_class(t, _RTL_CLASSES) for t in texts):
-        return texts
-    reversed_texts = texts[::-1]
+    rtl = [i for i, t in enumerate(texts) if _has_bidi_class(t, _RTL_CLASSES)]
+    runs: list[list[int]] = []
+    for index in rtl:
+        gap = texts[runs[-1][-1] + 1 : index] if runs else None
+        if gap is not None and not any(_has_bidi_class(t, _LETTER_CLASSES) for t in gap):
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+
+    ordered = list(texts)
+    for run in runs:
+        start = run[0]
+        k = start - 1
+        while k >= 0 and not _has_bidi_class(texts[k], _LETTER_CLASSES):
+            if _has_bidi_class(texts[k], _NUMBER_CLASSES):
+                start = k
+            k -= 1
+        end = run[-1] + 1
+        ordered[start:end] = ordered[start:end][::-1]
+    return ordered
+
+
+def _rtl_line_order(texts: list[str]) -> list[str]:
+    """Order a right-to-left line: boxes right to left, Latin phrases kept left to right."""
     ordered: list[str] = []
     run: list[str] = []
 
     def flush() -> None:
+        # Only a run with a Latin letter is put back left to right, and only from its first
+        # to its last Latin/number box: punctuation boxes at the ends keep their place.
         if any(_has_bidi_class(t, _LTR_CLASSES) for t in run):
-            run.reverse()
+            edges = [i for i, t in enumerate(run) if _has_bidi_class(t, _RUN_EDGE_CLASSES)]
+            first, last = edges[0], edges[-1]
+            run[first : last + 1] = run[first : last + 1][::-1]
         ordered.extend(run)
         run.clear()
 
-    for text in reversed_texts:
-        if _has_bidi_class(text, _RTL_CLASSES):
+    for text in texts[::-1]:
+        if _has_bidi_class(text, _SEPARATOR_CLASSES):
             flush()
             ordered.append(text)
         else:
             run.append(text)
     flush()
     return ordered
+
+
+def _reading_order(texts: list[str]) -> list[str]:
+    """Order one line's box texts (given left to right on screen) for reading.
+
+    Lines without a right-to-left character (Arabic, Hebrew) come back unchanged, so
+    Latin, CJK and digit-only lines are never touched. A line with one is read in one of
+    two ways, chosen from the boxes alone:
+
+    * Left-to-right line: the leftmost and the rightmost box that contains a letter are
+      both Latin-only (``Welcome مرحبا to the show``). The boxes keep their screen order and
+      each run of right-to-left boxes is reversed (see :func:`_ltr_line_order`).
+    * Otherwise a right-to-left paragraph: the box sequence is reversed, then each maximal
+      run of boxes between Arabic words or Arabic-Indic digits that holds a Latin letter
+      (``AI Model 2024``) is put back left to right, from its first to its last Latin or
+      number box (see :func:`_rtl_line_order`).
+
+    Each box's own text is already in logical order (the recogniser output is not
+    re-ordered, see ``rapid_ocr._keep_logical_text_order``), so it is never touched here.
+
+    Known limits, because the boxes alone cannot tell these cases apart:
+
+    * Inside an Arabic line, a number followed by a Latin word swaps places:
+      ``عربي 2024 AI`` comes out as ``عربي AI 2024``, and several numbers in a row before a
+      Latin word (``عربي 2024 2025 AI``) come out as ``عربي AI 2025 2024``.
+    * A Latin line that ends in Arabic looks like an Arabic line that ends in Latin, so it
+      is read as Arabic: ``Hello مرحبا 2026`` comes out as ``مرحبا Hello 2026``. For the same
+      reason ``Hello 2026 مرحبا today`` comes out as ``Hello مرحبا 2026 today``.
+    * In a Latin line, an Arabic-Indic number before an Arabic word is drawn on its right
+      and reads after it: ``Hello ١٢٣ مرحبا today`` comes out as ``Hello مرحبا ١٢٣ today``.
+    * An Arabic line with a Latin word at both ends (``AI عربي Model``) is read as a Latin
+      line, so the two Latin words and the Arabic word come out in screen order.
+    """
+    if not any(_has_bidi_class(t, _RTL_CLASSES) for t in texts):
+        return texts
+    if _is_ltr_line(texts):
+        return _ltr_line_order(texts)
+    return _rtl_line_order(texts)
 
 
 class AggregatedLine(NamedTuple):

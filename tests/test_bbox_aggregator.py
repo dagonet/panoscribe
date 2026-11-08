@@ -403,6 +403,13 @@ def _row_text(texts_left_to_right: list[str]) -> str:
         (["بالعالم", "2026", "مرحبا"], "مرحبا 2026 بالعالم"),
         (["AI", "Model", "2024", "عربي"], "عربي AI Model 2024"),
         (["שלום", "עולם"], "עולם שלום"),
+        # Arabic-Indic digits are not part of the Latin phrase next to them.
+        (["Model", "١٢٣", "AI", "عربي"], "عربي AI ١٢٣ Model"),
+        # A mainly-Latin line with Arabic inside keeps its word order.
+        (["Welcome", "مرحبا", "to", "the", "show"], "Welcome مرحبا to the show"),
+        (["Price", "سعر", "is", "10"], "Price سعر is 10"),
+        (["Hello", "بالعالم", "مرحبا", "today"], "Hello مرحبا بالعالم today"),
+        (["Hello", "2026", "مرحبا", "world"], "Hello مرحبا 2026 world"),
         # Latin, digits and CJK keep today's left-to-right join.
         (["left", "right"], "left right"),
         (["2026", "123"], "2026 123"),
@@ -427,8 +434,44 @@ def test_rtl_boxes_are_read_right_to_left_and_others_left_to_right(
         (["ج", "2", "1", "ب"], ["ب", "1", "2", "ج"]),
         # Two separate Latin phrases, each kept left to right.
         (["B1", "B2", "ج", "A1", "A2", "ب"], ["ب", "A1", "A2", "ج", "B1", "B2"]),
-        # Documented limit: a number directly followed by a Latin word.
+        # Punctuation-only boxes at the edge of a Latin run keep their right-to-left place.
+        ([":", "AI", "عربي"], ["عربي", "AI", ":"]),
+        (["ب", "!", "AI", "عربي"], ["عربي", "AI", "!", "ب"]),
+        ([":", "AI", "2024", "عربي"], ["عربي", "AI", "2024", ":"]),
+        # Arabic-Indic digits are separators like Arabic words, not part of the Latin run.
+        (["١٢٣", "AI", "عربي"], ["عربي", "AI", "١٢٣"]),
+        (["Model", "١٢٣", "AI", "عربي"], ["عربي", "AI", "١٢٣", "Model"]),
+        # A line whose outer letter boxes are Latin is a left-to-right line: Arabic boxes
+        # keep their place, and a run of Arabic boxes is reversed.
+        (["Welcome", "مرحبا", "to", "the", "show"], ["Welcome", "مرحبا", "to", "the", "show"]),
+        (["Price", "سعر", "is", "10"], ["Price", "سعر", "is", "10"]),
+        (["Hello", "بالعالم", "مرحبا", "today"], ["Hello", "مرحبا", "بالعالم", "today"]),
+        # Numbers after an Arabic word are shown left of it; they read after it.
+        (["Hello", "2026", "مرحبا", "world"], ["Hello", "مرحبا", "2026", "world"]),
+        (["Hello", "2027", "2026", "مرحبا", "world"], ["Hello", "مرحبا", "2026", "2027", "world"]),
+        # A number between two Arabic boxes joins their run.
+        (
+            ["Hello", "بالعالم", "2026", "مرحبا", "today"],
+            ["Hello", "مرحبا", "2026", "بالعالم", "today"],
+        ),
+        # Trailing punctuation and separate Arabic words keep their place.
+        (["Hello", "مرحبا", "today", "!"], ["Hello", "مرحبا", "today", "!"]),
+        (["Hello", "مرحبا", "today", "سعر", "Bye"], ["Hello", "مرحبا", "today", "سعر", "Bye"]),
+        # Documented limits (box texts alone cannot tell these apart):
+        # a number directly followed by a Latin word in an Arabic line,
         (["AI", "2024", "عربي"], ["عربي", "AI", "2024"]),
+        # several numbers in a row before a Latin word in an Arabic line,
+        (["AI", "2025", "2024", "عربي"], ["عربي", "AI", "2025", "2024"]),
+        # a left-to-right line whose last word is Arabic reads as right-to-left (the same
+        # screen as the Arabic line above),
+        (["Hello", "2026", "مرحبا"], ["مرحبا", "Hello", "2026"]),
+        (["Hello", "بالعالم", "مرحبا"], ["مرحبا", "بالعالم", "Hello"]),
+        # a number before an Arabic word in a left-to-right line reads after it,
+        (["Hello", "2026", "مرحبا", "today"], ["Hello", "مرحبا", "2026", "today"]),
+        # an Arabic-Indic number before an Arabic word in a left-to-right line reads after it,
+        (["Hello", "مرحبا", "١٢٣", "today"], ["Hello", "مرحبا", "١٢٣", "today"]),
+        # and an Arabic line with a Latin word at both ends reads as left-to-right.
+        (["Model", "عربي", "AI"], ["Model", "عربي", "AI"]),
     ],
 )
 def test_reading_order_helper(screen_order: list[str], expected: list[str]) -> None:

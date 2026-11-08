@@ -72,6 +72,79 @@ def test_v6_model_type_pinned_to_v4_version_fails(tmp_path: Path) -> None:
         validate_ocr_settings(cfg)
 
 
+@pytest.mark.parametrize(
+    ("over", "message"),
+    [
+        # Rec on the classic set can end on v4 or v5; both ship mobile and server.
+        (
+            {"ocr_rec_model_type": "medium"},
+            "does not fit PP-OCRv4, PP-OCRv5 (",
+        ),
+        # Det on the classic set is always PP-OCRv4: PP-OCRv5 is never named for it.
+        (
+            {"ocr_det_model_type": "medium"},
+            "does not fit PP-OCRv4 (",
+        ),
+        (
+            {"ocr_det_ocr_version": "PP-OCRv6", "ocr_det_model_type": "server"},
+            "does not fit PP-OCRv6 (",
+        ),
+    ],
+)
+def test_early_model_type_message_names_versions_and_allowed_types(
+    tmp_path: Path, over: dict[str, object], message: str
+) -> None:
+    cfg = _cfg(tmp_path, ocr_language="auto", **over)
+
+    with pytest.raises(PanoScribeError) as excinfo:
+        validate_ocr_settings(cfg)
+
+    text = str(excinfo.value)
+    assert message in text
+    expected = "tiny, small, medium" if "PP-OCRv6 (" in message else "mobile, server"
+    assert text.endswith(f"takes: {expected}")
+    if message.startswith("does not fit PP-OCRv4 ("):
+        assert "PP-OCRv5" not in text
+
+
+def test_det_lang_set_pins_det_to_v4_so_a_v6_size_is_wrong_for_every_language(
+    tmp_path: Path,
+) -> None:
+    """With DET_LANG set and no Det version knob, Det is always PP-OCRv4 (no v6 size fits)."""
+    cfg = _cfg(
+        tmp_path,
+        ocr_language="auto",
+        ocr_model_set="v6",
+        ocr_det_lang="en",
+        ocr_det_model_type="small",
+    )
+
+    with pytest.raises(PanoScribeError, match="PANO_OCR_DET_MODEL_TYPE") as excinfo:
+        validate_ocr_settings(cfg)
+
+    assert "does not fit PP-OCRv4 (" in str(excinfo.value)
+    assert "PP-OCRv6" not in str(excinfo.value)
+
+
+def test_det_lang_set_with_a_classic_det_size_is_not_rejected(tmp_path: Path) -> None:
+    for language in ("auto", "en", "de"):
+        cfg = _cfg(
+            tmp_path,
+            ocr_language=language,
+            ocr_model_set="v6",
+            ocr_det_lang="en",
+            ocr_det_model_type="mobile",
+        )
+
+        validate_ocr_settings(cfg)  # must not raise
+
+
+def test_v6_set_without_det_lang_still_allows_a_v6_det_size_for_auto(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, ocr_language="auto", ocr_model_set="v6", ocr_det_model_type="small")
+
+    validate_ocr_settings(cfg)  # must not raise: Det may take v6, language unknown yet
+
+
 def test_det_lang_multi_with_pinned_v6_detector_fails_for_auto(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path, ocr_language="auto", ocr_det_ocr_version="PP-OCRv6", ocr_det_lang="multi")
 

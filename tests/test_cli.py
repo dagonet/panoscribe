@@ -102,6 +102,17 @@ def test_transcribe_help() -> None:
     assert "--no-asr-cleanup" in result.output
 
 
+@pytest.fixture(autouse=True)
+def _pin_ocr_device_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default OCR device is cuda, which the #191 pre-check probes via onnxruntime.
+
+    Pin cpu so these tests do not depend on the host listing a CUDA provider (a CPU-only
+    onnxruntime on macOS or arm64 has none). The CUDA-missing early failure is covered in
+    ``test_ocr_settings_check.py`` with the probe mocked.
+    """
+    monkeypatch.setenv("PANO_OCR_DEVICE", "cpu")
+
+
 def _patched_pipeline(tmp_path: Path):
     """Return patch context managers that mock every external boundary.
 

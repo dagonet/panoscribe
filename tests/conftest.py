@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import wave
 from collections.abc import Iterator
 from pathlib import Path
@@ -68,6 +69,21 @@ def reset_logging() -> Iterator[None]:
     root.handlers.clear()
     root.handlers.extend(saved_handlers)
     root.level = saved_level
+
+
+@pytest.fixture(autouse=True)
+def restore_rapidocr_bidi_hook(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Undo panoscribe's rapidocr bidi patch (#188) after every test.
+
+    ``RapidOCREngine._ensure_loaded`` replaces ``reorder_bidi_for_display`` in rapidocr's
+    recogniser module for the whole process. Re-setting the current value through
+    ``monkeypatch`` puts the original back at teardown, so a test that built the engine
+    does not leave rapidocr patched for the tests after it. Looked up in ``sys.modules``,
+    so nothing new is imported (``panoscribe.ocr.rapid_ocr`` imports rapidocr already).
+    """
+    module = sys.modules.get("rapidocr.ch_ppocr_rec.main")
+    if module is not None and hasattr(module, "reorder_bidi_for_display"):
+        monkeypatch.setattr(module, "reorder_bidi_for_display", module.reorder_bidi_for_display)
 
 
 @pytest.fixture

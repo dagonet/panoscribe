@@ -391,6 +391,9 @@ def clean_batch_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     for name in [k for k in os.environ if k.startswith("PANO_")]:
         monkeypatch.delenv(name)
     monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    # The default OCR device is cuda, which the #191 pre-check probes; pin cpu so these
+    # tests do not depend on the host's onnxruntime listing a CUDA provider.
+    monkeypatch.setenv("PANO_OCR_DEVICE", "cpu")
     monkeypatch.chdir(tmp_path)
 
 

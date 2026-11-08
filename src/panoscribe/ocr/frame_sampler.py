@@ -126,7 +126,8 @@ def _undecodable_error(video_path: Path, cap: cv2.VideoCapture) -> PanoScribeErr
         f"Cannot decode any video frame from {video_path} (codec: {_fourcc_text(cap)}). "
         "The video reader used for OCR has no working decoder for this codec on this "
         "machine (AV1 is the usual case), so OCR would find no text. Re-run with "
-        "--no-ocr to transcribe the speech only, or re-encode the video to H.264, e.g. "
+        '--no-ocr (or "ocr": false in the API job request) to transcribe the speech '
+        "only, or re-encode the video to H.264, e.g. "
         "ffmpeg -i in.mp4 -c:v libx264 -crf 18 -c:a copy out.mp4"
     )
 

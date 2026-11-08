@@ -273,9 +273,10 @@ def validate_language_independent(config: PanoScribeConfig) -> None:
 
     * ``PANO_OCR_DET_LANG`` against a Det pinned to PP-OCRv6 by its version knob;
     * each task's model-type knob against the versions that task could end up on --
-      the knob's version if pinned, else every version the model set could pick
-      (``v6`` may fall back to the classic models, so ``mobile`` is still possible
-      there). A type no candidate ships is wrong for every language.
+      the knob's version if pinned, else every version :func:`build_model_params` could
+      really put that task on (``v6`` may fall back to the classic models, so ``mobile``
+      is still possible there; Det is always PP-OCRv4 when ``PANO_OCR_DET_LANG`` is set).
+      A type no candidate ships is wrong for every language.
 
     Whether a v6 model exists for the language, and which version a set-driven task
     really gets, stay in :func:`build_model_params`.
@@ -288,11 +289,33 @@ def validate_language_independent(config: PanoScribeConfig) -> None:
     ):
         _raise_det_lang_not_v6(config.ocr_det_lang)
 
-    classic = (OCRVersion.PPOCRV4, OCRVersion.PPOCRV5)
-    set_versions = (OCRVersion.PPOCRV6, *classic) if config.ocr_model_set == "v6" else classic
-    for env_name, type_knob, version_knob in (
-        ("PANO_OCR_DET_MODEL_TYPE", config.ocr_det_model_type, config.ocr_det_ocr_version),
-        ("PANO_OCR_REC_MODEL_TYPE", config.ocr_rec_model_type, config.ocr_rec_ocr_version),
+    v6_set = config.ocr_model_set == "v6"
+    # Which versions each task can really end on (mirrors build_model_params): Det is
+    # always PP-OCRv4 unless the set gives it PP-OCRv6, and an explicit DET_LANG keeps a
+    # set-driven Det on PP-OCRv4; Rec is PP-OCRv4 or PP-OCRv5 on the classic models.
+    det_set_versions = (
+        (OCRVersion.PPOCRV6, OCRVersion.PPOCRV4)
+        if v6_set and config.ocr_det_lang is None
+        else (OCRVersion.PPOCRV4,)
+    )
+    rec_set_versions = (
+        (OCRVersion.PPOCRV6, OCRVersion.PPOCRV4, OCRVersion.PPOCRV5)
+        if v6_set
+        else (OCRVersion.PPOCRV4, OCRVersion.PPOCRV5)
+    )
+    for env_name, type_knob, version_knob, set_versions in (
+        (
+            "PANO_OCR_DET_MODEL_TYPE",
+            config.ocr_det_model_type,
+            config.ocr_det_ocr_version,
+            det_set_versions,
+        ),
+        (
+            "PANO_OCR_REC_MODEL_TYPE",
+            config.ocr_rec_model_type,
+            config.ocr_rec_ocr_version,
+            rec_set_versions,
+        ),
     ):
         if type_knob is None:
             continue
@@ -300,9 +323,12 @@ def validate_language_independent(config: PanoScribeConfig) -> None:
         model_type = ModelType(type_knob)
         if all(model_type not in _MODEL_TYPES_BY_VERSION[v] for v in candidates):
             names = ", ".join(v.value for v in candidates)
+            allowed = ", ".join(
+                dict.fromkeys(m.value for v in candidates for m in _MODEL_TYPES_BY_VERSION[v])
+            )
             raise PanoScribeError(
                 f"{env_name}={type_knob!r} does not fit {names} (the version in effect for "
-                f"every OCR language with this model set and version setting)"
+                f"every OCR language with this model set and version setting); takes: {allowed}"
             )
 
 

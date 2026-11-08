@@ -195,18 +195,22 @@ uv pip install --upgrade "panoscribe>=0.9.0"
 
 If you set one of `PANO_OCR_DET_MODEL_TYPE`, `PANO_OCR_REC_MODEL_TYPE`,
 `PANO_OCR_DET_OCR_VERSION`, `PANO_OCR_REC_OCR_VERSION` or `PANO_OCR_DET_LANG`
-and OCR stops for that item when it starts (after the download and speech
-recognition) with a message such as:
+and the run stops before the download (and before speech recognition runs)
+with a message such as:
 
 ```
-PANO_OCR_REC_MODEL_TYPE='medium' does not fit PP-OCRv4 (the effective version for
-OCR language 'fr'); PP-OCRv4 takes: mobile, server
+PANO_OCR_REC_MODEL_TYPE='medium' does not fit PP-OCRv4, PP-OCRv5 (the version in effect
+for every OCR language with this model set and version setting); takes: mobile, server
 ```
 
 or `OCR language 'eslav' has no PP-OCRv6 model; supported: ...`, the setting
 does not fit the model that would run. panoscribe does not change an
 explicit setting behind your back, so it stops and names the setting or the
-language, and what is allowed. The model types are `mobile` or `server` for PP-OCRv4 and
+language, and what is allowed. With a fixed `PANO_OCR_LANGUAGE` every such
+problem is reported right at the start. With `PANO_OCR_LANGUAGE=auto`, a
+setting that is wrong for every language is still reported at the start, while
+one that depends on the detected language is reported when OCR starts (after the
+download and speech recognition), with the same kind of message. The model types are `mobile` or `server` for PP-OCRv4 and
 PP-OCRv5, and `tiny`, `small` or `medium` for PP-OCRv6. With the PP-OCRv6
 detector pinned by `PANO_OCR_DET_OCR_VERSION`, `PANO_OCR_DET_LANG` must be
 `en` or `ch`.
@@ -223,9 +227,11 @@ Cannot decode any video frame from video.mp4 (codec: av01). ...
 
 The video reader that panoscribe uses for OCR (OpenCV) can decode AV1 only with
 hardware support, which most machines do not have
-([#189](https://github.com/dagonet/panoscribe/issues/189)). Downloads now ask
-yt-dlp for H.264 first and use AV1 only when a video has nothing else, so this
-mostly affects local AV1 files and the rare AV1-only download. panoscribe checks
+([#189](https://github.com/dagonet/panoscribe/issues/189)). Downloads now avoid
+AV1 when the site offers another codec (the choice is otherwise yt-dlp's
+default, so resolution still comes first) and use AV1 only when a video has
+nothing else, so this mostly affects local AV1 files and the rare AV1-only
+download. panoscribe checks
 this right after the download, before speech recognition, and stops with the
 error above. The error names the codec; the speech part is not affected.
 
@@ -236,7 +242,8 @@ file, for example
 ffmpeg -i video.mp4 -c:v libx264 -crf 18 -c:a copy video-h264.mp4
 ```
 
-or run with `--no-ocr` if you only need the speech.
+or run with `--no-ocr` (`"ocr": false` in an API job request) if you only need
+the speech.
 
 ## ffmpeg missing
 

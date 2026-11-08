@@ -15,11 +15,14 @@ logger = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
-# Rank H.264 first: OpenCV's bundled FFmpeg only has a hardware AV1 decoder, so
-# an AV1 download yields zero OCR frames on most machines (#189). With a limit,
-# yt-dlp ranks codecs at or below h264 first and anything above (vp9, av01)
-# after, so AV1 stays available as a last resort. No resolution cap.
-_FORMAT_SORT: list[str] = ["vcodec:h264"]
+# Avoid AV1 only: OpenCV's bundled FFmpeg has just a hardware AV1 decoder, so an AV1
+# download yields zero OCR frames on most machines (#189). Everything else keeps
+# yt-dlp's default order (resolution first; small on-screen text needs the pixels,
+# and VP9/HEVC decode fine). Alternatives, first match wins: best non-AV1 video + audio,
+# best non-AV1 single file, then yt-dlp's old default ``bv*+ba/b`` -- the last one is the
+# fallback for AV1-only videos and for formats with no ``vcodec`` info, which the
+# ``vcodec!^=av01`` filter drops (yt-dlp treats a missing field as a non-match).
+_FORMAT_SELECTOR = "bv*[vcodec!^=av01]+ba/b[vcodec!^=av01]/bv*+ba/b"
 
 
 def download_video(source: str, temp_dir: Path) -> Path:
@@ -41,7 +44,7 @@ def download_video(source: str, temp_dir: Path) -> Path:
             "outtmpl": str(temp_dir / "%(id)s.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
-            "format_sort": list(_FORMAT_SORT),
+            "format": _FORMAT_SELECTOR,
         }
         try:
             with YoutubeDL(ydl_opts) as ydl:

@@ -62,6 +62,7 @@ def test_helper_raises_naming_file_codec_and_way_out(tmp_path: Path) -> None:
     assert "clip.mp4" in message
     assert "av01" in message
     assert "--no-ocr" in message
+    assert '"ocr": false' in message  # the API equivalent
     assert "libx264" in message
     cap.release.assert_called_once()
 

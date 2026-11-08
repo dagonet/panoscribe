@@ -102,9 +102,10 @@ def test_every_mapped_language_starts(model_set: str, language: str) -> None:
             f"{language}/{model_set}: read {result.text!r}, expected {PROBE_TEXT[language]!r}"
         )
     if language == "arabic":
-        # The 4-character run above also passes for a reversed read; the year closing the
-        # line proves the word order is right (logical order, not display order; #188).
-        assert _squash(result.text).endswith("2026"), (
+        # The 4-character run above also passes for a reversed read; the last word and the
+        # year closing the line prove the word order is right (logical order, not display
+        # order; #188). The first word is left out: the classic Arabic model misreads it.
+        assert _squash(result.text).endswith(_squash("بالعالم 2026")), (
             f"{language}/{model_set}: read {result.text!r}, expected {PROBE_TEXT[language]!r}"
         )
 
