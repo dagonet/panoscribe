@@ -2,9 +2,9 @@
 
 ## Now
 
-- **Goal:** No feature work scheduled. #83 + #85 shipped in #177. The user parked #84 (remote OCR) on 2026-11-07 because the need is weak, free tiers are tiny and no quality gain is proven; the cost design and open questions are in the #84 comment of that day. Issue #77 stays open; any follow-up comment there is the maintainer's to send.
-- **Current step:** Idle. Not released: v0.8.1 is still the latest release (2026-10-13). Toolkit at v5.2.1 (#175): agents and hooks come from the `cct` plugin, which every session here needs.
-- **Next step:** The user's calls: a release, the #77 comment, and whether to file two follow-ups (catch wrong remote settings before the download; show `transcribe-many` failure reasons on the console). #84 reopens only for a concrete user need or a measured quality gain.
+- **Goal:** No feature work scheduled. v0.9.0 released 2026-11-08 (PyPI + GitHub release): remote speech-to-text (#83, #85) and the rapidocr `<3.9` cap (#180). rapidocr 3.9.0+ defaults to PP-OCRv6, which has no `latin`/`eslav`/`korean`/... route, so fresh 0.8.1 installs failed OCR for every language but en/zh/ja; locked installs (3.8.1) were fine. Outside PR #174 (raw ISO codes) was not merged: it breaks rapidocr 3.8.x, which requires Enum `lang_type`; the reply on #174 says what a mergeable version needs. #84 (remote OCR) parked 2026-11-07; design in its comment. Issue #77 stays open; any follow-up comment there is the maintainer's to send.
+- **Current step:** Idle. Toolkit at v5.2.1 (#175): agents and hooks come from the `cct` plugin, which every session here needs.
+- **Next step:** The user's calls: what to do with #174 (wait for a rework or close), whether to plan proper PP-OCRv6 support (version-aware recognition mapping, non-Latin languages, a quality measurement; until then the cap stays), the #77 comment, and two optional follow-ups (catch wrong remote settings before the download; show `transcribe-many` failure reasons on the console). #84 reopens only for a concrete user need or a measured quality gain.
 
 ## Current Sprint
 
