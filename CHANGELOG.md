@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: "Fully local" is reworded to "Local by default" to say plainly that
   remote speech recognition exists and what it sends.
 
+### Fixed
+
+- **OCR failed to start for most languages on fresh installs** — rapidocr
+  3.9 and newer changed its default recognition model, and the new model has
+  no entry for languages such as Latin, Eastern Slavic, Korean or Arabic, so
+  OCR init failed with `Unsupported rec.lang_type=...`. panoscribe now
+  requires `rapidocr<3.9`. Locked installs (`uv sync`, Docker) were not
+  affected.
+
 ## [0.8.1] - 2026-10-13
 
 ### Fixed
