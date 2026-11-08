@@ -265,6 +265,47 @@ def build_model_params(
     return params, fell_back
 
 
+def validate_language_independent(config: PanoScribeConfig) -> None:
+    """Raise :class:`PanoScribeError` for a setting wrong whatever the OCR language is.
+
+    Pure: nothing is loaded or downloaded. Covers only what is known before the
+    language is (for ``ocr_language=auto``, before speech recognition):
+
+    * ``PANO_OCR_DET_LANG`` against a Det pinned to PP-OCRv6 by its version knob;
+    * each task's model-type knob against the versions that task could end up on --
+      the knob's version if pinned, else every version the model set could pick
+      (``v6`` may fall back to the classic models, so ``mobile`` is still possible
+      there). A type no candidate ships is wrong for every language.
+
+    Whether a v6 model exists for the language, and which version a set-driven task
+    really gets, stay in :func:`build_model_params`.
+    """
+    det_knob = OCRVersion(config.ocr_det_ocr_version) if config.ocr_det_ocr_version else None
+    if (
+        det_knob is OCRVersion.PPOCRV6
+        and config.ocr_det_lang is not None
+        and config.ocr_det_lang not in V6_LANGS
+    ):
+        _raise_det_lang_not_v6(config.ocr_det_lang)
+
+    classic = (OCRVersion.PPOCRV4, OCRVersion.PPOCRV5)
+    set_versions = (OCRVersion.PPOCRV6, *classic) if config.ocr_model_set == "v6" else classic
+    for env_name, type_knob, version_knob in (
+        ("PANO_OCR_DET_MODEL_TYPE", config.ocr_det_model_type, config.ocr_det_ocr_version),
+        ("PANO_OCR_REC_MODEL_TYPE", config.ocr_rec_model_type, config.ocr_rec_ocr_version),
+    ):
+        if type_knob is None:
+            continue
+        candidates = (OCRVersion(version_knob),) if version_knob else set_versions
+        model_type = ModelType(type_knob)
+        if all(model_type not in _MODEL_TYPES_BY_VERSION[v] for v in candidates):
+            names = ", ".join(v.value for v in candidates)
+            raise PanoScribeError(
+                f"{env_name}={type_knob!r} does not fit {names} (the version in effect for "
+                f"every OCR language with this model set and version setting)"
+            )
+
+
 def _raise_no_v6(language: str) -> NoReturn:
     supported = ", ".join(sorted(V6_LANGS))
     raise PanoScribeError(

@@ -22,7 +22,11 @@ from panoscribe.device import require_cuda_for_ocr
 from panoscribe.errors import PanoScribeError
 from panoscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
 from panoscribe.ocr.frame_sampler import sample_frames
-from panoscribe.ocr.model_sets import build_model_params, resolve_iso
+from panoscribe.ocr.model_sets import (
+    build_model_params,
+    resolve_iso,
+    validate_language_independent,
+)
 from panoscribe.ocr.preprocessor import preprocess
 from panoscribe.ocr.ui_filter import mask_zones
 from panoscribe.output import TranscriptSegment
@@ -224,6 +228,23 @@ def _force_model_load(engine: RapidOCR) -> None:
                 "update panoscribe.ocr.rapid_ocr._LAZY_LOADERS"
             )
         loader()
+
+
+def validate_ocr_settings(config: PanoScribeConfig) -> None:
+    """Fail on a wrong OCR setting now, before any download or speech recognition (#191).
+
+    Pure: no model is loaded or downloaded and no rapidocr engine is built. Runs
+    the CUDA check and the settings that do not depend on the language; with an
+    explicit ``ocr_language`` (not ``auto``) it also runs the full
+    :func:`build_model_params` for that language. With ``auto`` the language-dependent
+    part stays in :meth:`RapidOCREngine._ensure_loaded`, when OCR starts.
+    """
+    if config.ocr_device == "cuda":
+        require_cuda_for_ocr()
+    validate_language_independent(config)
+    if config.ocr_language != "auto":
+        lang = _resolve_ocr_language(config.ocr_language)
+        build_model_params(config, lang, resolve_iso(config.ocr_language, None))
 
 
 class RapidOCREngine:

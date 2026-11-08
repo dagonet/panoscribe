@@ -455,6 +455,8 @@ def transcribe_many(
     if pending_indices:
         try:
             asr_engine = pipeline._build_asr_engine(config)
+            if ocr_active:
+                pipeline.validate_ocr_settings(config)
         except PanoScribeError as e:
             typer.secho(str(e), fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from None

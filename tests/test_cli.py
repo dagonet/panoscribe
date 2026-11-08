@@ -238,6 +238,22 @@ def test_transcribe_panoscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) 
     assert "ffmpeg not found on PATH" in result.output
 
 
+def test_transcribe_bad_ocr_setting_fails_before_download(tmp_path: Path, monkeypatch) -> None:
+    """#191: a v6-only model size on the classic set stops the run before any download."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_OCR_REC_MODEL_TYPE", "medium")
+
+    dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
+    with dl as mock_download, ex, wh, oc, lc, ac:
+        result = CliRunner().invoke(
+            app, ["transcribe", "https://example.test/v", "--output", str(tmp_path / "o.json")]
+        )
+
+    assert result.exit_code == 1
+    assert "PANO_OCR_REC_MODEL_TYPE" in result.output
+    mock_download.assert_not_called()
+
+
 def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
     monkeypatch.setenv("PANO_KEEP_TEMP_FILES", "true")

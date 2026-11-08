@@ -93,7 +93,7 @@ See [Running without a GPU](../README.md#running-without-a-gpu) for setting
 | `ocr_rec_model_type` | `PANO_OCR_REC_MODEL_TYPE` | `None` | Recognition model variant: `"mobile"` or `"server"` (PP-OCRv4, PP-OCRv5); `"tiny"`, `"small"` or `"medium"` (PP-OCRv6). `None` = the model set decides |
 | `ocr_rec_ocr_version` | `PANO_OCR_REC_OCR_VERSION` | `None` | Recognition OCR version (`"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"`). `None` = the model set decides |
 
-A model-type or version setting that does not fit the version in effect for the task (for example `medium` with PP-OCRv4, or PP-OCRv6 for a language that has no v6 model) stops OCR for that item when the OCR engine starts (after the download and speech recognition) with an error naming the setting or the language, and what is allowed. See [Troubleshooting](troubleshooting.md#ocr-fails-to-start-with-an-explicit-model-setting).
+A model-type or version setting that does not fit the version in effect for the task (for example `medium` with PP-OCRv4, or PP-OCRv6 for a language that has no v6 model) stops the run with an error naming the setting or the language, and what is allowed. The error comes before any download when it is wrong whatever the language is, or when `PANO_OCR_LANGUAGE` is set (not `auto`); with `auto`, a problem that depends on the detected language stops OCR for that item when the OCR engine starts (after the download and speech recognition). `--no-ocr` skips the check. See [Troubleshooting](troubleshooting.md#ocr-fails-to-start-with-an-explicit-model-setting).
 
 ### LLM cleanup
 
@@ -174,7 +174,7 @@ override.
 | `output_format` | Must be one of `json`, `txt`, `srt`, `md` | Unknown value rejected with list of allowed options |
 | `dedup_min_duration` | Must be `≥ 0.0` | Negative values rejected |
 | `ocr_language` | Must be a valid `LangRec` member, `"auto"`, or a mapped ISO 639-1 code | Unmapped arbitrary strings rejected before engine init |
-| `ocr_det_model_type`, `ocr_rec_model_type` | Must be `"mobile"`, `"server"`, `"tiny"`, `"small"` or `"medium"` (case-insensitive), or `None` | Unknown values rejected. A value that does not fit the version in effect (`tiny`/`small`/`medium` are PP-OCRv6 only; `mobile`/`server` are PP-OCRv4 and PP-OCRv5 only) is rejected when the OCR engine starts |
+| `ocr_det_model_type`, `ocr_rec_model_type` | Must be `"mobile"`, `"server"`, `"tiny"`, `"small"` or `"medium"` (case-insensitive), or `None` | Unknown values rejected. A value that does not fit the version in effect (`tiny`/`small`/`medium` are PP-OCRv6 only; `mobile`/`server` are PP-OCRv4 and PP-OCRv5 only) is rejected before any download when OCR is on, unless the answer depends on the detected language (`ocr_language=auto` with the `v6` set), in which case it is rejected when the OCR engine starts |
 | `ocr_det_ocr_version`, `ocr_rec_ocr_version` | Must be `"pp-ocrv4"`, `"pp-ocrv5"` or `"pp-ocrv6"` (case-insensitive), or `None` | Unknown values rejected |
-| `ocr_det_lang` | Must be `"en"`, `"ch"` or `"multi"` (case-insensitive), or `None` | Unknown values rejected. With a PP-OCRv6 detector pinned by `ocr_det_ocr_version`, `"multi"` is rejected when the OCR engine starts |
+| `ocr_det_lang` | Must be `"en"`, `"ch"` or `"multi"` (case-insensitive), or `None` | Unknown values rejected. With a PP-OCRv6 detector pinned by `ocr_det_ocr_version`, `"multi"` is rejected before any download when OCR is on |
 | `merge_similarity_threshold` | Must be in `[0.0, 1.0]` | Out-of-range values rejected |

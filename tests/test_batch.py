@@ -515,3 +515,87 @@ def test_transcribe_many_resume_of_finished_batch_needs_no_speech_settings(
     build.assert_not_called()
     process.assert_not_called()
     assert "2 done, 0 failed, 0 pending" in result.output
+
+
+# ── transcribe-many checks OCR settings before any download (#191) ────────
+
+
+def _run_many_with_bad_ocr(tmp_path: Path, monkeypatch, *extra_args: str):
+    monkeypatch.setenv("PANO_OCR_REC_MODEL_TYPE", "medium")  # v6-only size on the classic set
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1", "https://a/2"])
+    out_dir = tmp_path / "out"
+
+    with (
+        patch("panoscribe.pipeline.download_video", side_effect=PanoScribeError("dl")) as dl,
+        patch("panoscribe.pipeline.WhisperTranscriber"),
+        patch("panoscribe.cli.compute_output_path", side_effect=_fake_compute_output_path),
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+                *extra_args,
+            ],
+        )
+    return result, dl, out_dir
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_stops_before_first_download_on_bad_ocr_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    result, download_video, out_dir = _run_many_with_bad_ocr(tmp_path, monkeypatch)
+
+    assert result.exit_code == 1, result.output
+    download_video.assert_not_called()
+    assert result.output.count("PANO_OCR_REC_MODEL_TYPE") == 1
+    assert "PANO_OCR_REC_MODEL_TYPE" in result.stderr
+    assert "failed:" not in result.output
+    assert "done," not in result.output
+    state = json.loads((out_dir / ".panoscribe-batch-state.json").read_text(encoding="utf-8"))
+    assert [it["status"] for it in state["items"]] == ["pending", "pending"]
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_no_ocr_does_not_check_ocr_settings(tmp_path: Path, monkeypatch) -> None:
+    result, download_video, _ = _run_many_with_bad_ocr(tmp_path, monkeypatch, "--no-ocr")
+
+    assert "PANO_OCR_REC_MODEL_TYPE" not in result.output
+    assert download_video.call_count == 2  # the run proceeded to the (mocked) downloads
+
+
+@pytest.mark.usefixtures("clean_batch_env")
+def test_transcribe_many_resume_of_finished_batch_needs_no_ocr_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("PANO_OCR_REC_MODEL_TYPE", "medium")
+    urls_file = _write_batch_urls(tmp_path, ["https://a/1"])
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    state = BatchState(
+        version=1,
+        started_at=datetime.now(UTC),
+        input_file=urls_file.resolve(),
+        output_dir=out_dir.resolve(),
+        format="md",
+        items=[BatchItem(source="https://a/1", status="done", output_path=out_dir / "1.md")],
+    )
+    save_state(state, out_dir / ".panoscribe-batch-state.json")
+
+    with (
+        patch("panoscribe.pipeline.validate_ocr_settings") as check,
+        patch("panoscribe.cli.expand_url_list", side_effect=lambda urls: urls),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    check.assert_not_called()

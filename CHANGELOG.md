@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **OCR settings are checked before any download** — a wrong OCR setting (a model size
+  that does not fit the model version, a PP-OCRv6 version for a language without a v6
+  model, `PANO_OCR_DET_LANG=multi` with a PP-OCRv6 detector, or `PANO_OCR_DEVICE=cuda`
+  without CUDA) used to fail only after the video was downloaded and transcribed. It
+  now stops `transcribe`, `transcribe-many` and the API server up front; `transcribe-many`
+  prints one error and leaves its items `pending`. With `--no-ocr` nothing is checked.
+  With `PANO_OCR_LANGUAGE=auto`, a problem that depends on the detected language still
+  appears when OCR starts (#191)
+
 ## [0.10.0] - 2026-11-08
 
 ### Added
