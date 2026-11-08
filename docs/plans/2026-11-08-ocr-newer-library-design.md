@@ -102,7 +102,7 @@ Source: `rapidocr/utils/parse_parameters.py`, `default_models.yaml` and `utils/m
 - **How a language's number is computed** *(PO call)*: recall per language is **pooled over all expected texts of that language's clips**, not averaged per clip, so one short clip can't swing it. The same goes for the junk rate, pooled over segments.
 - **Run noise.** Sampling (fixed fps plus the scene-change threshold) and CPU ONNX inference are expected to be deterministic. The builder confirms this by running one clip twice: both runs must give identical numbers. If they don't, run every configuration 3 times and use the mean, and the report states the observed spread.
 - **Who runs it and where** *(PO call)*: agents on the Linux agent host, on CPU. Clips are fetched with `scripts/fetch_eval_samples.py`. This is a local run, not CI.
-- **Existing six samples.** Their clips and keys are gitignored and are not on the Linux host. If the maintainer can supply the keys, they are used. Otherwise the clips are re-fetched and their keys rewritten the D6 way. Any sample that can no longer be fetched is dropped, and the report says so.
+- **Existing six samples.** Their clips and keys are gitignored. The keys are confirmed gone: on 2026-11-08 they were found on neither the Linux host nor the maintainer's Windows checkout. So the clips are re-fetched with `scripts/fetch_eval_samples.py` (the photo posts need the `[photo]` extra) and their keys rewritten the D6 way. Any sample that can no longer be fetched is dropped, and the report says so.
 - **Language coverage.** It is taken from each key's `language` field. If a language ends up with fewer than two clips, one more clip is picked the 2026-11-08 way before measuring.
 
 **D6 — Answer keys for the new clips.**
