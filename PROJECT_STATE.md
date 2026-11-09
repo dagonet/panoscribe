@@ -2,7 +2,7 @@
 
 ## Now
 
-- **Goal:** Fix the three v0.10.0 follow-ups in one PR (branch `fix/ocr-settings-av1-arabic`, 2026-11-09). They are unreleased and go under `[Unreleased]` in the CHANGELOG.
+- **Goal:** Release v0.10.1 (branch `chore/release-0.10.1`, 2026-11-09). It ships the three v0.10.0 follow-ups merged in #193; the CHANGELOG `[Unreleased]` notes become `[0.10.1] - 2026-11-09`.
   - **#191:** OCR settings are checked before any download (`validate_ocr_settings`), in `transcribe`, in `transcribe-many` (once before the loop; items stay `pending`) and in the API. With `auto`, the language-dependent check stays at OCR start.
   - **#189:**
     - **Cause:** the opencv wheel decodes AV1 only with hardware support, so it opens the file and then reads 0 frames.
@@ -11,7 +11,7 @@
   - **#188:** there were two layers. (1) rapidocr runs python-bidi `get_display` on each Arabic box. panoscribe replaces `rapidocr.ch_ppocr_rec.main.reorder_bidi_for_display` with an identity at engine build. (2) The aggregator joined boxes left to right; it now chooses the box reading order per chunk (`_reading_order`). The remaining limits are ambiguous screen layouts, listed in the CHANGELOG.
   - **Review:** two review rounds; the reviewers fuzzed #188 against python-bidi over about 111k lines. The test suite now passes with a CPU-only onnxruntime.
   - **Earlier:** v0.10.0 is released (#186, #187, #190). #174 is left open by the maintainer. #84 (remote OCR) is parked.
-- **Current step:** The maintainer merges the PR after green CI. A release (0.10.1 or 0.11.0) is the maintainer's call.
+- **Current step:** The maintainer merges the release PR after green CI, then pushes tag `v0.10.1` on the merge commit (TestPyPI publishes on the tag). The real PyPI publish is a `workflow_dispatch` with `target: pypi`; its `create-release` job makes the GitHub Release from the `[0.10.1]` CHANGELOG section.
   - Toolkit is at v6.0.0 (#192); agents and hooks come from the `cct` plugin.
 - **Next step:** Remaining follow-ups for the maintainer to prioritise:
   - The weak Korean, Hindi and Telugu reads.
