@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-09
+
 ### Fixed
 
 - **Arabic on-screen text is no longer reversed** — rapidocr turned every Arabic box into
@@ -749,6 +751,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.10.1]: https://github.com/dagonet/panoscribe/releases/tag/v0.10.1
 [0.10.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.10.0
 [0.9.0]: https://github.com/dagonet/panoscribe/releases/tag/v0.9.0
 [0.8.1]: https://github.com/dagonet/panoscribe/releases/tag/v0.8.1
