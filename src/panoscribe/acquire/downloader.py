@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
+# Avoid AV1 only: OpenCV's bundled FFmpeg has just a hardware AV1 decoder, so an AV1
+# download yields zero OCR frames on most machines (#189). Everything else keeps
+# yt-dlp's default order (resolution first; small on-screen text needs the pixels,
+# and VP9/HEVC decode fine). Alternatives, first match wins: best non-AV1 video + audio,
+# best non-AV1 single file, then yt-dlp's old default ``bv*+ba/b`` -- the last one is the
+# fallback for AV1-only videos. The ``?`` in ``vcodec!^=?av01`` keeps formats with no
+# ``vcodec`` info (e.g. HLS): without it yt-dlp drops them from the filter, so a codec-less
+# 1080p would lose to a 360p H.264 stream.
+_FORMAT_SELECTOR = "bv*[vcodec!^=?av01]+ba/b[vcodec!^=?av01]/bv*+ba/b"
+
 
 def download_video(source: str, temp_dir: Path) -> Path:
     """Return a local path to the video referenced by ``source``.
@@ -35,6 +45,7 @@ def download_video(source: str, temp_dir: Path) -> Path:
             "outtmpl": str(temp_dir / "%(id)s.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
+            "format": _FORMAT_SELECTOR,
         }
         try:
             with YoutubeDL(ydl_opts) as ydl:

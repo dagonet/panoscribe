@@ -24,7 +24,8 @@ from panoscribe.audio import extract_audio, get_duration
 from panoscribe.eval.funnel import FunnelCounts
 from panoscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
 from panoscribe.ocr.deduplicator import dedup_segments
-from panoscribe.ocr.rapid_ocr import RapidOCREngine
+from panoscribe.ocr.frame_sampler import ensure_frames_decodable
+from panoscribe.ocr.rapid_ocr import RapidOCREngine, validate_ocr_settings
 from panoscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
 from panoscribe.output import Transcript, merge_channels, write_transcript
 from panoscribe.platforms.registry import resolve_profile
@@ -131,7 +132,8 @@ def process_single_video(
 
     The speech engine is built first, before photo routing and any download,
     so a bad speech setting fails before bandwidth is spent. ``asr_engine``
-    lets a batch build it once and share it across items.
+    lets a batch build it once and share it across items. When OCR is active,
+    the OCR settings are checked right after, for the same reason (#191).
 
     Imports stay at module scope (do NOT move them in here): existing tests
     patch ``panoscribe.cli.WhisperTranscriber`` etc. and rely on those names
@@ -140,6 +142,8 @@ def process_single_video(
     """
     if asr_engine is None:
         asr_engine = _build_asr_engine(config)
+    if ocr_active:
+        validate_ocr_settings(config)
     temp_dir = config.temp_dir
     try:
         # ---- Photo-mode routing (before download_video) ----
@@ -184,6 +188,10 @@ def process_single_video(
         else:
             # ---- Existing video path (byte-identical) ----
             video_path = download_video(source, temp_dir)
+            if ocr_active:
+                # Before audio extraction: no speech time is lost on a video OCR
+                # cannot read (#189).
+                ensure_frames_decodable(video_path)
             audio_path = extract_audio(video_path, temp_dir / "audio.wav")
             speech_segments, detected_language = asr_engine.transcribe(audio_path)
 

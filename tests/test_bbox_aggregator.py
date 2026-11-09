@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from panoscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
+from panoscribe.ocr.bbox_aggregator import _reading_order, aggregate_frame_bboxes
 
 
 def _box(x_min: float, y_min: float, x_max: float, y_max: float) -> list[tuple[float, float]]:
@@ -377,3 +377,107 @@ def test_column_split_chunks_have_independent_geometry() -> None:
     assert len(out) == 2
     assert out[0].mean_box_height == pytest.approx(30.0)
     assert out[1].mean_box_height == pytest.approx(50.0)
+
+
+# --- right-to-left reading order (#188) ---------------------------------------
+#
+# Texts below are written in LEFT-TO-RIGHT screen order, i.e. the order the
+# aggregator receives them after sorting by x. The recogniser returns each box's
+# text in logical order.
+
+
+def _row_text(texts_left_to_right: list[str]) -> str:
+    boxes = [_box(i * 50.0, 0.0, i * 50.0 + 40.0, 30.0) for i in range(len(texts_left_to_right))]
+    out = aggregate_frame_bboxes(
+        boxes, texts_left_to_right, [0.9] * len(texts_left_to_right), min_confidence=0.6
+    )
+    assert len(out) == 1
+    return out[0].text
+
+
+@pytest.mark.parametrize(
+    ("screen_order", "expected"),
+    [
+        (["بالعالم", "مرحبا"], "مرحبا بالعالم"),
+        (["دولار", "123", "سعر"], "سعر 123 دولار"),
+        (["بالعالم", "2026", "مرحبا"], "مرحبا 2026 بالعالم"),
+        (["AI", "Model", "2024", "عربي"], "عربي AI Model 2024"),
+        (["שלום", "עולם"], "עולם שלום"),
+        # Arabic-Indic digits are not part of the Latin phrase next to them.
+        (["Model", "١٢٣", "AI", "عربي"], "عربي AI ١٢٣ Model"),
+        # A mainly-Latin line with Arabic inside keeps its word order.
+        (["Welcome", "مرحبا", "to", "the", "show"], "Welcome مرحبا to the show"),
+        (["Price", "سعر", "is", "10"], "Price سعر is 10"),
+        (["Hello", "بالعالم", "مرحبا", "today"], "Hello مرحبا بالعالم today"),
+        (["Hello", "2026", "مرحبا", "world"], "Hello مرحبا 2026 world"),
+        # Latin, digits and CJK keep today's left-to-right join.
+        (["left", "right"], "left right"),
+        (["2026", "123"], "2026 123"),
+        (["你好", "世界", "2026"], "你好 世界 2026"),
+    ],
+)
+def test_rtl_boxes_are_read_right_to_left_and_others_left_to_right(
+    screen_order: list[str], expected: str
+) -> None:
+    assert _row_text(screen_order) == expected
+
+
+@pytest.mark.parametrize(
+    ("screen_order", "expected"),
+    [
+        ([], []),
+        (["a", "b", "c"], ["a", "b", "c"]),
+        (["1", "2"], ["1", "2"]),
+        (["ب", "أ"], ["أ", "ب"]),
+        (["Hello", "World", "ب", "أ"], ["أ", "ب", "Hello", "World"]),
+        # Digit-only boxes between Arabic boxes stay single units (no re-reversal).
+        (["ج", "2", "1", "ب"], ["ب", "1", "2", "ج"]),
+        # Two separate Latin phrases, each kept left to right.
+        (["B1", "B2", "ج", "A1", "A2", "ب"], ["ب", "A1", "A2", "ج", "B1", "B2"]),
+        # Punctuation-only boxes at the edge of a Latin run keep their right-to-left place.
+        ([":", "AI", "عربي"], ["عربي", "AI", ":"]),
+        (["ب", "!", "AI", "عربي"], ["عربي", "AI", "!", "ب"]),
+        ([":", "AI", "2024", "عربي"], ["عربي", "AI", "2024", ":"]),
+        # Arabic-Indic digits are separators like Arabic words, not part of the Latin run.
+        (["١٢٣", "AI", "عربي"], ["عربي", "AI", "١٢٣"]),
+        (["Model", "١٢٣", "AI", "عربي"], ["عربي", "AI", "١٢٣", "Model"]),
+        # A line whose outer letter boxes are Latin is a left-to-right line: Arabic boxes
+        # keep their place, and a run of Arabic boxes is reversed.
+        (["Welcome", "مرحبا", "to", "the", "show"], ["Welcome", "مرحبا", "to", "the", "show"]),
+        (["Price", "سعر", "is", "10"], ["Price", "سعر", "is", "10"]),
+        (["Hello", "بالعالم", "مرحبا", "today"], ["Hello", "مرحبا", "بالعالم", "today"]),
+        # Numbers after an Arabic word are shown left of it; they read after it.
+        (["Hello", "2026", "مرحبا", "world"], ["Hello", "مرحبا", "2026", "world"]),
+        (["Hello", "2027", "2026", "مرحبا", "world"], ["Hello", "مرحبا", "2026", "2027", "world"]),
+        # A number between two Arabic boxes joins their run.
+        (
+            ["Hello", "بالعالم", "2026", "مرحبا", "today"],
+            ["Hello", "مرحبا", "2026", "بالعالم", "today"],
+        ),
+        # An Arabic-Indic number right of an Arabic word is drawn on its left (the bidi
+        # algorithm lays the number out right to left), so it reads before the word.
+        (["Hello", "مرحبا", "١٢٣", "today"], ["Hello", "١٢٣", "مرحبا", "today"]),
+        (["Hello", "مرحبا", "!", "١٢٣", "today"], ["Hello", "١٢٣", "!", "مرحبا", "today"]),
+        # Only Arabic-Indic digits (class AN) extend the run to the right: a Western digit
+        # box there is left alone.
+        (["Hello", "مرحبا", "2026", "today"], ["Hello", "مرحبا", "2026", "today"]),
+        # Trailing punctuation and separate Arabic words keep their place.
+        (["Hello", "مرحبا", "today", "!"], ["Hello", "مرحبا", "today", "!"]),
+        (["Hello", "مرحبا", "today", "سعر", "Bye"], ["Hello", "مرحبا", "today", "سعر", "Bye"]),
+        # Documented limits (box texts alone cannot tell these apart):
+        # a number directly followed by a Latin word in an Arabic line,
+        (["AI", "2024", "عربي"], ["عربي", "AI", "2024"]),
+        # several numbers in a row before a Latin word in an Arabic line,
+        (["AI", "2025", "2024", "عربي"], ["عربي", "AI", "2025", "2024"]),
+        # a left-to-right line whose last word is Arabic reads as right-to-left (the same
+        # screen as the Arabic line above),
+        (["Hello", "2026", "مرحبا"], ["مرحبا", "Hello", "2026"]),
+        (["Hello", "بالعالم", "مرحبا"], ["مرحبا", "بالعالم", "Hello"]),
+        # a number before an Arabic word in a left-to-right line reads after it,
+        (["Hello", "2026", "مرحبا", "today"], ["Hello", "مرحبا", "2026", "today"]),
+        # and an Arabic line with a Latin word at both ends reads as left-to-right.
+        (["Model", "عربي", "AI"], ["Model", "عربي", "AI"]),
+    ],
+)
+def test_reading_order_helper(screen_order: list[str], expected: list[str]) -> None:
+    assert _reading_order(screen_order) == expected

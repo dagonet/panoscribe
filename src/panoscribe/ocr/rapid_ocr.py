@@ -11,6 +11,7 @@ GPU init surfaces as the native library exception (wrapped by the caller).
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -22,7 +23,11 @@ from panoscribe.device import require_cuda_for_ocr
 from panoscribe.errors import PanoScribeError
 from panoscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
 from panoscribe.ocr.frame_sampler import sample_frames
-from panoscribe.ocr.model_sets import build_model_params, resolve_iso
+from panoscribe.ocr.model_sets import (
+    build_model_params,
+    resolve_iso,
+    validate_language_independent,
+)
 from panoscribe.ocr.preprocessor import preprocess
 from panoscribe.ocr.ui_filter import mask_zones
 from panoscribe.output import TranscriptSegment
@@ -226,6 +231,54 @@ def _force_model_load(engine: RapidOCR) -> None:
         loader()
 
 
+def _keep_logical_text_order() -> None:
+    """Stop rapidocr turning each Arabic text into display order (#188).
+
+    rapidocr's recogniser runs ``reorder_bidi_for_display`` on Arabic results, which
+    reverses every box's text for drawing; panoscribe wants logical order and orders the
+    boxes itself (``bbox_aggregator._reading_order``). ``main.py`` imported the function by
+    name, so it is replaced in that module's namespace. Idempotent. The
+    ``rapidocr>=3.10,<3.11`` pin and the engine CI test guard this private hook.
+    """
+    from rapidocr.ch_ppocr_rec import main as rec_main
+
+    if not hasattr(rec_main, "reorder_bidi_for_display"):
+        raise PanoScribeError(
+            f"rapidocr {_rapidocr_version()} no longer has "
+            "rapidocr.ch_ppocr_rec.main.reorder_bidi_for_display; Arabic text would come out "
+            "reversed. Update panoscribe.ocr.rapid_ocr._keep_logical_text_order"
+        )
+    rec_main.reorder_bidi_for_display = _identity_texts
+
+
+def _identity_texts(texts: tuple[str, ...]) -> tuple[str, ...]:
+    return texts
+
+
+def _rapidocr_version() -> str:
+    try:
+        return importlib.metadata.version("rapidocr")
+    except importlib.metadata.PackageNotFoundError:
+        return "(unknown version)"
+
+
+def validate_ocr_settings(config: PanoScribeConfig) -> None:
+    """Fail on a wrong OCR setting now, before any download or speech recognition (#191).
+
+    Pure: no model is loaded or downloaded and no rapidocr engine is built. Runs
+    the CUDA check and the settings that do not depend on the language; with an
+    explicit ``ocr_language`` (not ``auto``) it also runs the full
+    :func:`build_model_params` for that language. With ``auto`` the language-dependent
+    part stays in :meth:`RapidOCREngine._ensure_loaded`, when OCR starts.
+    """
+    if config.ocr_device == "cuda":
+        require_cuda_for_ocr()
+    validate_language_independent(config)
+    if config.ocr_language != "auto":
+        lang = _resolve_ocr_language(config.ocr_language)
+        build_model_params(config, lang, resolve_iso(config.ocr_language, None))
+
+
 class RapidOCREngine:
     """Lazy-init RapidOCR wrapper that extracts on-screen text from a video.
 
@@ -293,6 +346,7 @@ class RapidOCREngine:
                 params["Det.box_thresh"] = self._config.ocr_det_box_thresh
             # Cls (orientation classifier) deliberately stays at defaults —
             # recall-irrelevant.
+            _keep_logical_text_order()
             try:
                 engine = RapidOCR(params=params)
                 # rapidocr >= 3.10 loads (and downloads) models lazily on the first

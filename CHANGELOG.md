@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Arabic on-screen text is no longer reversed** — rapidocr turned every Arabic box into
+  display order (letters of each word flipped), and panoscribe then joined the boxes of
+  a line from left to right, so the words came out in reverse order too. panoscribe now
+  keeps the recogniser's logical order and reads a line with right-to-left text from
+  right to left, keeping an embedded Latin phrase such as `AI Model 2024` in order. A
+  mostly-Latin line with an Arabic word inside (`Welcome مرحبا to the show`) keeps its
+  word order. Other languages are unchanged. Known limits, because the order is worked
+  out from the text boxes alone: in an Arabic line, a number followed by a Latin word
+  may swap places (several numbers in a row come out reversed); a Latin line that ends
+  in an Arabic word may be read as an Arabic line, and an Arabic line with a Latin word
+  at both ends as a Latin line (#188)
+- **AV1 videos no longer give silent empty OCR** — the OpenCV build that panoscribe
+  uses can only decode AV1 with hardware support, so on most machines an AV1 video
+  gave no on-screen text and no error. Downloads now avoid AV1 when another codec is
+  offered (AV1 stays the last resort; everything else keeps yt-dlp's default choice, so
+  resolution still comes first and there is no resolution cap). When a video opens but
+  no frame can be read, panoscribe now stops with an error that names the file and codec
+  and suggests `--no-ocr` (or `"ocr": false` in an API job request) or re-encoding to
+  H.264. The check runs right after the download, before speech recognition, so no time
+  is lost (#189)
+- **OCR settings are checked before any download** — a wrong OCR setting (a model size
+  that does not fit the model version, a PP-OCRv6 version for a language without a v6
+  model, `PANO_OCR_DET_LANG=multi` with a PP-OCRv6 detector, or `PANO_OCR_DEVICE=cuda`
+  without CUDA) used to fail only after the video was downloaded and transcribed. It
+  now stops `transcribe`, `transcribe-many` and the API server up front; `transcribe-many`
+  prints one error and leaves its items `pending`. With `--no-ocr` nothing is checked.
+  With `PANO_OCR_LANGUAGE=auto`, a problem that depends on the detected language still
+  appears when OCR starts (#191)
+
 ## [0.10.0] - 2026-11-08
 
 ### Added

@@ -111,6 +111,45 @@ def _frame_difference(prev_small: np.ndarray, curr_small: np.ndarray) -> float:
     return float(np.max(pooled)) / 255.0
 
 
+def _fourcc_text(cap: cv2.VideoCapture) -> str:
+    """Return the capture's codec tag as text (e.g. ``av01``), or ``unknown``."""
+    code = int(cap.get(cv2.CAP_PROP_FOURCC))
+    text = "".join(chr((code >> (8 * i)) & 0xFF) for i in range(4)).strip()
+    # OpenCV reports the tag in the container's case (``AV01`` for MP4); lowercase
+    # it so the message reads the same whichever way the file was muxed.
+    return text.lower() if text and text.isprintable() else "unknown"
+
+
+def _undecodable_error(video_path: Path, cap: cv2.VideoCapture) -> PanoScribeError:
+    """Error for a capture that opened but whose frames cannot be decoded."""
+    return PanoScribeError(
+        f"Cannot decode any video frame from {video_path} (codec: {_fourcc_text(cap)}). "
+        "The video reader used for OCR has no working decoder for this codec on this "
+        "machine (AV1 is the usual case), so OCR would find no text. Re-run with "
+        '--no-ocr (or "ocr": false in the API job request) to transcribe the speech '
+        "only, or re-encode the video to H.264, e.g. "
+        "ffmpeg -i in.mp4 -c:v libx264 -crf 18 -c:a copy out.mp4"
+    )
+
+
+def ensure_frames_decodable(video_path: Path) -> None:
+    """Raise :class:`PanoScribeError` if ``video_path`` opens but yields no readable frame.
+
+    A fast pre-check (one frame read) so the pipeline can stop before spending time
+    on speech recognition (#189). A capture that fails to open raises the same error
+    :func:`sample_frames` does.
+    """
+    cap = cv2.VideoCapture(str(video_path.resolve()))
+    try:
+        if not cap.isOpened():
+            raise PanoScribeError(f"Failed to open video for OCR sampling: {video_path}")
+        ok, _ = cap.read()
+        if not ok:
+            raise _undecodable_error(video_path, cap)
+    finally:
+        cap.release()
+
+
 def sample_frames(
     video_path: Path,
     fps: float,
@@ -170,7 +209,8 @@ def sample_frames(
         property (which is unreliable for MP4s without presentation timestamps).
 
     Raises:
-        PanoScribeError: ``cv2.VideoCapture`` failed to open ``video_path``.
+        PanoScribeError: ``cv2.VideoCapture`` failed to open ``video_path``, or it
+            opened but not a single frame could be read (undecodable codec, e.g. AV1).
     """
     cap = cv2.VideoCapture(str(video_path.resolve()))
     try:
@@ -197,6 +237,7 @@ def sample_frames(
         )
 
         frame_index = 0
+        frames_read = 0
         last_yielded_small: np.ndarray | None = None
         # Track the most recent stride-picked frame (original BGR + downscale +
         # timestamp) so the end-of-video rule can force-yield it after the loop
@@ -212,7 +253,12 @@ def sample_frames(
         while True:
             ok, frame = cap.read()
             if not ok:
+                if frames_read == 0:
+                    # Opened, but not one frame could be read (e.g. AV1 without a
+                    # decoder): fail loudly instead of silently yielding nothing.
+                    raise _undecodable_error(video_path, cap)
                 break
+            frames_read += 1
             if frame_index % stride == 0:
                 timestamp = frame_index / native_fps
                 if not scene_change_enabled:

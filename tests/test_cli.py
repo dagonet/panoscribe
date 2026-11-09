@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import click
@@ -14,6 +17,9 @@ from panoscribe import __version__
 from panoscribe.cli import app
 from panoscribe.errors import PanoScribeError
 from panoscribe.output import Transcript, TranscriptSegment
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ── Sprint 9.11: shared CLI option parity (issue #52) ────────────────────────
 # These nine options are declared by both ``transcribe`` and ``transcribe-many``;
@@ -97,6 +103,17 @@ def test_transcribe_help() -> None:
     assert "--no-asr-cleanup" in result.output
 
 
+@pytest.fixture(autouse=True)
+def _pin_ocr_device_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default OCR device is cuda, which the #191 pre-check probes via onnxruntime.
+
+    Pin cpu so these tests do not depend on the host listing a CUDA provider (a CPU-only
+    onnxruntime on macOS or arm64 has none). The CUDA-missing early failure is covered in
+    ``test_ocr_settings_check.py`` with the probe mocked.
+    """
+    monkeypatch.setenv("PANO_OCR_DEVICE", "cpu")
+
+
 def _patched_pipeline(tmp_path: Path):
     """Return patch context managers that mock every external boundary.
 
@@ -109,9 +126,21 @@ def _patched_pipeline(tmp_path: Path):
     Sprint 6.2: additionally patches ``cleanup_speech_segments``. The 6-tuple
     return is ``(download, extract, whisper, ocr, llm_cleanup, asr_cleanup)``.
     """
-    download_patch = patch(
-        "panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
-    )
+
+    @contextmanager
+    def download_patch() -> Iterator[MagicMock]:
+        # The video path is fake, so the #189 frame-decodability pre-check is stubbed too.
+        # The default OCR device is cuda (#191 probes it), so pin cpu for every user of this
+        # helper, including tests outside this module (test_cli_encoding.py).
+        with (
+            patch.dict(os.environ, {"PANO_OCR_DEVICE": "cpu"}),
+            patch(
+                "panoscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
+            ) as mock_download,
+            patch("panoscribe.pipeline.ensure_frames_decodable"),
+        ):
+            yield mock_download
+
     extract_patch = patch("panoscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav")
     whisper_patch = patch("panoscribe.pipeline.WhisperTranscriber")
     ocr_patch = patch("panoscribe.pipeline.RapidOCREngine")
@@ -124,7 +153,7 @@ def _patched_pipeline(tmp_path: Path):
         side_effect=lambda segs, cfg: segs,
     )
     return (
-        download_patch,
+        download_patch(),
         extract_patch,
         whisper_patch,
         ocr_patch,
@@ -236,6 +265,22 @@ def test_transcribe_panoscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) 
     assert result.exit_code == 1
     # CliRunner merges stderr into `result.output` by default.
     assert "ffmpeg not found on PATH" in result.output
+
+
+def test_transcribe_bad_ocr_setting_fails_before_download(tmp_path: Path, monkeypatch) -> None:
+    """#191: a v6-only model size on the classic set stops the run before any download."""
+    monkeypatch.setenv("PANO_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("PANO_OCR_REC_MODEL_TYPE", "medium")
+
+    dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
+    with dl as mock_download, ex, wh, oc, lc, ac:
+        result = CliRunner().invoke(
+            app, ["transcribe", "https://example.test/v", "--output", str(tmp_path / "o.json")]
+        )
+
+    assert result.exit_code == 1
+    assert "PANO_OCR_REC_MODEL_TYPE" in result.output
+    mock_download.assert_not_called()
 
 
 def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkeypatch) -> None:
