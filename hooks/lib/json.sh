@@ -65,7 +65,7 @@ for k in sys.argv[1].split("."):
     v = v.get(k)
 if v is None or isinstance(v, (dict, list)):
     sys.exit(0)
-sys.stdout.buffer.write((v if isinstance(v, str) else json.dumps(v)).encode("utf-8"))
+sys.stdout.buffer.write((v if isinstance(v, str) else json.dumps(v)).encode("utf-8", "replace"))
 ' "$3" 2>/dev/null
       ;;
     jq)
@@ -247,10 +247,7 @@ def rd(v, path):
         v = v.get(k)
     if v is None or isinstance(v, (dict, list)):
         return b""
-    try:
-        return (v if isinstance(v, str) else json.dumps(v)).replace("\x00", "").encode("utf-8")
-    except UnicodeEncodeError:
-        return b""
+    return (v if isinstance(v, str) else json.dumps(v)).replace("\x00", "").encode("utf-8", "replace")
 o = b""
 try:
     o += rd(json.loads(sys.argv[1]), "jp.k")
