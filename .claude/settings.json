@@ -8,10 +8,14 @@
       "NotebookEdit",
       "WebSearch",
       "mcp__github-tools__*",
+      "mcp__plugin_github-tools_github-tools__*",
       "mcp__MCP_DOCKER__*",
       "mcp__dotnet-tools__*",
+      "mcp__plugin_dotnet-tools_dotnet-tools__*",
       "mcp__rust-tools__*",
+      "mcp__plugin_rust-tools_rust-tools__*",
       "mcp__ollama-tools__*",
+      "mcp__plugin_ollama-tools_ollama-tools__*",
       "mcp__plugin_context7_context7__*",
       "mcp__plugin_playwright_playwright__*",
       "mcp__windows-mcp__*",
@@ -21,14 +25,20 @@
       "mcp__godot-tools__*",
       "mcp__plugin_context-mode_context-mode__*",
       "mcp__template-sync-tools__*",
-      "mcp__git-tools__*"
+      "mcp__git-tools__*",
+      "mcp__plugin_git-tools_git-tools__*"
     ],
     "deny": [
       "mcp__git-tools__git_push",
+      "mcp__plugin_git-tools_git-tools__git_push",
       "mcp__git-tools__git_commit",
+      "mcp__plugin_git-tools_git-tools__git_commit",
       "mcp__git-tools__git_revert",
+      "mcp__plugin_git-tools_git-tools__git_revert",
       "mcp__git-tools__git_rebase",
-      "mcp__git-tools__git_reset"
+      "mcp__plugin_git-tools_git-tools__git_rebase",
+      "mcp__git-tools__git_reset",
+      "mcp__plugin_git-tools_git-tools__git_reset"
     ],
     "defaultMode": "auto"
   },

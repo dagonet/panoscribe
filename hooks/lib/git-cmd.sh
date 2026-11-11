@@ -542,21 +542,37 @@ gc_cmd_unreadable() {
 # evaluate the WRONG repo. Spaces inside a quoted -C argument are replaced with
 # \001 here (before any stripping) and decoded again in gc_git_c.
 #
-# v2.2.0: pure sed, so it no longer needs node. Each pass replaces one blank
-# inside a quoted `-C` argument; the loop runs until the string stops changing.
 # The quotes themselves are left in place — gc_segments strips them anyway.
+#
+# v6.1 S4: ONE linear POSIX awk pass (gawk, mawk, busybox, Git for Windows gawk). The old sed
+# loop spawned sed and rescanned the whole string per blank inside a quoted argument: quadratic
+# (4 KB 3.75 s, 16 KB 36.8 s). Per line, as sed was: each `-C`, one or more blanks, then a "..."
+# or '...' argument that closes on the same line has every blank turned into \001; an
+# unterminated quote is left alone.
 GC_SOH=$(printf '\001')
 gc_protect_c_paths() {
   [ -n "$1" ] || { printf '%s' ""; return 0; }
-  gcs=$1
-  while :; do
-    gcn=$(printf '%s' "$gcs" | sed \
-      -e "s/\(-C[[:space:]]\{1,\}\"[^\"]*\)[[:space:]]\([^\"]*\"\)/\1${GC_SOH}\2/" \
-      -e "s/\(-C[[:space:]]\{1,\}'[^']*\)[[:space:]]\([^']*'\)/\1${GC_SOH}\2/")
-    [ "$gcn" = "$gcs" ] && break
-    gcs=$gcn
-  done
-  printf '%s' "$gcs"
+  # A failing awk must not read as an empty command (an empty command is refused as unreadable; the fallback restores the floor verdict): hand back the input.
+  gcn=$(printf '%s' "$1" | awk -v sq="'" '{
+    line = $0; out = ""
+    while ((i = index(line, "-C")) > 0) {
+      out = out substr(line, 1, i + 1)
+      line = substr(line, i + 2)
+      if (match(line, /^[[:space:]]+/) == 0) continue
+      b = RLENGTH
+      c = substr(line, b + 1, 1)
+      if (c != "\"" && c != sq) continue
+      r = substr(line, b + 2)
+      k = index(r, c)
+      if (k == 0) continue
+      body = substr(r, 1, k - 1)
+      gsub(/[[:space:]]/, "\001", body)
+      out = out substr(line, 1, b + 1) body c
+      line = substr(r, k + 1)
+    }
+    print out line
+  }') || { printf '%s' "$1"; return 0; }
+  printf '%s' "$gcn"
 }
 
 # True when the repo has opted out of the git gates.

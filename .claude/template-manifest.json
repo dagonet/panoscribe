@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v6.0.0",
-  "template_commit": "12de366c3feb07a6237c64d56b7f5104c16ff6b6",
+  "template_version": "v6.1.0",
+  "template_commit": "e1ef98a0a1ebef441a04271a6b8856aeff97b070",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/project-instructions.md": {
@@ -28,7 +28,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:1bc495d0db7591ed66285d3c0ad3ead6b0029b35df7ae7006600daf7ad4c7c31",
+      "hash": "sha256:7e4939e697c61a051ed1fab0f1a9f7ca66cca1f76486b97d6022012a8c373362",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -64,11 +64,11 @@
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:4147fec5ce8df725453b0c006b09fccd1ae9a9f3f26d48bc3729d0b110ecacac",
+      "hash": "sha256:c158c5beab1083cae2a0d69e76e64adc4a6a58a6df3af9b9f5dbc3d2a260cf22",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
-      "hash": "sha256:bac5f409ecf0299b29e4742340aca70156662eabd706e434fc55dd2941012323",
+      "hash": "sha256:993abde67b1b9303b37357d03b3b586158fe7c7c7aff3ecfb70da75e467f45c2",
       "ownership": "template"
     }
   },
