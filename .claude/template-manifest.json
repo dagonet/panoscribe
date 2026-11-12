@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v6.1.0",
-  "template_commit": "e1ef98a0a1ebef441a04271a6b8856aeff97b070",
+  "template_version": "v6.2.0",
+  "template_commit": "8408c68e59668fa4afbc1a33cd09bf463b789fad",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/project-instructions.md": {
