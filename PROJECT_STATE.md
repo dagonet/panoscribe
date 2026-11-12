@@ -2,17 +2,11 @@
 
 ## Now
 
-- **Goal:** Release v0.10.1 (branch `chore/release-0.10.1`, 2026-11-09). It ships the three v0.10.0 follow-ups merged in #193; the CHANGELOG `[Unreleased]` notes become `[0.10.1] - 2026-11-09`.
-  - **#191:** OCR settings are checked before any download (`validate_ocr_settings`), in `transcribe`, in `transcribe-many` (once before the loop; items stay `pending`) and in the API. With `auto`, the language-dependent check stays at OCR start.
-  - **#189:**
-    - **Cause:** the opencv wheel decodes AV1 only with hardware support, so it opens the file and then reads 0 frames.
-    - **Download:** yt-dlp gets `format` = `bv*[vcodec!^=?av01]+ba/b[vcodec!^=?av01]/bv*+ba/b`, which avoids AV1 and otherwise keeps resolution first. This is a PO ruling against "H.264 first": that order picked avc1 360p over vp9 1080p.
-    - **Error:** `ensure_frames_decodable` runs after the download and before ASR. If no frame can be read, it raises an error naming the codec, `--no-ocr` and `"ocr": false`.
-  - **#188:** there were two layers. (1) rapidocr runs python-bidi `get_display` on each Arabic box. panoscribe replaces `rapidocr.ch_ppocr_rec.main.reorder_bidi_for_display` with an identity at engine build. (2) The aggregator joined boxes left to right; it now chooses the box reading order per chunk (`_reading_order`). The remaining limits are ambiguous screen layouts, listed in the CHANGELOG.
-  - **Review:** two review rounds; the reviewers fuzzed #188 against python-bidi over about 111k lines. The test suite now passes with a CPU-only onnxruntime.
-  - **Earlier:** v0.10.0 is released (#186, #187, #190). #174 is left open by the maintainer. #84 (remote OCR) is parked.
-- **Current step:** The maintainer merges the release PR after green CI, then pushes tag `v0.10.1` on the merge commit (TestPyPI publishes on the tag). The real PyPI publish is a `workflow_dispatch` with `target: pypi`; its `create-release` job makes the GitHub Release from the `[0.10.1]` CHANGELOG section.
-  - Toolkit is at v6.0.0 (#192); agents and hooks come from the `cct` plugin.
+- **Goal:** No active feature work. v0.10.1 is released (2026-11-09: PyPI, TestPyPI and the GitHub Release). It shipped #188 (Arabic reading order), #189 (avoid AV1 downloads, clear error when no frame decodes) and #191 (OCR settings checked before any download).
+  - PR #174 was closed on 2026-11-12 with a thank-you comment: 0.10.0/0.10.1 support rapidocr 3.10.
+  - Open on GitHub: #84 (remote OCR, parked) and #77.
+- **Current step:** Toolkit sync to v6.2.0 (branch `chore/sync-template-v6.2.0`): manifest stamp only, plus this record.
+  - Agents and hooks come from the `cct` plugin.
 - **Next step:** Remaining follow-ups for the maintainer to prioritise:
   - The weak Korean, Hindi and Telugu reads.
   - Revisit v6 only with more French clips, or after filter tuning.
@@ -33,7 +27,11 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v6.0.0** (`12de366c`, two docs-only commits past the tag, tracked tree identical), synced 2026-11-08 (#192, agent-host-1): only `hooks/lib/json.sh` and `hooks/lib/git-cmd.sh` changed — the v6.0 parse-once memo for the plugin's hook dispatcher, and a git-cmd that skips the continuation join and `-C` rewrite when the command text cannot need them. Nothing changed in `settings.json`, `CLAUDE.md` or `AGENT_TEAM.md`; plugin 6.0.0 is installed on agent-host-1. `template_verify` post_commit: **21 PASS, 0 FAIL, 0 SKIP, 8 INFO**.
+**claude-code-toolkit v6.2.0** (`8408c68e`), synced 2026-11-12 (agent-host-1): no tracked file changed for this project; only the manifest's version stamp moved. Plugin 6.2.0 is installed. `template_verify` pre_commit: **20 PASS, 0 FAIL, 1 SKIP, 9 INFO** (`project_hooks` is a new INFO line since v6.2.0).
+
+From v6.1.0 (`e1ef98a0`), synced 2026-11-10 (#195): `.claude/settings.json` allows the plugin-form MCP tool names (`mcp__plugin_<name>_<name>__*`) and denies the plugin-form git-tools write tools; `hooks/lib/json.sh` keeps a command with a lone surrogate escape; `hooks/lib/git-cmd.sh` does the `-C` path protection in one awk pass. `template_verify` post_commit: **21 PASS, 0 FAIL, 0 SKIP, 8 INFO**.
+
+From v6.0.0 (`12de366c`, two docs-only commits past the tag, tracked tree identical), synced 2026-11-08 (#192, agent-host-1): only `hooks/lib/json.sh` and `hooks/lib/git-cmd.sh` changed — the v6.0 parse-once memo for the plugin's hook dispatcher, and a git-cmd that skips the continuation join and `-C` rewrite when the command text cannot need them. Nothing changed in `settings.json`, `CLAUDE.md` or `AGENT_TEAM.md`; plugin 6.0.0 is installed on agent-host-1. `template_verify` post_commit: **21 PASS, 0 FAIL, 0 SKIP, 8 INFO**.
 
 From v5.2.1 (`d40dda49`), synced 2026-11-02 (#175, run from the Windows session): `AGENT_TEAM.md` documents `cct-gate <absolute worktree path>`, the isolated-worktree path rules and a ~120-tool-call agent budget; `.gitattributes` gains a `PROJECT-CUSTOM` region (nothing of ours sits in it). `template_verify` post_commit on this host after the merge: **21 PASS, 0 FAIL, 0 SKIP, 8 INFO**. Plugin 5.2.1 is installed on agent-host-1.
 
@@ -73,6 +71,8 @@ Sync history since v3.0.0:
 | v4.1.1 | `eef42779` | #151 | v4.1.0 rollout patch: four enforcement scripts updated; the `#20` dropped-`reason` repair applied by hand |
 | — | — | #152–#154 | Worktree base moved under `g:/git/.worktrees/panoscribe`; `dist` artifact retention 3 days; `.claude/worktrees/` gitignored; always-on gate-artifact rule corrected |
 | v4.2.0 | `d95cf57c` | #155 | Carries v4.1.2's nine template changes (8 hook scripts + `AGENT_TEAM.md`): backslash-continuation join, whole-line comment strip before the verb scan, filesystem case-fold probe, byte-measured `cmd_len`, widened gate fingerprint. No conflicts, no local edits, no migration; the hand-restored `reason` annotation survived finalize |
+| v6.2.0 | `8408c68e` | (this PR) | No template change for this project: 8 identical, 7 once-class present, no conflicts, no new or deleted files, no migration. Manifest stamp only; skill body v6.2.0, server 6.2.0 at the checkout's HEAD |
+| v6.1.0 | `e1ef98a0` | #195 | Three updates: `.claude/settings.json` (plugin-form MCP names), `hooks/lib/json.sh` (lone surrogate), `hooks/lib/git-cmd.sh` (one-pass `-C` protection). No conflicts, no new or deleted files. Record added late, in the v6.2.0 PR |
 | v6.0.0 | `12de366c` | #192 | Two updates: `hooks/lib/json.sh` (dispatcher memo, parser adoption) and `hooks/lib/git-cmd.sh` (memo payload; join and `-C` rewrite only when needed). No conflicts, no local edits, no new or deleted files, no migration. Skill body v6.0.0, server 6.0.0 at the checkout's HEAD; record in its own commit in the same PR |
 | v5.2.1 | `d40dda49` | #175 | `AGENT_TEAM.md` (`cct-gate <worktree>`, worktree path rules, agent budget), `.gitattributes` (empty `PROJECT-CUSTOM` region) and the manifest. Synced from the Windows session; this session's duplicate run stopped before any write |
 | v5.1.2 | `f4b10381` | #172 | `CLAUDE.md` v5.1.1 template wording (RETRO line, two superpowers 7.0.0 lines) and the manifest only; `pending_once_notes` cleared. No conflicts, no new or deleted files. Synced from the Windows session; the record followed in a separate docs PR because the two sessions split the work |
