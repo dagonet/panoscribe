@@ -53,6 +53,7 @@
         "hooks": [
           {
             "type": "command",
+            "onFailure": "block",
             "command": "s=$(cat | grep -o '\"session_id\" *: *\"[^\"]*\"' | head -1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/'); case $s in ''|*[!A-Za-z0-9-]*) s= ;; esac; d=\"${TMPDIR:-/tmp}/cct-$(id -u)\"; o=; case $(uname -s) in MINGW*|MSYS*|CYGWIN*) o=1 ;; *) [ -O \"$d\" ] && o=1 ;; esac; [ -n \"$s\" ] && [ -n \"$o\" ] && [ -f \"$d/$s\" ] && exit 0; echo 'BLOCKED: the cct plugin is not active in this session. Install it with /plugin marketplace add dagonet/claude-code-toolkit and /plugin install cct@dagonet, then restart the session.' >&2; exit 2"
           }
         ]

@@ -46,7 +46,7 @@ the code MUST be rewritten until it complies.
 
 # Agent Routing and Build/Test Notes (moved from CLAUDE.md)
 
-**Agent fallback:** The `python-coder` agent uses Bash pip/poetry/uv + pytest (no Python-specific MCP tools exist yet). Do NOT substitute `coder` for `python-coder` — it carries Python-specific knowledge beyond build tool usage.
+**Agent fallback:** The `python-tools:python-coder` agent uses Bash pip/poetry/uv + pytest (no Python-specific MCP tools exist yet). `cct:coder` is the default; use `python-tools:python-coder` if `python-tools` is installed — it carries Python-specific knowledge beyond build tool usage.
 
 **Build & Test:** use the project's pip/poetry/uv build+test commands (see `PROJECT_CONTEXT.md`); for slow suites, target first (`pytest path/to/test_file.py::TestClass::test_method -x`) then run the full suite.
 
