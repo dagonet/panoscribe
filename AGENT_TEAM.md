@@ -27,13 +27,13 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 **A sub-agent only has the tools its `tools:` frontmatter lists** — a platform limitation, not a config error. Git needs `Bash`; GitHub writes need the matching `mcp__MCP_DOCKER__*` tool. **The agent file is the source of truth (`cct:<name>` = the cct plugin's `agents/<name>.md`; a project's own agents live in `.claude/agents/`) — read the target agent's `tools:` line before putting an operation in its spawn prompt.**
 
 ### Agents that can do their own git + GitHub I/O:
-`cct:coder`/`cct:<lang>-coder` (`Bash` + PR tools); `cct:code-reviewer` (`Bash`, review-write); `cct:tester` (`Bash`, issue-comment).
+`cct:coder`/`<lang>-tools:<lang>-coder` if installed (`Bash` + PR tools); `cct:code-reviewer` (`Bash`, review-write); `cct:tester` (`Bash`, issue-comment).
 
 ### Agents without `Bash`:
 `cct:architect` — cannot commit, push, create PRs, merge, or post comments.
 
 ### The rule that covers every tool, not just `Bash`
-`cct:Explore`/`cct:code-reviewer` hold neither `Edit` nor `Write`. `cct:Explore`/`cct:architect`/`cct:ops` hold no GitHub MCP tool. `isolation: worktree` (`cct:coder`, `cct:tester`, `cct:<lang>-coder`) means those agents cannot reach the main checkout for a sync.
+`cct:Explore`/`cct:code-reviewer` hold neither `Edit` nor `Write`. `cct:Explore`/`cct:architect`/`cct:ops` hold no GitHub MCP tool. `isolation: worktree` agents (`cct:coder`/`cct:tester`/language coders) cannot reach the main checkout for a sync.
 
 **PO responsibility:** if an agent lacks a needed tool, it returns the work product and the PO performs the git/GitHub I/O.
 
@@ -43,7 +43,7 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 
 ### Product Owner (PO)
 
-- Primary interface with the human stakeholder; maintains/prioritizes the backlog. Spawns the **Architect** for new features; reviews/publishes specs; plans sprints; monitors progress, handles escalations; writes a session summary after each sprint.
+- Primary interface with the human stakeholder; maintains/prioritizes the backlog (see `## Backlog`). Spawns the **Architect** for new features; reviews/publishes specs; plans sprints; monitors progress, handles escalations; writes a session summary after each sprint.
 - **T1 delegated fixes** (see Tiered Sprint Model) — brief inline, no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by the cct plugin's `enforce-delegation` hook.
 - **Never reviews code inline** — `cct:code-reviewer` is spawned T2+; T1 relies on the coder's gate run.
 - **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **`cct:Explore`** (see Model & Effort Policy).
@@ -57,6 +57,7 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 - Orchestrator = session model via `/model`: `fable` for T3/T4, `opus` for T1/T2. Workers run `sonnet`; `cct:architect`/`cct:code-reviewer` run `opus` at `effort: xhigh`; `cct:Explore` runs `haiku` at `effort: low`.
 - Session effort is deliberately **unset**; raise it per role via the agent file's `effort:`, or `/effort` for one session. Typed agents own their `model`; a type without one (general-purpose, built-ins) gets the project default via the plugin's `model-floor` hook unless you pass one.
 - Aliases only, never a pinned `claude-*` id.
+- Model choice follows the user-level ladder: cheap first, one step up on failure; reviewers and the architect never below `opus`.
 - Wrong answer despite full context -> bigger model. Skipped files/steps -> raise `effort`.
 
 ## Workstream Model
@@ -77,12 +78,24 @@ The `task-source` field in `PROJECT_CONTEXT.md` determines which column applies.
 | **Dev discovers task** | Dev reads issue via `mcp__MCP_DOCKER__issue_read` | PO inlines task AC + files in dev prompt |
 | **Review findings** | PR review via `mcp__MCP_DOCKER__pull_request_review_write` | same |
 | **Test findings** | PR comment via `mcp__MCP_DOCKER__add_issue_comment` | same |
-| **Close task** | PO closes GitHub Issue via `mcp__MCP_DOCKER__issue_write` | Task list (TaskUpdate); MEMORY.md after sprint |
+| **Close task** | PO closes GitHub Issue via `mcp__MCP_DOCKER__issue_write` | Move the item into `### Done` in `PROJECT_STATE.md` |
 | **Branch naming** | `feature/issue-{number}` or `bugfix/issue-{number}` | PO specifies per task (e.g. `feature/calendar-tz-fix`) |
 | **Worktree naming** | `{base}/{project}-issue-{number}/` | `{base}/{project}-{branch-name}/` |
 | **Commit convention** | `issue-{number}: {description}` | `feat:`/`fix:`/`chore:`/`test:`/`docs:` prefixes |
-| **Tech debt tracking** | GitHub Issue with `tech-debt` label | MEMORY.md or next sprint's plan file |
-| **Sprint state** | `PROJECT_STATE.md` with issue/PR numbers | MEMORY.md sprint summary |
+| **Tech debt tracking** | GitHub Issue with `tech-debt` label | Item under `## Backlog` in `PROJECT_STATE.md` |
+| **Sprint state** | `PROJECT_STATE.md` with issue/PR numbers | `PROJECT_STATE.md` `## Backlog` and `## Current Sprint` |
+
+---
+
+## Backlog
+
+Issue mode: item = issue `#N`, done = closed, rank = label `priority:1`..`3`, untriaged = open without one. File mode: `PROJECT_STATE.md` `## Backlog` holds `### Untriaged`, `### Ranked` (top = next) and `### Done` (last 20) as `- B-<n> [in progress] <title>` (tag optional, none = open; numbers rise, never reused).
+
+- Before picking the next task, groom the backlog: close finished items, rank every untriaged item, re-check the top three.
+- Grooming lands on the trunk before any helper starts: a PR that touches only `PROJECT_STATE.md` needs no item.
+- One item = one pull request: an item that needs several PRs is split into several items when ranked.
+- Every PR names its item (issue mode: `Closes #N` in the body; file mode: the PR moves the item into `### Done`), or carries `Item: none` (issue mode: a PR-body line; file mode: a line in the commit's last trailer block; T1 and template sync only; counted).
+- Parallel PRs touching `PROJECT_STATE.md` rebase before merge, as every PR does.
 
 ---
 
@@ -116,6 +129,7 @@ Every tier: existing tests pass, build clean and formatted, no `TODO`/`FIXME`/`H
 | New tests for changed logic | — | if logic changed | Yes | Yes |
 | Code reviewer approved | — | Yes | Yes | Yes |
 | BDD scenarios / architect guidance followed | — | — | — | Yes |
+| Plan challenged | — | — | Yes | Yes |
 
 ### Lean Dev Prompt Templates
 
@@ -126,6 +140,7 @@ is a reference, never a substitute for the brief.
 
 ```
 Task #{n}: issue #{issue}. Worktree: {path}, branch: feature/issue-{issue}.
+Item: {B-<n> | #N | none}
 
 ## Goal
 {1-2 sentences}
@@ -142,10 +157,10 @@ Task #{n}: issue #{issue}. Worktree: {path}, branch: feature/issue-{issue}.
 ## Definition of done
 {tests to pass} + `cct-gate` green (it gates the current directory, or the work tree given as its one argument: `cct-gate <absolute worktree path>`), then PR.
 
-Context: the GitHub issue (reference only). Workflow: implement -> gate -> commit -> push -> create PR -> report the PR URL.
+Context: the GitHub issue (reference only). Workflow: implement -> gate -> commit -> push -> create PR (`--body-file`, with `Closes #N`) -> report the PR URL.
 ```
 
-**plan-files mode (T2-T3):** same shape as above, except the Task line reads `Task: {title}. Worktree: {path}, branch: {branch}.` (no issue number), plus `Architect guidance: {summary or "none"}` and `Context: {plan_file_path} if one exists (reference only)`.
+**plan-files mode (T2-T3):** same shape as above, except the Task line reads `Task: {title}. Worktree: {path}, branch: {branch}.` (no issue number), the workflow gains "move the item into `### Done` in `PROJECT_STATE.md`" before commit, plus `Architect guidance: {summary or "none"}` and `Context: {plan_file_path} if one exists (reference only)`.
 
 **PO responsibility (plan-files mode):** inline the acceptance criteria and file list directly in the dev spawn prompt — the dev should not need to read the plan file. The path is additional context only.
 
@@ -188,7 +203,7 @@ See `PROJECT_CONTEXT.md` for the worktree base path; see Mode Behavior Table for
 
 ## Merge Protocol
 
-After review and testing pass, the developer executes the merge — git/GitHub MCP tools are listed explicitly in its `tools:` frontmatter (`cct:coder`, `cct:<lang>-coder`, `general-purpose`).
+After review and testing pass, the developer executes the merge — git/GitHub MCP tools are listed explicitly in its `tools:` frontmatter (`cct:coder`/language coders/`general-purpose`).
 
 ### Steps (Developer-executed)
 
@@ -227,7 +242,7 @@ An agent that has to go looking for any of the five is under-briefed — a promp
 
 **Plan files are optional** — write one in `docs/plans/` when work spans sessions or several workstreams need a shared reference; nothing blocks a spawn on one, and no hook parses a literal in it.
 
-**Challenging a plan is optional and on demand** — invoke the `challenge` skill or spawn the architect with the draft.
+T3 and T4: the plan is challenged (`challenge` skill) before coding starts; at T4 the architect runs it as part of its design review.
 
 ---
 
@@ -261,7 +276,7 @@ An agent that has to go looking for any of the five is under-briefed — a promp
   4. Count it as one strike toward the 3-cycle escalation, re-dispatch with a TIGHTER brief. **Never self-perform the failed agent's work.**
   5. **Dead-coder merge handoff**: a pushed branch with an open PR gets a FRESH coder (PR URL, branch, worktree path) to rebase, re-gate, and merge — the PO never finishes merges by hand.
   6. **Report agents**: their report IS the deliverable — none means a failed run, re-dispatch citing the mandate. The plugin's `enforce-agent-contract` hook catches coder/reviewer cases mechanically.
-  7. Repeated failures of the same shape are recorded by the plugin's `retro-ledger` hook and replayed at next session start — fix the cause, not the symptom.
+  7. If `cct-learning` is installed, its `retro-ledger` hook records repeated failures and replays them at session start — fix the cause, not the symptom.
 
 ---
 
