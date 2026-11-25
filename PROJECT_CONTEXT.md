@@ -26,7 +26,7 @@
      now; it was corrected upstream in v4.0.1, but this file is `once`-class so
      the correction never arrives by sync. Absent is still preferred over `none`
      for being unambiguous, not because `none` is dangerous. -->
-<!-- Post-edit build runs after every Edit/Write via hooks/post-edit-build.sh and
+<!-- Post-edit build runs after every Edit/Write if `cct-guards` is installed, and
      is NOT scoped to the edited file, so any real command here runs the whole
      project build on every keystroke-level write. `none` is a true no-op for
      this key (unlike Gate). -->
@@ -52,7 +52,7 @@
 
 ## Workflow Configuration
 
-- **Task source**: `plan-files`
+- **Task source**: `github-issues`
 - **Branch strategy**: feature branches per task, PR into `main` (see AGENT_TEAM.md Mode Behavior Table for naming convention). Prose for humans — **no hook reads this line**; the enforced set is `**Protected branches**:` directly below.
 <!-- THE line the protection hooks read; space- or comma-separated names.
      EDIT THIS if your trunk is not main/master — nothing fills it in for you,
