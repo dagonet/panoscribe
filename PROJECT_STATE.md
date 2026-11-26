@@ -5,8 +5,8 @@
 - **Goal:** No active feature work. v0.10.1 is released (2026-11-09: PyPI, TestPyPI and the GitHub Release). It shipped #188 (Arabic reading order), #189 (avoid AV1 downloads, clear error when no frame decodes) and #191 (OCR settings checked before any download).
   - PR #174 was closed on 2026-11-12 with a thank-you comment: 0.10.0/0.10.1 support rapidocr 3.10.
   - Open on GitHub: #84 (remote OCR, parked) and #77.
-- **Current step:** Toolkit sync to v7.0.0 (branch `chore/sync-template-v7.0.0`). The backlog moves to GitHub issues (`Task source: github-issues`, user's choice on 2026-11-25).
-  - Agents and hooks come from the `cct` plugin. Python work now goes to `cct:coder` (`python-tools` is not installed).
+- **Current step:** None. Toolkit sync to v7.0.0 merged (#197, 2026-11-25). The backlog now lives in GitHub issues (`Task source: github-issues`, user's choice on 2026-11-25).
+  - Agents and hooks come from the `cct` plugin. Python work goes to `python-tools:python-coder` (installed 2026-11-26).
 - **Next step:** Remaining follow-ups for the maintainer to prioritise:
   - The weak Korean, Hindi and Telugu reads.
   - Revisit v6 only with more French clips, or after filter tuning.
@@ -34,7 +34,9 @@ _No active sprint._
 
 The backlog now lives in GitHub issues (`Task source: github-issues`): an item is issue `#N`, rank is the label `priority:1`..`3`, and an open issue without one is untriaged. The plugin's `backlog-item-check` refuses a PR whose body has neither `Closes #N` (or Fixes/Resolves) nor a line `Item: none`. `gh pr create` takes its body only from `--body-file <plain absolute path>`.
 
-Installed here: `cct`, `cct-guards`, `cct-learning` and `cct-helpers` (7.0.0). `cct-jev` and `python-tools` are not installed. `template_verify` post_commit: **20 PASS, 0 FAIL, 0 SKIP, 10 INFO** (`server_skew` INFO: the checkout is past the server's imported commit, `server/` unchanged).
+Installed here: `cct`, `cct-guards`, `cct-learning`, `cct-helpers` (7.0.0) and `python-tools` (since 2026-11-26). `cct-jev` is not installed.
+
+`PROJECT_CONTEXT.md` is `once`-class, so template wording changes never arrive by sync; `template_verify`'s `once_notes_changed` INFO is the only signal. From the v7.0.0 notes, the post-edit build comment was adopted in #197 and the Ollama line (usage rules now in the `mcp-usage` skill from `cct-helpers`) on 2026-11-26. `template_verify` post_commit: **20 PASS, 0 FAIL, 0 SKIP, 10 INFO** (`server_skew` INFO: the checkout is past the server's imported commit, `server/` unchanged).
 
 From v6.2.0 (`8408c68e`), synced 2026-11-12 (#196, agent-host-1): no tracked file changed for this project; only the manifest's version stamp moved. Plugin 6.2.0 is installed. `template_verify` pre_commit: **20 PASS, 0 FAIL, 1 SKIP, 9 INFO** (`project_hooks` is a new INFO line since v6.2.0).
 
