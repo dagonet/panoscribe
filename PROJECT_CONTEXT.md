@@ -83,5 +83,5 @@
 
 ## Preprocessing
 
-- **Ollama**: available (MCP: `ollama-tools`) -- see CLAUDE.local.md for usage rules
+- **Ollama**: available (MCP: `ollama-tools`) -- see the `mcp-usage` skill (if `cct-helpers` is installed) for usage rules
 - **Context7**: available (MCP: `context7`)
